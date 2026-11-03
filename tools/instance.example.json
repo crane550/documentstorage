@@ -1,0 +1,8 @@
+{
+  "Application": { "DisplayName": "Document Manager" },
+  "Urls": "http://127.0.0.1:5240",
+  "ConnectionStrings": {
+    "Catalog": "Host=127.0.0.1;Port=5432;Database=documentstorage_dev;Username=documentstorage"
+  },
+  "Documents": { "PdfTextCommand": "pdftotext" }
+}

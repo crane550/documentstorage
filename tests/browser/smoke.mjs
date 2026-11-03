@@ -1,0 +1,82 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5240';
+const url = new URL(base);
+assert(['localhost','127.0.0.1','[::1]'].includes(url.hostname), 'Only test local development instances');
+const directory = path.resolve(process.env.DOCUMENTSTORAGE_BROWSER_ROOT || '.local/browser-storage');
+await mkdir(directory, { recursive: true });
+await mkdir(path.join(directory, 'Reference'), { recursive: true });
+await writeFile(path.join(directory, 'Reference', 'welcome.txt'), 'Synthetic document workspace. Files are stored locally and remain ordinary files.');
+const browser = await chromium.launch({ executablePath: process.env.DOCUMENTSTORAGE_CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox','--disable-dev-shm-usage'] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
+const failures = [];
+page.on('pageerror', error => failures.push(error.message));
+let count = 0;
+async function check(condition, description) { assert(await condition, description); count++; console.log('PASS '+description); }
+try {
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => window.Blazor !== undefined);
+    await page.waitForFunction(() => { const button = document.querySelector('.heading-actions .primary'); return button && !button.disabled; });
+    // A click handler working confirms the server circuit is interactive, beyond prerendering.
+    await page.getByRole('button', { name: 'Add storage', exact: true }).waitFor();
+    if (await page.locator('.tree-label').filter({hasText:'Sample archive'}).count() === 0) {
+    await page.getByRole('button', { name: 'Add storage', exact: true }).click();
+    await page.getByRole('dialog').waitFor();
+    await page.getByLabel('Location name').fill('Sample archive');
+    await page.getByLabel('Full path on the server').fill(directory);
+    await page.getByRole('button', { name: 'Connect storage', exact: true }).click();
+    await page.getByRole('dialog').waitFor({ state:'hidden' });
+    } else { await page.locator('.tree-label').filter({hasText:'Sample archive'}).click(); await page.locator('.breadcrumbs').filter({hasText:'Sample archive'}).waitFor(); }
+    await check(page.getByRole('button', { name: 'Reference', exact: true }).count().then(n => n > 0), 'storage connection discovers existing folders');
+    const stamp = Date.now().toString();
+    const folder = 'Statements '+stamp;
+    await page.getByRole('button', { name:'New folder', exact:true }).click();
+    await page.getByLabel('Name', {exact:true}).fill(folder);
+    await page.getByRole('button', { name:'Create folder', exact:true }).click();
+    await page.getByRole('dialog').waitFor({state:'hidden'});
+    await page.locator('.file-name').filter({hasText:folder}).click();
+    await page.getByLabel('Folder filing instructions').fill('Monthly bank statements. Use the statement closing date in the name.');
+    await page.getByRole('button',{name:'Save instructions',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Folder instructions saved.'}).waitFor();
+    await check(page.getByLabel('Folder filing instructions').inputValue().then(t=>t.includes('closing date')), 'folder instructions persist after service reload');
+    const filename='synthetic-'+stamp+'.txt';
+    await page.getByLabel('Upload documents').setInputFiles({name:filename,mimeType:'text/plain',buffer:Buffer.from('Synthetic October statement. Search phrase: copper lantern '+stamp+'. Balance 42.50.')});
+    await page.locator('.file-name').filter({hasText:filename}).waitFor();
+    await page.getByLabel('Search documents').fill('copper lantern '+stamp);
+    await page.getByRole('button',{name:'Search',exact:true}).click();
+    await page.locator('.file-name').filter({hasText:filename}).waitFor();
+    await check(page.locator('.file-name').count().then(n=>n===1), 'search finds extracted document contents');
+    await page.locator('.file-name').filter({hasText:filename}).click();
+    await check(page.locator('.text-preview').textContent().then(t=>t.includes('42.50')), 'document detail shows indexed text');
+    const downloadReady = page.waitForEvent('download');
+    await page.getByRole('link',{name:'Download original',exact:true}).click();
+    const download = await downloadReady;
+    await check(readFile(await download.path(),'utf8').then(t=>t.includes('42.50')), 'download returns original document bytes');
+    await page.getByRole('button',{name:'Rename / move',exact:true}).click();
+    await page.getByLabel('Name',{exact:true}).fill('2026-10-31 - Cedar '+stamp+'.txt');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    await page.getByRole('dialog').waitFor({state:'hidden'});
+    await check(readFile(path.join(directory,folder,'2026-10-31 - Cedar '+stamp+'.txt'),'utf8').then(t=>t.includes('42.50')), 'browser rename changes the real file without changing its bytes');
+    await page.getByRole('button',{name:'Move selected item to trash',exact:true}).click();
+    await page.getByRole('button',{name:'Move to trash',exact:true}).click();
+    await page.getByRole('dialog').waitFor({state:'hidden'});
+    await page.getByRole('button',{name:'Trash',exact:true}).click();
+    await page.getByRole('button',{name:'Restore',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Item restored'}).waitFor();
+    await check(readFile(path.join(directory,folder,'2026-10-31 - Cedar '+stamp+'.txt'),'utf8').then(t=>t.includes('42.50')), 'browser trash and restore preserve document contents');
+    await page.getByRole('button',{name:'Activity',exact:true}).click();
+    await page.locator('.activity-row').first().waitFor();
+    await check(page.locator('.activity-row').count().then(n=>n>=3), 'file operations appear in activity history');
+    await page.getByRole('button',{name:'Documents',exact:false}).first().click();
+    await page.getByRole('button',{name:'Clear search',exact:true}).click();
+    const rootButton=page.locator('.tree-label').filter({hasText:'Sample archive'});
+    await rootButton.click();
+    await page.screenshot({path:process.env.DOCUMENTSTORAGE_SCREENSHOT || '.local/workspace.png',fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth), 'mobile layout does not overflow horizontally');
+    await check(failures.length===0, 'no browser JavaScript errors');
+    console.log(`All ${count} browser checks passed.`);
+} finally { await browser.close(); }

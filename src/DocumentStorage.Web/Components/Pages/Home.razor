@@ -1,0 +1,289 @@
+@page "/"
+@inject LibraryService Library
+@inject IConfiguration Configuration
+@inject ILogger<Home> Logger
+
+<PageTitle>@DisplayName</PageTitle>
+<div class="workspace" aria-busy="@busy">
+    <aside class="sidebar">
+        <a class="brand" href="/"><span class="brand-mark"><Icon Name="box" Size="27" /></span><span>@DisplayName<small>A place for every paper.</small></span></a>
+        <div class="workspace-label">YOUR WORKSPACE <span>LOCAL</span></div>
+        <nav class="main-nav" aria-label="Workspace">
+            <button class="@(view == "documents" ? "active" : "")" @onclick='() => SwitchView("documents")'><Icon Name="folder" />Documents <span class="nav-count">@overview.Documents</span></button>
+            <button class="@(view == "activity" ? "active" : "")" @onclick='() => SwitchView("activity")'><Icon Name="clock" />Activity</button>
+            <button class="@(view == "trash" ? "active" : "")" @onclick='() => SwitchView("trash")'><Icon Name="trash" />Trash</button>
+        </nav>
+        <div class="section-label"><span>STORAGE &amp; FOLDERS</span><button class="icon-button" title="Add storage location" aria-label="Add storage location" @onclick='() => OpenDialog("root")'><Icon Name="plus" Size="16" /></button></div>
+        <div class="folder-tree" aria-label="Folder tree">
+            @foreach (var root in overview.Roots)
+            {
+                <div class="root-caption"><span class="status-dot @(root.IsOnline ? "online" : "offline")"></span>@root.Name <span>@(root.IsNetwork ? "NAS" : "LOCAL")</span></div>
+                @foreach (var folder in overview.Folders.Where(x => x.RootId == root.Id && x.ParentId == null))
+                {
+                    <FolderBranch Folder="folder" AllFolders="overview.Folders" SelectedId="folderId" OnSelect="OpenFolder" />
+                }
+            }
+            @if (overview.Roots.Count == 0) { <p class="tree-empty">Connect a folder on your server to start your library.</p> }
+        </div>
+        <div class="sidebar-bottom">
+            <button class="storage-link @(view == "storage" ? "active" : "")" @onclick='() => SwitchView("storage")'><Icon Name="drive" />Storage locations <Icon Name="arrow" Size="14" /></button>
+            <div class="local-note"><span class="status-dot online"></span>Your files stay on your storage.</div>
+        </div>
+    </aside>
+
+    <div class="main-area">
+        <header class="topbar">
+            <div class="topbar-label">THE DOCUMENT WORKSPACE <span>/</span> @ViewLabel</div>
+            <span class="version-label">EARLY BUILD <span class="small-dot"></span> 0.1</span>
+        </header>
+        <div class="page-heading">
+            <div><div class="eyebrow">LESS SHUFFLING. MORE FINDING.</div><h1>@Heading</h1><p>@Subtitle</p></div>
+            <div class="heading-actions">
+                <button class="button subtle" @onclick="Rescan" disabled="@busy"><Icon Name="refresh" Size="17" />@(busy ? "Working…" : "Rescan storage")</button>
+                <button class="button primary" @onclick='() => OpenDialog("root")' disabled="@busy"><Icon Name="plus" Size="17" />Add storage</button>
+            </div>
+        </div>
+        @if (message != null)
+        {
+            <div class="notice @(error ? "error" : "success")" role="status"><Icon Name="@(error ? "info" : "check")" Size="18" /><span>@message</span><button class="icon-button" aria-label="Dismiss message" @onclick="() => message = null"><Icon Name="close" Size="15" /></button></div>
+        }
+        @foreach (var root in overview.Roots.Where(x => !x.IsOnline))
+        {
+            <div class="notice warning"><Icon Name="drive" Size="18" /><span><strong>@root.Name is offline.</strong> @root.LastError</span></div>
+        }
+
+        @if (view == "documents")
+        {
+            <section class="stats-strip" aria-label="Library overview">
+                <div><span class="stat-icon"><Icon Name="file" /></span><span><strong>@overview.Documents</strong><small>documents in your library</small></span></div>
+                <div><span class="stat-icon sage"><Icon Name="drive" /></span><span><strong>@overview.Roots.Count(x => x.IsOnline)<em> / @overview.Roots.Count</em></strong><small>storage locations connected</small></span></div>
+                <div><span class="stat-icon sand"><Icon Name="search" /></span><span><strong>@(overview.Documents - overview.NeedsText)<em> indexed</em></strong><small>documents with searchable text</small></span></div>
+            </section>
+            <div class="library-layout">
+                <section class="paper-panel file-panel">
+                    <div class="library-toolbar">
+                        <div class="breadcrumbs"><Icon Name="folder" Size="17" /><button @onclick="ClearSearch">Library</button>@foreach (var crumb in Breadcrumbs) { <Icon Name="arrow" Size="12" /><button @onclick="() => OpenFolder(crumb.Id)">@crumb.Name</button> }</div>
+                        <span class="item-count">@listing.Total items</span>
+                    </div>
+                    <form class="search-form" @onsubmit="Search" @onsubmit:preventDefault>
+                        <Icon Name="search" Size="18" /><input aria-label="Search documents" placeholder="Search filenames, folders, or document text…" @bind="searchInput" /><button type="submit" class="search-submit" disabled="@busy">Search</button>
+                    </form>
+                    <div class="file-actions"><span>@(search.Length > 0 ? "SEARCH RESULTS · ALL LOCATIONS" : "FOLDERS & DOCUMENTS")</span><div>
+                        @if (search.Length > 0) { <button class="text-button" @onclick="ClearSearch">Clear search</button> }
+                        <button class="text-button" @onclick='() => OpenDialog("folder")' disabled="@(busy || folderId == null)"><Icon Name="plus" Size="15" />New folder</button>
+                        <label class="text-button upload-button @(busy || folderId == null ? "disabled" : "")"><Icon Name="upload" Size="15" />Upload<InputFile OnChange="Upload" disabled="@(busy || folderId == null)" multiple aria-label="Upload documents" /></label>
+                    </div></div>
+                    <div class="table-scroll">
+                        <table class="file-table"><thead><tr><th>Name</th><th>Text index</th><th>Modified</th><th>Size</th></tr></thead><tbody>
+                        @foreach (var entry in listing.Items)
+                        {
+                            <tr class="@(selected?.Id == entry.Id ? "chosen" : "")" @key="entry.Id">
+                                <td><button class="file-name" @onclick="() => ChooseEntry(entry)"><span class="file-type @(entry.IsFolder ? "folder-type" : "")"><Icon Name="@(entry.IsFolder ? "folder" : "file")" Size="22" /></span><span><strong>@entry.Name</strong>@if (search.Length > 0) { <small>@RootName(entry.RootId) / @entry.RelativePath</small> } else if (!entry.IsFolder) { <small>@(Path.GetExtension(entry.Name).TrimStart('.').ToUpperInvariant()) document</small> }</span></button></td>
+                                <td>@if (entry.IsFolder) { <span class="muted">—</span> } else { <span class="index-badge @(entry.TextStatus == "Indexed" ? "indexed" : "")">@if (entry.TextStatus == "Indexed") { <Icon Name="check" Size="12" /> }@entry.TextStatus</span> }</td>
+                                <td class="date-cell">@entry.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</td><td class="size-cell">@(entry.IsFolder ? "—" : FormatSize(entry.Size))</td>
+                            </tr>
+                        }
+                        </tbody></table>
+                    </div>
+                    @if (listing.Items.Count == 0)
+                    {
+                        <div class="empty-state"><span class="empty-icon"><Icon Name="@(search.Length > 0 ? "search" : "box")" Size="42" /></span><h2>@(search.Length > 0 ? "Nothing matched that search" : overview.Roots.Count == 0 ? "Give your documents a home" : "A little room to get organized")</h2><p>@(search.Length > 0 ? "Try a name, a phrase from a document, or a folder." : overview.Roots.Count == 0 ? "Connect an existing folder on your server. Your files stay right where they belong." : "Create a folder or upload your first document here.")</p>
+                            @if (overview.Roots.Count == 0) { <button class="button primary" @onclick='() => OpenDialog("root")'><Icon Name="plus" Size="16" />Connect a storage location</button> }
+                        </div>
+                    }
+                    <div class="panel-footer"><span><span class="status-dot online"></span>Ordinary files. Organized on your storage.</span>@if (listing.Total > 100) { <div><button class="text-button" disabled="@(offset == 0 || busy)" @onclick="Previous">Previous</button><span>@(offset + 1)–@(offset + listing.Items.Count) of @listing.Total</span><button class="text-button" disabled="@(offset + 100 >= listing.Total || busy)" @onclick="Next">Next</button></div> }</div>
+                </section>
+                <aside class="paper-panel detail-panel">
+                    @if (selected != null)
+                    {
+                        <div class="detail-top"><span class="eyebrow">@(selected.IsFolder ? "FOLDER DETAILS" : "DOCUMENT DETAILS")</span><span class="detail-symbol"><Icon Name="@(selected.IsFolder ? "folder" : "file")" Size="34" /></span><h2>@selected.Name</h2><p>@RootName(selected.RootId)@(!string.IsNullOrEmpty(selected.RelativePath) ? " / " + selected.RelativePath : "")</p></div>
+                        @if (selected.RelativePath != "")
+                        {
+                            <div class="detail-actions"><button class="button subtle" @onclick='() => OpenDialog("move")'><Icon Name="edit" Size="15" />Rename / move</button><button class="icon-button danger" title="Move to trash" aria-label="Move selected item to trash" @onclick='() => OpenDialog("trash")'><Icon Name="trash" Size="17" /></button></div>
+                        }
+                        @if (selected.IsFolder)
+                        {
+                            <div class="instructions-heading"><Icon Name="spark" Size="18" /><h3>Filing instructions</h3></div><p class="help-text">Describe what belongs here and how you want it named.</p>
+                            <label class="sr-only" for="instructions">Folder filing instructions</label><textarea id="instructions" class="instructions-input" maxlength="20000" @bind="instructions" placeholder="For example: Keep monthly bank statements here. Name them using the statement closing date and bank name." rows="8"></textarea>
+                            <button class="button primary full-width" disabled="@busy" @onclick="SaveInstructions">Save instructions</button>
+                            <div class="guidance-note"><Icon Name="info" Size="16" /><p>Saved as folder guidance. Automatic filing and conversational editing are coming in the AI milestone.</p></div>
+                            @if (InheritedInstructions.Length > 0) { <details class="inherited"><summary>Guidance from parent folders</summary><pre>@InheritedInstructions</pre></details> }
+                        }
+                        else
+                        {
+                            <a class="button subtle full-width" href="@($"/documents/{selected.Id}/download")" download>Download original</a>
+                            <dl class="metadata"><div><dt>Text index</dt><dd>@selected.TextStatus</dd></div><div><dt>File size</dt><dd>@FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div></dl>
+                            <h3 class="text-preview-title">Document text</h3><pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(6000, selected.ExtractedText.Length)] : "No text has been extracted. Scanned PDFs need an existing OCR text layer.")</pre>
+                        }
+                    }
+                    else
+                    {
+                        <div class="detail-empty"><Icon Name="folder" Size="38" /><h2>A place, and a purpose.</h2><p>Select a folder to write its filing instructions, or a document to read its indexed text.</p><div class="paper-example"><span>FOLDER NOTE</span><p>“Bank statements go here.<br />Use the closing date<br />in the filename.”</p></div></div>
+                    }
+                </aside>
+            </div>
+            <div class="bottom-note"><Icon Name="info" Size="15" /><span>Built around your folders. Local storage today, room for a NAS tomorrow.</span><span class="milestone-label">FOUNDATION · 01</span></div>
+        }
+        else if (view == "storage")
+        {
+            <div class="storage-grid">
+                @foreach (var root in overview.Roots)
+                {
+                    <article class="paper-panel storage-card"><div class="storage-card-header"><span class="stat-icon"><Icon Name="drive" Size="24" /></span><span class="index-badge @(root.IsOnline ? "indexed" : "")">@(root.IsOnline ? "Connected" : "Offline")</span></div><h2>@root.Name</h2><code>@root.Location</code><p>@(root.IsNetwork ? "Network / NAS" : "Local server storage")</p><div class="storage-card-footer"><span>Last scan: @(root.LastScan?.ToLocalTime().ToString("MMM d, h:mm tt") ?? "Not scanned")</span><button class="text-button" @onclick="() => OpenRoot(root.Id)">Open folders <Icon Name="arrow" Size="13" /></button></div></article>
+                }
+                <button class="add-storage-card" @onclick='() => OpenDialog("root")'><Icon Name="plus" Size="28" /><strong>Connect a storage location</strong><span>An existing local directory or mounted NAS share</span></button>
+            </div>
+            <div class="notice"><Icon Name="info" /><span>Paths belong to the server running this app. Network shares must be accessible to its service account. Each location keeps a small identity file so a disconnected share is never mistaken for an empty folder.</span></div>
+        }
+        else if (view == "activity")
+        {
+            <section class="paper-panel activity-panel"><div class="panel-title"><h2>File operation history</h2><span>Most recent 50 operations</span></div>
+                @foreach (var op in overview.Activity)
+                { <div class="activity-row"><span class="stat-icon"><Icon Name="@(op.Kind == "Trash" ? "trash" : op.Kind == "Restore" ? "restore" : "move")" /></span><div><strong>@op.Kind <span class="index-badge @(op.State == "Completed" ? "indexed" : "")">@op.State</span></strong><p>@op.FromPath <span>→</span> @op.ToPath</p>@if (op.Error != null) { <p class="error-text">@op.Error</p> }</div><time>@op.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</time></div> }
+                @if (overview.Activity.Count == 0) { <div class="empty-state"><Icon Name="clock" Size="38" /><h2>Your filing history starts here</h2><p>Moves, renames, trash, and restores will be recorded here.</p></div> }
+            </section>
+        }
+        else if (view == "trash")
+        {
+            <section class="paper-panel activity-panel"><div class="panel-title"><h2>Recoverable trash</h2><span>Files stay on their original storage location</span></div>
+                @foreach (var entry in trashItems)
+                { <div class="activity-row"><span class="stat-icon"><Icon Name="@(entry.IsFolder ? "folder" : "file")" /></span><div><strong>@entry.Name</strong><p>@RootName(entry.RootId) · @(entry.IsFolder ? "Folder and its contents" : FormatSize(entry.Size))</p></div><button class="button subtle" disabled="@busy" @onclick="() => Restore(entry.Id)"><Icon Name="restore" Size="16" />Restore</button></div> }
+                @if (trashItems.Count == 0) { <div class="empty-state"><Icon Name="trash" Size="38" /><h2>Nothing in the trash</h2><p>Removed items are kept here until you restore them. This build never permanently deletes your documents.</p></div> }
+            </section>
+        }
+    </div>
+</div>
+
+@if (dialog != null)
+{
+    <div class="modal-backdrop" @onkeydown="DialogKey"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <div class="modal-header"><span class="stat-icon"><Icon Name="@(dialog == "root" ? "drive" : dialog == "trash" ? "trash" : "folder")" Size="24" /></span><button class="icon-button" aria-label="Close dialog" disabled="@busy" @onclick="CloseDialog"><Icon Name="close" /></button></div>
+        <h2 id="dialog-title">@(dialog switch { "root" => "Connect your storage", "folder" => "Make a little room", "move" => "Rename or move", _ => "Move to trash?" })</h2>
+        <p class="modal-description">@(dialog switch { "root" => "Choose an existing folder on the server. Files will be indexed in place, with no importing or duplication.", "folder" => "Create a real folder inside the current location.", "move" => "Choose a name and destination in this storage location. Folder instructions and document identities stay with the items.", _ => "The item and its contents will move to recoverable trash on the same storage location. You can restore them later." })</p>
+        <form @onsubmit="SubmitDialog" @onsubmit:preventDefault>
+            @if (dialog != "trash") { <label for="item-name">@(dialog == "root" ? "Location name" : "Name")</label><input id="item-name" autofocus required maxlength="180" @bind="formName" placeholder="@(dialog == "root" ? "Personal archive" : "Folder name")" /> }
+            @if (dialog == "root")
+            {
+                <label for="root-path">Full path on the server</label><input id="root-path" required @bind="formPath" placeholder="D:\Documents or /mnt/documents" /><p class="field-hint">The directory must already exist. NAS shares must be mounted or available as a UNC path on Windows.</p>
+                <label class="checkbox-label"><input type="checkbox" @bind="formNetwork" />This is network / NAS storage</label>
+            }
+            @if (dialog == "move" && selected != null)
+            {
+                <label for="destination">Destination folder</label><select id="destination" @bind="formParent">@foreach (var folder in MoveDestinations) { <option value="@folder.Id">@RootName(folder.RootId) / @folder.RelativePath</option> }</select>
+            }
+            @if (dialog == "trash") { <div class="trash-confirm-name"><Icon Name="@(selected?.IsFolder == true ? "folder" : "file")" />@selected?.Name</div> }
+            @if (dialogError != null) { <p class="dialog-error" role="alert">@dialogError</p> }
+            <div class="modal-footer"><button type="button" class="button subtle" disabled="@busy" @onclick="CloseDialog">Cancel</button><button type="submit" class="button @(dialog == "trash" ? "danger-button" : "primary")" disabled="@busy">@(busy ? "Working…" : dialog switch { "root" => "Connect storage", "folder" => "Create folder", "move" => "Save changes", _ => "Move to trash" })</button></div>
+        </form>
+    </section></div>
+}
+
+@code {
+    private LibraryOverview overview = new([], [], [], 0, 0);
+    private EntryPage listing = new([], 0);
+    private List<CatalogEntry> trashItems = [];
+    private Guid? folderId;
+    private CatalogEntry? selected;
+    private string view = "documents", search = "", searchInput = "", instructions = "";
+    private string? message, dialog, dialogError;
+    private string formName = "", formPath = "";
+    private Guid formParent;
+    private bool busy, error, formNetwork;
+    private int offset;
+    private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
+    private string ViewLabel => view switch { "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
+    private string Heading => view switch { "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
+    private string Subtitle => view switch { "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
+    private string RootName(Guid id) => overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
+    private IEnumerable<CatalogEntry> Breadcrumbs
+    {
+        get
+        {
+            var result = new List<CatalogEntry>();
+            var current = overview.Folders.FirstOrDefault(x => x.Id == folderId);
+            while (current != null) { result.Insert(0, current); current = overview.Folders.FirstOrDefault(x => x.Id == current.ParentId); }
+            return result;
+        }
+    }
+    private IEnumerable<CatalogEntry> MoveDestinations => overview.Folders.Where(x => selected != null && x.RootId == selected.RootId && x.Id != selected.Id && !x.RelativePath.StartsWith(selected.RelativePath + "/", StringComparison.Ordinal));
+    private string InheritedInstructions
+    {
+        get
+        {
+            var notes = new List<string>();
+            var parent = overview.Folders.FirstOrDefault(x => x.Id == selected?.ParentId);
+            while (parent != null) { if (parent.Instructions.Length > 0) notes.Insert(0, parent.Name + ":\n" + parent.Instructions); parent = overview.Folders.FirstOrDefault(x => x.Id == parent.ParentId); }
+            return string.Join("\n\n", notes);
+        }
+    }
+    protected override async Task OnInitializedAsync() => await Run(async () => await Reload());
+    private async Task Reload()
+    {
+        overview = await Library.OverviewAsync();
+        if (folderId == null || !overview.Folders.Any(x => x.Id == folderId)) folderId = overview.Folders.FirstOrDefault(x => x.ParentId == null)?.Id;
+        listing = await Library.BrowseAsync(folderId, search, offset);
+        trashItems = await Library.TrashAsync();
+        if (selected != null) selected = await Library.EntryAsync(selected.Id);
+        if (selected?.TrashBatchId != null || selected?.IsMissing == true) selected = null;
+        if (selected == null && folderId != null) selected = await Library.EntryAsync(folderId.Value);
+        instructions = selected?.Instructions ?? "";
+    }
+    private async Task Run(Func<Task> action, string? success = null)
+    {
+        if (busy) return;
+        busy = true; error = false;
+        try { await action(); if (success != null) message = success; }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Library action failed");
+            var text = ex is StorageException ? ex.Message : "The operation could not finish. Check storage availability and server logs, then rescan before retrying.";
+            if (dialog != null) dialogError = text; else { message = text; error = true; }
+        }
+        finally { busy = false; }
+    }
+    private async Task OpenFolder(Guid id)
+    {
+        await Run(async () => { folderId = id; search = searchInput = ""; offset = 0; view = "documents"; selected = await Library.EntryAsync(id); await Reload(); });
+    }
+    private async Task OpenRoot(Guid id) { var folder = overview.Folders.FirstOrDefault(x => x.RootId == id && x.ParentId == null); if (folder != null) await OpenFolder(folder.Id); }
+    private async Task ChooseEntry(CatalogEntry entry)
+    {
+        if (entry.IsFolder) await OpenFolder(entry.Id);
+        else { selected = entry; instructions = ""; }
+    }
+    private async Task SwitchView(string next) { view = next; if (next == "trash") trashItems = await Library.TrashAsync(); }
+    private async Task Search() => await Run(async () => { search = searchInput.Trim(); offset = 0; await Reload(); });
+    private async Task ClearSearch() => await Run(async () => { search = searchInput = ""; offset = 0; await Reload(); });
+    private async Task Previous() => await Run(async () => { offset = Math.Max(0, offset - 100); await Reload(); });
+    private async Task Next() => await Run(async () => { offset += 100; await Reload(); });
+    private async Task Rescan() => await Run(async () => { await Library.ScanAsync(); await Reload(); }, "Storage checked. Available documents and their text have been indexed.");
+    private async Task SaveInstructions() => await Run(async () => { if (selected != null) await Library.SaveInstructionsAsync(selected.Id, instructions); await Reload(); }, "Folder instructions saved.");
+    private async Task Upload(InputFileChangeEventArgs args) => await Run(async () =>
+    {
+        if (folderId == null) return;
+        var files = args.GetMultipleFiles(20);
+        foreach (var file in files) { await using var input = file.OpenReadStream(LibraryService.MaxUploadBytes); await Library.UploadAsync(folderId.Value, file.Name, input); }
+        await Reload();
+    }, "Documents uploaded and indexed.");
+    private async Task Restore(Guid id) => await Run(async () => { await Library.RestoreAsync(id); await Reload(); }, "Item restored to its original folder.");
+    private void OpenDialog(string kind)
+    {
+        dialog = kind; dialogError = null; formName = kind == "move" ? selected?.Name ?? "" : ""; formPath = ""; formNetwork = false; formParent = selected?.ParentId ?? folderId ?? Guid.Empty;
+    }
+    private void CloseDialog() { if (!busy) dialog = null; }
+    private void DialogKey(KeyboardEventArgs args) { if (args.Key == "Escape") CloseDialog(); }
+    private async Task SubmitDialog() => await Run(async () =>
+    {
+        switch (dialog)
+        {
+            case "root":
+                var rootId = await Library.AddRootAsync(formName, formPath, formNetwork);
+                overview = await Library.OverviewAsync(); folderId = overview.Folders.First(x => x.RootId == rootId && x.ParentId == null).Id; selected = null; view = "documents"; break;
+            case "folder": if (folderId != null) { var id = await Library.CreateFolderAsync(folderId.Value, formName); selected = await Library.EntryAsync(id); } break;
+            case "move": if (selected != null) await Library.MoveAsync(selected.Id, formParent, formName); break;
+            case "trash": if (selected != null) { await Library.TrashEntryAsync(selected.Id); selected = null; } break;
+        }
+        dialog = null; await Reload(); message = "Changes saved.";
+    });
+    private static string FormatSize(long size) => size < 1024 ? $"{size} B" : size < 1024 * 1024 ? $"{size / 1024d:0.#} KB" : $"{size / (1024d * 1024):0.#} MB";
+}

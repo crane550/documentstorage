@@ -1,0 +1,24 @@
+<div class="tree-branch">
+    <div class="tree-row @(SelectedId == Folder.Id ? "selected" : "")" style="padding-left:@(Depth * 16 + 8)px">
+        <button class="tree-toggle" aria-label="@(expanded ? "Collapse " + Folder.Name : "Expand " + Folder.Name)" @onclick="() => expanded = !expanded" disabled="@(!Children.Any())" aria-expanded="@expanded">
+            <span class="@(expanded ? "turn" : "")"><Icon Name="arrow" Size="12" /></span>
+        </button>
+        <button class="tree-label" @onclick="() => OnSelect.InvokeAsync(Folder.Id)"><Icon Name="folder" Size="17" /><span>@Folder.Name</span></button>
+    </div>
+    @if (expanded)
+    {
+        @foreach (var child in Children)
+        {
+            <FolderBranch @key="child.Id" Folder="child" AllFolders="AllFolders" SelectedId="SelectedId" Depth="@(Depth + 1)" OnSelect="OnSelect" />
+        }
+    }
+</div>
+@code {
+    [Parameter, EditorRequired] public CatalogEntry Folder { get; set; } = default!;
+    [Parameter, EditorRequired] public List<CatalogEntry> AllFolders { get; set; } = [];
+    [Parameter] public Guid? SelectedId { get; set; }
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
+    private bool expanded = true;
+    private IEnumerable<CatalogEntry> Children => AllFolders.Where(x => x.ParentId == Folder.Id);
+}
