@@ -17,9 +17,9 @@ Working now:
 - Journal moves before touching disk; recover unambiguous interrupted moves on rescan and pause ambiguous operations for review.
 - A tested, data-only filing-rule preview contract. It never calls an AI or moves files on its own.
 
-**Not implemented yet:** Ollama identification, automatic intake/filing, instruction chat, rule editing/activation, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, authentication, Windows service installer, self-update, and backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** Ollama identification, automatic intake/filing, instruction chat, rule editing/activation, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
 
-This milestone binds only to loopback. Run it on a development machine or use the browser on the server itself. Do not put it behind a tunnel or expose it to a LAN. Authenticated hosting comes before server deployment.
+The origin always binds to loopback. Development can run locally without sign-in. Production requires Cloudflare Access: signed tokens protect the workspace, original downloads and Blazor transport. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 
 ## Run
 
@@ -45,12 +45,15 @@ An optional absolute `DOCUMENTSTORAGE_INSTANCE` path loads per-instance JSON. It
 # Destructive only to its dedicated loopback *_checks database; uses synthetic temporary files.
 dotnet run --project tests/DocumentStorage.Checks -c Release
 
+# Real application pipeline with synthetic signed Access tokens and its own *_checks database:
+dotnet run --project tests/DocumentStorage.AccessChecks -c Release
+
 # With the app running against a disposable catalog, system Chromium available:
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
 ```
 
-The .NET runner refuses non-loopback databases or names that do not end `_checks`. Override its connection using `DOCUMENTSTORAGE_CHECKS_DB`. Browser checks create synthetic files under `.local/browser-storage` and register that root in the running catalog. They can be rerun and leave those sample files for inspection; never target a real catalog. Set `DOCUMENTSTORAGE_CHROMIUM` for your Chromium executable, `DOCUMENTSTORAGE_TEST_URL` for another local port, and `DOCUMENTSTORAGE_SCREENSHOT` for the screenshot output.
+The filesystem .NET runner refuses non-loopback databases or names that do not end `_checks`. Override its connection using `DOCUMENTSTORAGE_CHECKS_DB`. Browser checks create synthetic files under `.local/browser-storage` and register that root in the running catalog. They can be rerun and leave those sample files for inspection; never target a real catalog. Set `DOCUMENTSTORAGE_CHROMIUM` for your Chromium executable, `DOCUMENTSTORAGE_TEST_URL` for another local port, and `DOCUMENTSTORAGE_SCREENSHOT` for the screenshot output.
 
 ## Storage contract
 
@@ -60,4 +63,4 @@ Run one application process per catalog. All mutations and scans share one write
 
 App-managed moves preserve IDs, history, and instructions. **External renames currently appear as a missing old record and a newly indexed record.** Stable identity across external moves needs the later fingerprint/reconciliation milestone. File system and PostgreSQL backups both matter; this version does not back them up automatically. NAS monitoring currently uses complete periodic scans rather than relying on network change notifications.
 
-Search currently uses case-insensitive text matching with escaped query terms and pagination. PostgreSQL full-text ranking and indexes are planned as the catalog grows. No document text is sent to any external service.
+Search currently uses case-insensitive text matching with escaped query terms and pagination. PostgreSQL full-text ranking and indexes are planned as the catalog grows. No document text is sent to an external AI. When using the public hostname, your browser traffic passes through your Cloudflare tunnel.

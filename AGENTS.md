@@ -8,4 +8,4 @@ All filesystem mutations belong in Core so future UI and MCP clients share valid
 
 Validate changes with a Release solution build and the relevant real PostgreSQL/filesystem checks. For UI behavior run tests/browser against a disposable local catalog. The check runner drops only loopback databases ending _checks. Do not treat a build, health response or prerendered page as proof interactive filing works.
 
-The first release is loopback-only. Authentication, NAS migration, Ollama, MCP, server deployment and updates are subsequent milestones, not completed features. Do not present roadmap controls as working AI.
+Origins stay on loopback. Production hosting requires signed Cloudflare Access tokens; keep the root, downloads and Blazor transport protected. Run tests/DocumentStorage.AccessChecks for hosting changes. Windows install/update scripts are in tools/deploy; their actual service/ACL behavior still needs server validation. NAS migration, Ollama, MCP and an in-app updater remain later milestones. Do not present roadmap controls as working AI.

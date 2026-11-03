@@ -19,7 +19,7 @@
 
 `DocumentStorage.Core` owns path validation, discovery, extraction, operation recovery and deterministic rule evaluation. No UI types. A future MCP tool calls these services rather than executing shell commands.
 
-`DocumentStorage.Web` owns the Blazor workspace, guidance editor and composition. Local-only until authentication and authorization are available.
+`DocumentStorage.Web` owns the Blazor workspace, guidance editor and composition. Loopback origins, with Cloudflare Access token authentication for production tunnel hosting. Windows install/update tooling is in tools/deploy; actual server validation remains necessary.
 
 `tests/DocumentStorage.Checks` exercises real PostgreSQL and temporary filesystem operations. `tests/browser` drives the actual UI with synthetic files.
 
@@ -29,6 +29,6 @@
 2. **Ollama and guidance conversation:** configurable local endpoint/model, queued work with backoff/cancellation, structured fact schema, uncertainty/review, document-type instructions, conversation history and source-to-rule change tracking. Do not make AI availability a prerequisite for browsing or manual filing.
 3. **MCP and permissions:** authenticated OAuth transport, scoped read vs propose vs approved execution, compact resource context, rule simulations, approval-bound operations, bounded bulk jobs and audit history. Authorization and action validation happen server-side. Document text cannot grant permissions or change rules.
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.
-5. **Server release:** authentication before LAN hosting; service-account NAS access, protected per-instance configuration and keys, Windows service install, database/files backup, staging builds, update/restart health check and rollback. Never borrow accounting database names, passwords, ports or deployment targets.
+5. **Server release:** Cloudflare Access verification and Windows install/update scripts are prepared; validate their behavior on the actual server. Remaining work: server installation/rollback validation, application-level user roles, service-account NAS access, document backup/restore tooling and an in-app updater. Never borrow accounting database names, passwords, ports or deployment targets.
 
 A root with a `Needs review` journal entry is write-blocked in this build. A maintenance recovery UI is required before release: inspect both paths and byte identity, record an explicit resolution, and then allow reconciliation. Do not auto-clear ambiguity or overwrite destination documents.
