@@ -21,7 +21,7 @@ Copy two **non-secret configuration identifiers** from Access: your team hostnam
 
 Open an elevated PowerShell window on the Windows server.
 
-- Install/currently have Git and the .NET 10 SDK. `dotnet --list-sdks` should include 10.0.403 or a later .NET 10 feature band. For a new SDK install:
+- Install/currently have Git and the .NET 10 SDK. `dotnet --list-sdks` should include 10.0.401 or a later .NET 10 feature band. For a new SDK install:
 
   ```powershell
   winget install --id Microsoft.DotNet.SDK.10 --exact --accept-source-agreements --accept-package-agreements

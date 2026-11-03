@@ -23,7 +23,7 @@ The origin always binds to loopback. Development can run locally without sign-in
 
 ## Run
 
-Prerequisites: .NET SDK 10.0.403 (later .NET 10 feature bands allowed), PostgreSQL 18, and Poppler's `pdftotext` on PATH. On Windows, set `Documents:PdfTextCommand` to the full executable path. Missing PDF tooling is shown as `PDF text tool unavailable`; filenames and other text still index. This build reads the first 100 PDF pages and retains up to 500,000 characters per file. Image-only PDFs are labeled `Needs OCR`; no OCR or AI is silently simulated.
+Prerequisites: .NET SDK 10.0.401 (later .NET 10 feature bands allowed), PostgreSQL 18, and Poppler's `pdftotext` on PATH. On Windows, set `Documents:PdfTextCommand` to the full executable path. Missing PDF tooling is shown as `PDF text tool unavailable`; filenames and other text still index. This build reads the first 100 PDF pages and retains up to 500,000 characters per file. Image-only PDFs are labeled `Needs OCR`; no OCR or AI is silently simulated.
 
 Create an empty PostgreSQL database named `documentstorage_dev` using a role that owns it, then set the connection string through your shell/environment settings. Use a password appropriate for your server; never commit credentials.
 
