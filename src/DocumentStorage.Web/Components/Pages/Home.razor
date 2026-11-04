@@ -78,7 +78,7 @@
                 <div><span class="stat-icon sage"><Icon Name="drive" /></span><span><strong>@overview.Roots.Count(x => x.IsOnline)<em> / @overview.Roots.Count</em></strong><small>storage locations connected</small></span></div>
                 <div><span class="stat-icon sand"><Icon Name="search" /></span><span><strong>@(overview.Documents - overview.NeedsText)<em> indexed</em></strong><small>documents with searchable text</small></span></div>
             </section>
-            <div class="library-layout">
+            <div class="library-layout @(selected?.IsFolder == false ? "with-preview" : "")">
                 <section class="paper-panel file-panel">
                     <div class="library-toolbar">
                         <div class="breadcrumbs"><Icon Name="folder" Size="17" /><button @onclick="ClearSearch">Library</button>@foreach (var crumb in Breadcrumbs) { <Icon Name="arrow" Size="12" /><button @onclick="() => OpenFolder(crumb.Id)">@crumb.Name</button> }</div>
@@ -133,7 +133,7 @@
                         }
                         else
                         {
-                            <a class="button subtle full-width" href="@($"/documents/{selected.Id}/download")" download>Download original</a>
+                            <DocumentPreviewPanel Entry="selected" @key="selected.Id" />
                             <dl class="metadata"><div><dt>Text index</dt><dd>@selected.TextStatus</dd></div><div><dt>File size</dt><dd>@FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div></dl>
                             <h3 class="text-preview-title">Document text</h3><pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(6000, selected.ExtractedText.Length)] : "No text has been extracted. Scanned PDFs need an existing OCR text layer.")</pre>
                         }

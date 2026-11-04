@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Keep upstream PDF.js assets and license whitespace conventions.
+src/DocumentStorage.Web/wwwroot/vendor/** -whitespace

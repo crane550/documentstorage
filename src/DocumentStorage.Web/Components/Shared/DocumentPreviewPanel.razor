@@ -1,0 +1,61 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="document-preview" @ref="element" aria-label="Document preview">
+    <div class="document-preview-heading"><strong>@Entry.Name</strong><div><a class="text-button" href="@($"/documents/{Entry.Id}/download")" download>Download original</a><button type="button" class="text-button" data-action="expand" aria-label="Expand preview">Expand</button></div></div>
+    @if (format.Kind != "unsupported" && Entry.Size <= format.Limit)
+    {
+        <div class="preview-toolbar" aria-label="Preview controls">
+            @if (format.Kind == "pdf")
+            {
+                <button type="button" data-action="previous" aria-label="Previous PDF page" disabled>‹</button><label>Page <input type="number" data-page min="1" value="1" aria-label="PDF page" disabled /></label><span data-pages>of —</span><button type="button" data-action="next" aria-label="Next PDF page" disabled>›</button>
+            }
+            @if (format.Kind is "pdf" or "image")
+            {
+                <button type="button" data-action="out" aria-label="Zoom out" disabled>−</button><span data-zoom>Fit</span><button type="button" data-action="in" aria-label="Zoom in" disabled>+</button><button type="button" data-action="fit" disabled>Fit width</button><button type="button" data-action="rotate" disabled>Rotate</button>
+            }
+            @if (format.Kind == "pdf")
+            {
+                <input type="search" data-search aria-label="Find in PDF" placeholder="Find in PDF…" disabled /><button type="button" data-action="find-previous" aria-label="Previous search match" disabled>↑</button><button type="button" data-action="find-next" aria-label="Next search match" disabled>↓</button><span data-matches role="status"></span>
+            }
+            @if (format.Kind == "text") { <button type="button" data-action="wrap">Wrap lines</button> }
+            <button type="button" data-action="reload">Reload preview</button>
+        </div>
+        <p class="preview-status" role="status" data-status>Loading preview…</p>
+        <form class="preview-password" data-password-form hidden><label>PDF password<input type="password" data-password autocomplete="off" /></label><button type="submit" class="button primary">Unlock PDF</button><p class="field-hint">The password stays in this browser.</p></form>
+        <div class="preview-surface" tabindex="0" aria-label="Preview contents">
+            <div class="pdf-scroll" tabindex="0"><div class="pdfViewer"></div></div>
+            <div class="image-scroll"><div class="image-stage"><img alt="Preview of @Entry.Name" /></div></div>
+            <pre class="source-preview" tabindex="0"></pre>
+        </div>
+    }
+    else
+    {
+        <div class="preview-unavailable"><Icon Name="file" Size="38" /><p>@(format.Kind == "unsupported" ? "Preview is not available for this file type." : "This file exceeds the inline preview size limit.")</p><p>Download the original to open it in its usual program.</p></div>
+    }
+</section>
+@code {
+    [Parameter, EditorRequired] public CatalogEntry Entry { get; set; } = default!;
+    private ElementReference element;
+    private IJSObjectReference? module, viewer;
+    private PreviewFormat format = new("unsupported", "", 0);
+    private string revision = "", loadedRevision = "";
+    protected override void OnParametersSet() { format = DocumentPreview.Format(Entry.Name); revision = DocumentPreview.Revision(Entry); }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (loadedRevision == revision) return;
+        loadedRevision = revision;
+        try
+        {
+            if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); viewer = null; }
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./document-preview.js");
+            viewer = await module.InvokeAsync<IJSObjectReference>("attach", element, new { kind = format.Kind, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit });
+        }
+        catch (JSDisconnectedException) { }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        try { if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); } if (module != null) await module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

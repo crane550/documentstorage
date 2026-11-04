@@ -1,0 +1,1 @@
+{"name":"documentstorage-preview-assets","private":true,"type":"module","scripts":{"sync":"node sync.mjs"},"dependencies":{"pdfjs-dist":"6.5.438"}}

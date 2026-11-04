@@ -40,9 +40,13 @@ Source conversations, strict local guidance drafts/clarification, immutable acce
 
 Ordinary file/folder moves, trash, restore and deterministic filing now save bounded content/shape fingerprints before touching disk, verify the result, and retain a paused journal when filesystem results are uncertain. The Recovery workspace inspects both locations, binds a decision to an actor and current disk/catalog state, records a reason/receipt transactionally, preserves both disk copies and reindexes after reconciliation. Verified single-sided results can recover automatically; older target-only journals need explicit adoption because their original bytes cannot be proven. See [Recovery](recovery.md) for limits and server verification.
 
+## Completed preview milestone
+
+Documents and Intake share a locally bundled PDF.js viewer with multipage scrolling, page navigation, zoom/fit, rotation, selectable text, search and browser-only PDF password entry. Native image formats and bounded escaped source-text previews share the expand/reload/download workflow. The existing cookie login protects range-enabled, version-bound preview streams. See [Previews](previews.md).
+
 ## Subsequent milestones
 
-1. **Catalog and document previews:** robust external rename reconciliation using fingerprints, extraction retry/backoff, PostgreSQL full-text search, and PDF/image preview. Add bounded bulk filing after the per-document workflow is exercised.
+1. **Catalog hardening and search:** robust external rename reconciliation using fingerprints, extraction retry/backoff and PostgreSQL full-text search. Add bounded bulk filing after the per-document workflow is exercised.
 2. **Guidance improvements:** evaluate real-model summary quality against labeled synthetic requests, add richer conversation navigation/comparison and guided source-to-rule compilation. Keep browsing/manual filing available without AI.
 3. **MCP expansion and permissions:** per-folder/client grants and application user roles; bounded, approval-bound filesystem/bulk jobs with durable recovery and audit. Expand tools only after their idempotency and crash behavior is tested. Document text cannot grant permissions or change rules.
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.

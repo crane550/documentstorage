@@ -142,6 +142,8 @@ try
     using var authorized = Http(); authorized.DefaultRequestHeaders.Authorization = new("Bearer",tokens.GetProperty("access_token").GetString());
     using var readHttp = Http(); readHttp.DefaultRequestHeaders.Authorization = new("Bearer",readerTokens.GetProperty("access_token").GetString());
     Check((await authorized.GetAsync("/")).StatusCode == HttpStatusCode.Redirect, "MCP bearer credentials cannot authenticate the browser workspace or approval controls");
+    Check((await authorized.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview?v=fixture")).StatusCode == HttpStatusCode.Unauthorized, "MCP bearer credentials cannot authenticate binary browser previews");
+    Check((await authorized.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview-text?v=fixture")).StatusCode == HttpStatusCode.Unauthorized, "MCP bearer credentials cannot authenticate text browser previews");
     await using var transport = new HttpClientTransport(new() { Endpoint=new Uri(resource),TransportMode=HttpTransportMode.StreamableHttp },authorized);
     await using var client = await McpClient.CreateAsync(transport);
     var tools = await client.ListToolsAsync();

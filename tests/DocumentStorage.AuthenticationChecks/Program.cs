@@ -62,6 +62,8 @@ internal static partial class Runner
             Check((await client.GetAsync("/recovery")).StatusCode == HttpStatusCode.Redirect, "anonymous recovery workspace redirects to built-in login");
             Check((await client.GetAsync("/app.css")).StatusCode == HttpStatusCode.OK, "login stylesheet is available without authentication");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/download")).StatusCode == HttpStatusCode.Unauthorized, "anonymous document downloads rejected");
+            Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous binary previews rejected");
+            Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview-text?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous text previews rejected");
             Check((await client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null)).StatusCode == HttpStatusCode.Unauthorized, "anonymous Blazor connection rejected");
             using (var request = new HttpRequestMessage(HttpMethod.Get, "/"))
             {
@@ -94,6 +96,7 @@ internal static partial class Runner
             var cookie = login.Headers.GetValues("Set-Cookie").Single(x => x.StartsWith(".DocumentStorage.", StringComparison.Ordinal));
             Check(cookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && cookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) && cookie.Contains("samesite=lax", StringComparison.OrdinalIgnoreCase), "public login cookie is Secure HttpOnly and SameSite Lax");
             Check(cookie.StartsWith(".DocumentStorage.documentstorage_authentication_checks=", StringComparison.Ordinal), "cookie name is isolated from other apps and databases");
+            await PreviewHttpChecks.RunAsync(factory.Services, client, keyDirectory, Check);
             var oldCookie = cookie.Split(';')[0];
             Check((await client.GetAsync("/")).StatusCode == HttpStatusCode.OK, "signed-in workspace opens");
             Check((await client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null)).StatusCode == HttpStatusCode.OK, "signed-in user can negotiate Blazor connection");

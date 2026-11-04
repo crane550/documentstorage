@@ -13,6 +13,7 @@ Working now:
 - Dedicated **Folders** workspace (`/folders`) with search, storage filtering, subfolder creation, rename/move previews and sidebar management shortcuts.
 - Create folders; upload files (100 MB each, 20 per selection); download originals; rename and move within a root.
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
+- In-app PDF viewer with page navigation, zoom, rotation, search, selectable text and password support; image and safe source-text previews in Documents and alongside Intake facts.
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves with content fingerprints before touching disk; verify moved files and complete folder trees, and recover verified interrupted moves on rescan.
@@ -25,6 +26,8 @@ Working now:
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
 
+See [Document previews](docs/previews.md) for formats, controls and preview verification.
+
 See [Interrupted-operation recovery](docs/recovery.md) for inspections, decisions and verification limits.
 
 See [Folder management](docs/folders.md) for organizing server directories.
@@ -33,7 +36,7 @@ See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing w
 
 See [Instruction conversations and MCP](docs/assistants-and-mcp.md) for connection setup, permissions and protocol boundaries.
 
-**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 

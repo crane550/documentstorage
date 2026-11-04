@@ -139,6 +139,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 app.MapAccountEndpoints();
+app.MapDocumentPreviews();
 app.MapAssistantOAuth(mcpAddress);
 app.MapMcp("/mcp").RequireAuthorization("catalog.read").RequireRateLimiting("mcp");
 app.MapGet("/documents/{id:guid}/download", async Task<IResult> (Guid id, LibraryService library) =>

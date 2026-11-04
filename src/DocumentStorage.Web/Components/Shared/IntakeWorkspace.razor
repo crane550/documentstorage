@@ -11,7 +11,7 @@
     <button class="button subtle" disabled="@busy" @onclick="RefreshAsync"><Icon Name="refresh" Size="16" />Refresh intake</button>
 </section>
 @if (message != null) { <div class="notice @(error ? "error" : "success")" role="status">@message</div> }
-<div class="intake-layout">
+<div class="intake-layout @(selected != null ? "has-preview" : "")">
     <section class="paper-panel intake-list">
         <div class="panel-title"><h2>Incoming documents <span class="queue-total">@queue.Total</span></h2><span>Reviewed facts first. Filing second.</span></div>
         @foreach (var item in queue.Items)
@@ -23,6 +23,8 @@
         @if (queue.Items.Count == 0) { <div class="empty-state"><Icon Name="inbox" Size="40" /><h2>Your intake is clear</h2><p>Documents inside an intake folder appear here. Filing moves them out of the queue and into their destination.</p></div> }
         <div class="panel-footer"><span>New files settle for five seconds before review.</span>@if (queue.Total > 100) { <div><button class="text-button" disabled="@(offset == 0 || busy)" @onclick="Previous">Previous</button><button class="text-button" disabled="@(offset + 100 >= queue.Total || busy)" @onclick="Next">Next</button></div> }</div>
     </section>
+    <div class="intake-workbench">
+    @if (selected != null) { <DocumentPreviewPanel Entry="selected.Entry" @key="selected.Entry.Id" /> }
     <section class="paper-panel review-panel">
         @if (selected == null)
         {
@@ -32,7 +34,7 @@
         {
             <div class="review-heading"><div class="eyebrow">DOCUMENT REVIEW</div><h2>@selected.Entry.Name</h2><p>@RootName(selected.Entry.RootId) / @selected.Entry.RelativePath</p><a class="text-button" href="@($"/documents/{selected.Entry.Id}/download")" download>Download original</a></div>
             @if (selected.Entry.Readiness != "Ready") { <div class="notice warning">@selected.Status. Wait for the scan to finish, then use Rescan storage.</div> }
-            <details class="review-text" open><summary>Indexed document text</summary><pre>@(selected.Entry.ExtractedText.Length > 0 ? selected.Entry.ExtractedText : "No text yet. PDFs need an OCR text layer; use the original document to review it.")</pre></details>
+            <details class="review-text"><summary>Indexed document text</summary><pre>@(selected.Entry.ExtractedText.Length > 0 ? selected.Entry.ExtractedText : "No text yet. PDFs need an OCR text layer; use the original document to review it.")</pre></details>
             @if (Guidance.Length > 0) { <details class="review-text"><summary>Folder filing guidance</summary><pre>@Guidance</pre></details> }
             <section class="ai-proposal">
                 <div class="eyebrow">LOCAL IDENTIFICATION</div>
@@ -73,6 +75,7 @@
             }
         }
     </section>
+    </div>
 </div>
 
 @code {
