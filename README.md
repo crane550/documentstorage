@@ -15,7 +15,8 @@ Working now:
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
 - Save plain-English folder instructions and inspect inherited instructions.
-- Journal moves before touching disk; recover unambiguous interrupted moves on rescan and pause ambiguous operations for review.
+- Journal moves with content fingerprints before touching disk; verify moved files and complete folder trees, and recover verified interrupted moves on rescan.
+- Dedicated **Recovery** workspace with actor-bound inspections, explicit catalog repair, preserved disk copies, transactional decision receipts and paused-storage indicators.
 - Intake folder designation, window-wide drag-and-drop copying with explicit destinations and per-file results, stable-file readiness, and a queue for reviewing document types/facts.
 - Persisted, versioned filing rules with draft simulations and exact filename/destination previews.
 - Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
@@ -23,6 +24,8 @@ Working now:
 - Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
+
+See [Interrupted-operation recovery](docs/recovery.md) for inspections, decisions and verification limits.
 
 See [Folder management](docs/folders.md) for organizing server directories.
 
@@ -73,6 +76,7 @@ node tests/browser/intake.mjs
 # Drop checks require a fresh empty disposable catalog (default port 5241):
 node tests/browser/drop.mjs
 node tests/browser/folders.mjs # default local port 5242
+# Recovery browser checks require the separate seeded fixture; see docs/recovery.md.
 node tests/browser/ollama.mjs
 node tests/browser/instructions-mcp.mjs
 ```

@@ -1,5 +1,6 @@
 @page "/"
 @page "/folders"
+@page "/recovery"
 @inject NavigationManager Navigation
 @attribute [Authorize(Roles = IdentitySetup.Administrator)]
 @inject LibraryService Library
@@ -22,6 +23,7 @@
             <button class="@(view == "assistants" ? "active" : "")" @onclick='() => SwitchView("assistants")'><Icon Name="spark" />Assistants &amp; MCP</button>
             <button class="@(view == "local_ai" ? "active" : "")" @onclick='() => SwitchView("local_ai")'><Icon Name="spark" />Local AI</button>
             <button class="@(view == "activity" ? "active" : "")" @onclick='() => SwitchView("activity")'><Icon Name="clock" />Activity</button>
+            <button class="@(view == "recovery" ? "active" : "")" @onclick='() => SwitchView("recovery")'><Icon Name="restore" />Recovery @if (overview.RecoveryCount > 0) { <span class="nav-count">@overview.RecoveryCount</span> }</button>
             <button class="@(view == "trash" ? "active" : "")" @onclick='() => SwitchView("trash")'><Icon Name="trash" />Trash</button>
         </nav>
         <div class="section-label"><span>STORAGE &amp; FOLDERS</span><button class="icon-button" title="Add storage location" aria-label="Add storage location" @onclick='() => OpenDialog("root")'><Icon Name="plus" Size="16" /></button></div>
@@ -63,6 +65,10 @@
             <div class="notice warning"><Icon Name="drive" Size="18" /><span><strong>@root.Name is offline.</strong> @root.LastError</span></div>
         }
 
+        @if (overview.RecoveryCount > 0)
+        {
+            <div class="notice warning recovery-banner" role="status"><Icon Name="info" /><span>@overview.RecoveryCount unfinished @(overview.RecoveryCount == 1 ? "operation" : "operations"). Changes are paused on @string.Join(", ", overview.Roots.Where(x => overview.BlockedRootIds?.Contains(x.Id) == true).Select(x => x.Name)). Existing catalog records are retained.</span><button class="button subtle" @onclick='() => SwitchView("recovery")'>Open recovery</button></div>
+        }
         <IntakeUpload Overview="overview" PreferredFolderId="folderId" Changed="IntakeUploaded" />
 
         @if (view == "documents")
@@ -175,6 +181,10 @@
             </div>
             <div class="notice"><Icon Name="info" /><span>Paths belong to the server running this app. Network shares must be accessible to its service account. Each location keeps a small identity file so a disconnected share is never mistaken for an empty folder.</span></div>
         }
+        else if (view == "recovery")
+        {
+            <RecoveryWorkspace Changed="Reload" />
+        }
         else if (view == "activity")
         {
             <section class="paper-panel activity-panel"><div class="panel-title"><h2>File operation history</h2><span>Most recent 50 operations</span></div>
@@ -187,7 +197,7 @@
         {
             <section class="paper-panel activity-panel"><div class="panel-title"><h2>Recoverable trash</h2><span>Files stay on their original storage location</span></div>
                 @foreach (var entry in trashItems)
-                { <div class="activity-row"><span class="stat-icon"><Icon Name="@(entry.IsFolder ? "folder" : "file")" /></span><div><strong>@entry.Name</strong><p>@RootName(entry.RootId) · @(entry.IsFolder ? "Folder and its contents" : FormatSize(entry.Size))</p></div><button class="button subtle" disabled="@busy" @onclick="() => Restore(entry.Id)"><Icon Name="restore" Size="16" />Restore</button></div> }
+                { <div class="activity-row"><span class="stat-icon"><Icon Name="@(entry.IsFolder ? "folder" : "file")" /></span><div><strong>@entry.Name</strong><p>@RootName(entry.RootId) · @(entry.IsMissing ? "Unavailable on storage" : entry.IsFolder ? "Folder and its contents" : FormatSize(entry.Size))</p></div><button class="button subtle" disabled="@(busy || entry.IsMissing)" @onclick="() => Restore(entry.Id)"><Icon Name="restore" Size="16" />Restore</button></div> }
                 @if (trashItems.Count == 0) { <div class="empty-state"><Icon Name="trash" Size="38" /><h2>Nothing in the trash</h2><p>Removed items are kept here until you restore them. This build never permanently deletes your documents.</p></div> }
             </section>
         }
@@ -232,9 +242,9 @@
     private int offset;
     private IntakeWorkspace? intakeWorkspace;
     private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
-    private string ViewLabel => view switch { "folders" => "Folders", "intake" => "Intake", "rules" => "Filing rules", "local_ai" => "Local AI", "instructions" => "Instructions", "assistants" => "Assistants & MCP", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
-    private string Heading => view switch { "folders" => "Make room for everything.", "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "local_ai" => "A little help reading the paperwork.", "instructions" => "A conversation your folders remember.", "assistants" => "Helpful assistants. Clear boundaries.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
-    private string Subtitle => view switch { "folders" => "Build, rename and rearrange real folders on your storage.", "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "local_ai" => "Your local model identifies documents. Your rules put them in place.", "instructions" => "Keep the original requests, review each draft, and save a clear guide.", "assistants" => "Connect external assistants, review proposals, and control approved filing.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
+    private string ViewLabel => view switch { "recovery" => "Recovery", "folders" => "Folders", "intake" => "Intake", "rules" => "Filing rules", "local_ai" => "Local AI", "instructions" => "Instructions", "assistants" => "Assistants & MCP", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
+    private string Heading => view switch { "recovery" => "Put interrupted work back in order.", "folders" => "Make room for everything.", "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "local_ai" => "A little help reading the paperwork.", "instructions" => "A conversation your folders remember.", "assistants" => "Helpful assistants. Clear boundaries.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
+    private string Subtitle => view switch { "recovery" => "Inspect what is on disk, choose the catalog location, and keep a record of the repair.", "folders" => "Build, rename and rearrange real folders on your storage.", "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "local_ai" => "Your local model identifies documents. Your rules put them in place.", "instructions" => "Keep the original requests, review each draft, and save a clear guide.", "assistants" => "Connect external assistants, review proposals, and control approved filing.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
     private string RootName(Guid id) => overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
     private IEnumerable<CatalogEntry> Breadcrumbs
     {
@@ -259,7 +269,9 @@
     }
     protected override async Task OnInitializedAsync()
     {
-        if (new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/') == "/folders") view = "folders";
+        var path = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        if (path == "/folders") view = "folders";
+        if (path == "/recovery") view = "recovery";
         await Run(async () => await Reload());
     }
     private Task SelectManagedFolder(Guid id) { folderId = id; return Task.CompletedTask; }

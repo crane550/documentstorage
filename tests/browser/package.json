@@ -7,6 +7,7 @@
     "test:intake": "node intake.mjs",
     "test:drop": "node drop.mjs",
     "test:folders": "node folders.mjs",
+    "test:recovery": "node recovery.mjs",
     "test:ollama": "node ollama.mjs",
     "test:assistants": "node instructions-mcp.mjs"
   },

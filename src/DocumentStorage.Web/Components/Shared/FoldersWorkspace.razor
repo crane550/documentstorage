@@ -19,9 +19,10 @@
     {
         <span class="eyebrow">SELECTED FOLDER</span><h2>@current.Name</h2><p class="folder-path">@Label(current)</p>
         <div class="folder-ancestors">@foreach (var ancestor in Ancestors(current)) { <button class="text-button" @onclick="() => Select(ancestor.Id)">@ancestor.Name /</button> }</div>
-        <div class="folder-tool-actions"><button class="button primary" disabled="@(!Online(current) || busy)" @onclick='() => Open("create")'>New subfolder</button><button class="button subtle" disabled="@(!Online(current) || busy || current.ParentId == null)" @onclick='() => Open("rename")'>Rename folder</button><button class="button subtle" disabled="@(!Online(current) || busy || current.ParentId == null)" @onclick='() => Open("move")'>Move folder</button><button class="text-button" @onclick="() => OpenDocuments.InvokeAsync(current.Id)">Open in Documents <Icon Name="arrow" Size="13" /></button></div>
+        <div class="folder-tool-actions"><button class="button primary" disabled="@(!Writable(current) || busy)" @onclick='() => Open("create")'>New subfolder</button><button class="button subtle" disabled="@(!Writable(current) || busy || current.ParentId == null)" @onclick='() => Open("rename")'>Rename folder</button><button class="button subtle" disabled="@(!Writable(current) || busy || current.ParentId == null)" @onclick='() => Open("move")'>Move folder</button><button class="text-button" @onclick="() => OpenDocuments.InvokeAsync(current.Id)">Open in Documents <Icon Name="arrow" Size="13" /></button></div>
         @if (current.ParentId == null) { <p class="help-text">This is a registered storage root. Create and organize folders inside it; its server location stays fixed.</p> }
         @if (!Online(current)) { <p class="error-text">This storage is offline. Reconnect it and rescan before making changes.</p> }
+        @if (Overview.BlockedRootIds?.Contains(current.RootId) == true) { <p class="error-text">Changes are paused on this storage. Open Recovery to inspect the unfinished operation.</p> }
         <h3>Child folders</h3>
         @foreach (var child in Overview.Folders.Where(x => x.ParentId == current.Id).OrderBy(x => x.Name)) { <button class="folder-child text-button" @onclick="() => Select(child.Id)"><Icon Name="@(child.IsIntake ? "inbox" : "folder")" />@child.Name</button> }
         @if (!Overview.Folders.Any(x => x.ParentId == current.Id)) { <p class="help-text">No child folders yet.</p> }
@@ -67,6 +68,7 @@
     private List<CatalogEntry> snapshot = [];
     private CatalogEntry? Current => Overview.Folders.FirstOrDefault(x => x.Id == SelectedId);
     private bool Online(CatalogEntry folder) => Overview.Roots.Any(x => x.Id == folder.RootId && x.IsOnline);
+    private bool Writable(CatalogEntry folder) => Online(folder) && Overview.BlockedRootIds?.Contains(folder.RootId) != true;
     private string Label(CatalogEntry folder) => (Overview.Roots.FirstOrDefault(x => x.Id == folder.RootId)?.Name ?? "Storage") + (folder.RelativePath.Length > 0 ? " / " + folder.RelativePath : " / (root)");
     private List<CatalogEntry> Filtered => Overview.Folders.Where(x => (rootFilter == Guid.Empty || x.RootId == rootFilter) && Label(x).Contains(query, StringComparison.OrdinalIgnoreCase)).OrderBy(x => Label(x), StringComparer.OrdinalIgnoreCase).ToList();
     private IEnumerable<CatalogEntry> Destinations => snapshot.Where(x => source != null && x.RootId == source.RootId && x.Id != source.Id && x.Id != source.ParentId && !x.RelativePath.StartsWith(source.RelativePath + "/", StringComparison.Ordinal) && (x.Id == destination || Label(x).Contains(destinationQuery, StringComparison.OrdinalIgnoreCase))).OrderBy(x => Label(x), StringComparer.OrdinalIgnoreCase);

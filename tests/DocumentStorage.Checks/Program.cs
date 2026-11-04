@@ -95,6 +95,7 @@ try
     // Simulate a crash after the filesystem rename and before the catalog commit.
     doc = (await library.EntryAsync(doc.Id))!;
     var interrupted = new FileOperation { RootId = rootId, EntryId = doc.Id, Kind = "Move", FromPath = doc.RelativePath, ToPath = "recovered.txt", TargetParentId = rootFolder.Id };
+    interrupted.SourceSnapshotJson = System.Text.Json.JsonSerializer.Serialize(await StorageSnapshotter.CaptureAsync(rootPath, doc.RelativePath));
     await using (var db = await factory.CreateDbContextAsync()) { db.Operations.Add(interrupted); await db.SaveChangesAsync(); }
     File.Move(StoragePaths.Resolve(rootPath, doc.RelativePath), Path.Combine(rootPath, "recovered.txt"));
     await library.ScanAsync();
@@ -126,6 +127,7 @@ try
     await IntakeChecks.RunAsync(factory, Path.Combine(scratch, "filing"), Check, Refuses);
     await IdentificationChecks.RunAsync(factory, Path.Combine(scratch, "identification"), Check, Refuses);
     await AssistantChecks.RunAsync(factory, Path.Combine(scratch, "assistants"), Check, Refuses);
+    await RecoveryChecks.RunAsync(factory, Path.Combine(scratch, "recovery"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

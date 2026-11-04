@@ -36,6 +36,10 @@ Configurable Ollama connection/model, document-type guidance, bounded JSON conte
 
 Source conversations, strict local guidance drafts/clarification, immutable accepted versions and source links are implemented. OAuth code/PKCE with registered clients, scoped official-SDK Streamable HTTP tools/resources/prompts, idempotent proposals, browser acceptance, connection/account revocation and exact approval-bound filing share the Core services and journal. See [the complete contract](assistants-and-mcp.md). Client grants cover the full library; arbitrary filesystem/bulk tools and per-folder authorization remain future work. Real external-account connections and Windows behavior still need verification.
 
+## Completed operation recovery milestone
+
+Ordinary file/folder moves, trash, restore and deterministic filing now save bounded content/shape fingerprints before touching disk, verify the result, and retain a paused journal when filesystem results are uncertain. The Recovery workspace inspects both locations, binds a decision to an actor and current disk/catalog state, records a reason/receipt transactionally, preserves both disk copies and reindexes after reconciliation. Verified single-sided results can recover automatically; older target-only journals need explicit adoption because their original bytes cannot be proven. See [Recovery](recovery.md) for limits and server verification.
+
 ## Subsequent milestones
 
 1. **Catalog and document previews:** robust external rename reconciliation using fingerprints, extraction retry/backoff, PostgreSQL full-text search, and PDF/image preview. Add bounded bulk filing after the per-document workflow is exercised.
@@ -44,4 +48,4 @@ Source conversations, strict local guidance drafts/clarification, immutable acce
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.
 5. **Server release:** Built-in Identity login and Windows install/update scripts are prepared; validate their behavior on the actual server. Remaining work: server installation/rollback validation, application-level user roles, service-account NAS access, document backup/restore tooling and an in-app updater. Never borrow accounting database names, passwords, ports or deployment targets.
 
-A root with a `Needs review` journal entry is write-blocked in this build. A maintenance recovery UI is required before release: inspect both paths and byte identity, record an explicit resolution, and then allow reconciliation. Do not auto-clear ambiguity or overwrite destination documents.
+A root with a `Prepared` or `Needs review` journal entry remains write-blocked until verified automatic recovery or an explicit recovery decision. Recovery changes catalog state without deleting or overwriting files. Cross-root transfers, document backup/restore, and recovery verification beyond the documented per-operation limits remain separate work.

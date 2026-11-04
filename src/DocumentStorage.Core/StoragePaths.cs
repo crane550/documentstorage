@@ -35,8 +35,13 @@ public static class StoragePaths
         // Refuse reparse points in the root, its ancestors, and all descendant components.
         for (var part = full; !string.IsNullOrEmpty(part); part = Path.GetDirectoryName(part))
         {
-            if ((File.Exists(part) || Directory.Exists(part)) && (File.GetAttributes(part) & FileAttributes.ReparsePoint) != 0)
-                throw new StorageException("Symbolic links and junctions are not managed. Choose a physical folder.");
+            try
+            {
+                if ((File.GetAttributes(part) & FileAttributes.ReparsePoint) != 0)
+                    throw new StorageException("Symbolic links and junctions are not managed. Choose a physical folder.");
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { }
+            catch (UnauthorizedAccessException) { throw new StorageException("The storage path cannot be verified. Check the server's permissions before changing files."); }
         }
         return full;
     }

@@ -1,0 +1,82 @@
+@inject LibraryService Library
+@inject AuthenticationStateProvider Authentication
+@inject ILogger<RecoveryWorkspace> Logger
+@using System.Security.Claims
+
+<section class="paper-panel recovery-intro"><span class="stat-icon"><Icon Name="restore" /></span><div><h2>Check both places. Keep every copy.</h2><p>Recovery reconciles the catalog after an interrupted move, filing, trash or restore. It never moves, deletes or overwrites files. Only the affected storage stays paused until all its unfinished operations are resolved.</p></div><button class="button subtle" disabled="@busy" @onclick="Refresh">Refresh recovery</button></section>
+@if (message != null) { <div class="notice @(error ? "error" : "success")" role="status">@message</div> }
+<div class="recovery-layout">
+    <section class="paper-panel recovery-queue" aria-label="Unfinished operations"><div class="panel-title"><h2>Unfinished operations</h2><span>@queue.Total total</span></div>
+    @foreach (var item in queue.Items)
+    {
+        <button class="recovery-operation @(inspection?.Operation.Id == item.Id ? "chosen" : "")" disabled="@busy" @onclick="() => Inspect(item.Id)"><span><strong>@item.Kind · @item.RootName</strong><small>@item.FromPath → @item.ToPath</small><small>@item.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</small></span><span class="index-badge">@item.State</span></button>
+    }
+    @if (queue.Items.Count == 0) { <div class="empty-state"><Icon Name="check" Size="32" /><h2>No unfinished operations</h2><p>Your catalog has no moves waiting for recovery.</p></div> }
+    @if (queue.Total > 25) { <div class="workflow-actions"><button class="button subtle" disabled="@(busy || offset == 0)" @onclick="Previous">Previous operations</button><button class="button subtle" disabled="@(busy || offset + 25 >= queue.Total)" @onclick="Next">Next operations</button></div> }
+    </section>
+    <section class="paper-panel recovery-inspector" aria-label="Recovery inspection" aria-busy="@busy">
+    @if (inspection is { } detail)
+    {
+        var observed = detail.Observation;
+        <div class="eyebrow">@detail.Operation.Kind · @detail.Operation.RootName</div><h2>Inspect before deciding.</h2><p class="field-hint">@detail.Operation.Error</p>
+        <div class="recovery-comparison">
+        @foreach (var side in new[] { (Label: "Original location", Path: detail.Operation.FromPath, Snapshot: observed.Source), (Label: "Destination location", Path: detail.Operation.ToPath, Snapshot: observed.Destination) })
+        {
+            <article class="recovery-disk"><h3>@side.Label</h3><code>@side.Path</code><strong>@side.Snapshot.Kind</strong>@if (side.Snapshot.Exists) { <p>@side.Snapshot.Files files · @side.Snapshot.Folders folders · @side.Snapshot.Bytes.ToString("N0") bytes</p><span class="field-hint">Content fingerprint</span><code class="recovery-hash">@side.Snapshot.Hash</code> }@if (side.Snapshot.Error != null) { <p class="error-text">@side.Snapshot.Error</p> }</article>
+        }
+        </div>
+        <p class="recovery-explanation">@observed.Explanation</p>
+        @if (observed.Original != null) { <details><summary>Original fingerprint saved before moving</summary><code class="recovery-hash">@observed.Original.Hash</code><p class="field-hint">@observed.Original.Files files · @observed.Original.Folders folders · @observed.Original.Bytes.ToString("N0") bytes</p></details> }
+        <p class="field-hint">Inspection expires @detail.ExpiresAt.ToLocalTime().ToString("h:mm tt"). Contents and catalog state are checked again when you save.</p>
+        <button class="text-button" disabled="@busy" @onclick="() => Inspect(detail.Operation.Id)">Inspect paths again</button>
+        @if (observed.CanCancel || observed.CanComplete)
+        {
+            <form class="workflow-form recovery-decision" @onsubmit="Resolve" @onsubmit:preventDefault>
+                <label for="recovery-choice">Recovery decision</label><select id="recovery-choice" value="@decision" @onchange="Choose"><option value="">Choose a decision</option>@if (observed.CanCancel) { <option value="Cancel">Keep original catalog location · cancel operation</option> }@if (observed.CanComplete) { <option value="Complete">Use destination in catalog · complete operation</option> }</select>
+                @if (decision == "Cancel") { <p class="field-hint">Original IDs and guidance stay at @detail.Operation.FromPath. @(detail.Operation.Kind == "Trash" ? "Any destination copy remains at its internal trash path. It stays outside the library; this operation record retains its location." : "Any destination copy remains on disk and is discovered as a separate item when scanning resumes.")@(observed.Source.Kind == "Missing" ? " The original is missing: its catalog record will be marked unavailable until you restore it." : "") Filing approvals linked to this operation are cancelled.</p> }
+                @if (decision == "Complete") { <p class="field-hint">Original IDs and guidance move in the catalog to @detail.Operation.ToPath. @(detail.Operation.Kind == "Restore" ? "Any remaining source copy stays at its internal trash path, outside the library. This operation record retains its location." : "Any remaining source copy stays on disk and is discovered as a separate item when scanning resumes.")</p> }
+                <label for="recovery-reason">Reason for this decision</label><textarea id="recovery-reason" rows="3" minlength="10" maxlength="1000" required @bind="reason" @bind:event="oninput" placeholder="Record what you checked and why this is the correct location."></textarea>
+                <label class="workflow-checkbox"><input type="checkbox" @bind="confirmed" />I checked both displayed paths and understand which location keeps the original catalog identity.</label>
+                @if (decision == "Complete" && !observed.DestinationVerified) { <p class="error-text">This older operation has no fingerprint. You are explicitly adopting the destination without proof that it is the original content.</p> }
+                <button class="button primary" type="submit" disabled="@(busy || !confirmed || decision.Length == 0 || reason.Trim().Length < 10)">@(busy ? "Verifying and saving…" : "Save recovery decision")</button>
+            </form>
+        }
+    }
+    else { <div class="empty-state"><Icon Name="search" Size="32" /><h2>Select an interrupted operation</h2><p>Inspection reads both locations and verifies file contents and folder structure. It can take time for large folders. Verification supports up to 10,000 entries and 10 GB per operation.</p></div> }
+    </section>
+</div>
+<details class="paper-panel recovery-history"><summary>Recovery audit · latest 50 decisions</summary>
+@foreach (var receipt in queue.History) { <article><div><strong>@receipt.Decision · @receipt.Outcome</strong><time>@receipt.AppliedAt.ToLocalTime().ToString("MMM d, h:mm tt")</time></div><p>@receipt.Kind · @receipt.RootName<br />@receipt.FromPath → @receipt.ToPath</p><p>@receipt.Reason</p><small>@receipt.Actor · Operation @receipt.OperationId · Receipt @receipt.Id</small></article> }
+@if (queue.History.Count == 0) { <p>No recovery decisions recorded yet.</p> }
+</details>
+@code {
+    [Parameter] public EventCallback Changed { get; set; }
+    private RecoveryPage queue = new([], 0, []);
+    private RecoveryInspection? inspection;
+    private string decision = "", reason = "";
+    private bool confirmed, busy, error;
+    private string? message;
+    private int offset;
+    protected override async Task OnInitializedAsync() => await Run(Load);
+    private async Task<string> Actor() => (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    private async Task Load() { queue = await Library.RecoveryQueueAsync(offset); if (offset > 0 && queue.Items.Count == 0) { offset = 0; queue = await Library.RecoveryQueueAsync(); } }
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true; error = false;
+        try { await action(); }
+        catch (Exception ex) { Logger.LogWarning("Recovery action failed: {Kind}", ex.GetType().Name); error = true; message = ex is StorageException ? ex.Message : "Recovery could not finish. Preserve the files, restore storage access and inspect again."; }
+        finally { busy = false; }
+    }
+    private Task Inspect(Guid id) => Run(async () => { message = null; inspection = null; decision = reason = ""; confirmed = false; inspection = await Library.InspectRecoveryAsync(id, await Actor()); });
+    private void Choose(ChangeEventArgs e) { decision = e.Value?.ToString() ?? ""; confirmed = false; }
+    private Task Refresh() => Run(async () => { inspection = null; await Load(); await Changed.InvokeAsync(); });
+    private Task Previous() => Run(async () => { offset = Math.Max(0, offset - 25); await Load(); });
+    private Task Next() => Run(async () => { offset += 25; await Load(); });
+    private Task Resolve() => Run(async () =>
+    {
+        if (inspection == null) return;
+        var receipt = await Library.ResolveRecoveryAsync(inspection.Id, decision, reason, confirmed, await Actor());
+        inspection = null; await Load(); await Changed.InvokeAsync();
+        message = $"Recovery decision recorded: {receipt.Outcome}. Files on disk were preserved. Other unfinished operations, if any, keep their storage paused.";
+    });
+}

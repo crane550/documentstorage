@@ -336,6 +336,10 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<Guid>("RootId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("SourceSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasColumnType("text");
@@ -794,6 +798,57 @@ namespace DocumentStorage.Data.Migrations
                     b.ToTable("OllamaConfigurations");
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.OperationRecovery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Decision")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ObservationHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ObservationJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("OperationId", "CreatedAt");
+
+                    b.ToTable("OperationRecoveries");
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.StorageRoot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1209,6 +1264,15 @@ namespace DocumentStorage.Data.Migrations
                     b.HasOne("DocumentStorage.Data.CatalogEntry", null)
                         .WithMany()
                         .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.OperationRecovery", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.FileOperation", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

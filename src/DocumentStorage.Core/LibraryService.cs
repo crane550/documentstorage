@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentStorage.Core;
 
-public sealed record LibraryOverview(List<StorageRoot> Roots, List<CatalogEntry> Folders, List<FileOperation> Activity, int Documents, int NeedsText, int IntakeDocuments = 0);
+public sealed record LibraryOverview(List<StorageRoot> Roots, List<CatalogEntry> Folders, List<FileOperation> Activity, int Documents, int NeedsText, int IntakeDocuments = 0, int RecoveryCount = 0, List<Guid>? BlockedRootIds = null);
 public sealed record EntryPage(List<CatalogEntry> Items, int Total);
 
 // One writer owns filesystem changes and scans. UI and future MCP tools share this service.
@@ -18,12 +18,13 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
     {
         await using var db = await factory.CreateDbContextAsync();
         var intake = await IntakeQueryAsync(db);
+        var unresolved = await db.Operations.Where(x => x.State == "Prepared" || x.State == "Needs review").Select(x => x.RootId).ToListAsync();
         return new(await db.Roots.AsNoTracking().OrderBy(x => x.Name).ToListAsync(),
             await db.Entries.AsNoTracking().Where(x => x.IsFolder && !x.IsMissing && x.TrashBatchId == null).OrderBy(x => x.Name).ToListAsync(),
             await db.Operations.AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(50).ToListAsync(),
             await db.Entries.CountAsync(x => !x.IsFolder && !x.IsMissing && x.TrashBatchId == null),
             await db.Entries.CountAsync(x => !x.IsFolder && !x.IsMissing && x.TrashBatchId == null && x.TextStatus != "Indexed"),
-            await intake.CountAsync());
+            await intake.CountAsync(), unresolved.Count, unresolved.Distinct().ToList());
     }
 
     public async Task<EntryPage> BrowseAsync(Guid? folderId, string search = "", int offset = 0)
@@ -231,7 +232,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         var root = await db.Roots.SingleAsync(x => x.Id == entry.RootId);
         await RequireOnlineAsync(root);
         if (await db.Operations.AnyAsync(x => x.RootId == root.Id && (x.State == "Prepared" || x.State == "Needs review")))
-            throw new StorageException("This location has an unfinished file operation. Rescan and check Activity before changing files.");
+            throw new StorageException("This location has an unfinished file operation. Open Recovery to inspect and resolve it before changing files.");
         if (entry.IsMissing) throw new StorageException("That item is missing from storage. Rescan to update the catalog.");
         return (entry, root);
     }
@@ -387,7 +388,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         // Missing catalog records can hold a historical path. Preserve their identity by clearing them only after a rescan, not by overwriting.
         if (await db.Entries.AnyAsync(x => x.RootId == root.Id && x.RelativePath == op.ToPath && x.Id != entry.Id))
             throw new StorageException("That path is held by a missing catalog item. Choose another name.");
-        var catalog = await db.Entries.AsNoTracking().Where(x => x.RootId == root.Id).ToListAsync();
+        var catalog = await PathMetadata(db, root.Id).ToListAsync();
         var moving = catalog.Where(x => x.Id == entry.Id || x.RelativePath.StartsWith(op.FromPath + "/", StringComparison.Ordinal)).ToList();
         var movingIds = moving.Select(x => x.Id).ToHashSet();
         var heldPaths = catalog.Where(x => !movingIds.Contains(x.Id)).Select(x => x.RelativePath)
@@ -398,6 +399,12 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             if (heldPaths.Contains(futurePath))
                 throw new StorageException("A descendant destination is held by another catalog item. Choose another name.");
         }
+        var original = await StorageSnapshotter.CaptureAsync(root.Location, op.FromPath);
+        if (!original.Exists || original.Kind != (entry.IsFolder ? "Folder" : "File")) throw new StorageException(original.Error ?? "The source changed or is unavailable. Rescan before moving it.");
+        if (op.FilingPreviewId is Guid filingId && original.Hash != (await db.FilingPreviews.SingleAsync(x => x.Id == filingId)).ContentHash)
+            throw new StorageException("The source contents changed after filing approval. Review the document again.");
+        op.SourceSnapshotJson = System.Text.Json.JsonSerializer.Serialize(original);
+        await RequireOnlineAsync(root);
         db.Operations.Add(op);
         await db.SaveChangesAsync();
         try
@@ -406,28 +413,45 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            op.State = "Failed";
-            op.Error = "The filesystem refused the move. Check availability and permissions, then rescan.";
+            op.State = "Needs review";
+            op.Error = "The filesystem refused or could not confirm the move. Storage writes are paused; inspect it in Recovery.";
             await db.SaveChangesAsync();
             throw new StorageException(op.Error);
         }
-        // If this save fails, Prepared survives. Recovery inspects both paths on the next scan.
+        // Verify the complete tree, not just existence. If this save fails, Prepared survives.
+        var moved = await StorageSnapshotter.CaptureAsync(root.Location, op.ToPath);
+        if (moved.Kind != original.Kind || moved.Hash != original.Hash || StoragePaths.Exists(StoragePaths.Resolve(root.Location, op.FromPath)))
+        {
+            op.State = "Needs review"; op.Error = "Moved contents could not be verified. Storage writes are paused; preserve both paths and inspect Recovery.";
+            await db.SaveChangesAsync(); throw new StorageException(op.Error);
+        }
+        await RequireOnlineAsync(root);
         await ApplyMoveAsync(db, op);
     }
 
-    private async Task ApplyMoveAsync(CatalogDb db, FileOperation op)
+    private async Task ApplyMoveAsync(CatalogDb db, FileOperation op, bool invalidateText = false)
     {
-        var all = await db.Entries.Where(x => x.RootId == op.RootId).ToListAsync();
-        foreach (var entry in all.Where(x => x.Id == op.EntryId || x.RelativePath.StartsWith(op.FromPath + "/", StringComparison.Ordinal)))
-        {
-            entry.RelativePath = op.ToPath + entry.RelativePath[op.FromPath.Length..];
-            entry.TrashBatchId = op.Kind == "Trash" ? op.TrashBatchId : null;
-            if (entry.Id == op.EntryId)
-            {
-                entry.Name = op.ToPath.Split('/').Last();
-                entry.ParentId = op.TargetParentId;
-            }
-        }
+        await using var transaction = db.Database.CurrentTransaction == null ? await db.Database.BeginTransactionAsync() : null;
+        var prefix = op.FromPath + "/";
+        var now = time.GetUtcNow();
+        // PostgreSQL substring counts Unicode scalars; .NET string.Length counts UTF-16 units.
+        var sourceCharacters = 0;
+        foreach (var rune in op.FromPath.EnumerateRunes()) sourceCharacters++;
+        var trashBatch = op.Kind == "Trash" ? op.TrashBatchId : null;
+        // The catalog may contain megabytes of OCR per document. Update paths in SQL,
+        // retaining every ID, without materializing document contents or thousands of tracked rows.
+        await db.Entries.Where(x => x.RootId == op.RootId && (x.Id == op.EntryId || x.RelativePath.StartsWith(prefix)))
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(x => x.RelativePath, x => op.ToPath + x.RelativePath.Substring(sourceCharacters))
+                .SetProperty(x => x.TrashBatchId, trashBatch)
+                .SetProperty(x => x.ContentHash, x => invalidateText && !x.IsFolder ? "" : x.ContentHash)
+                .SetProperty(x => x.TextStatus, x => invalidateText && !x.IsFolder ? "Pending" : x.TextStatus)
+                .SetProperty(x => x.ExtractedText, x => invalidateText && !x.IsFolder ? "" : x.ExtractedText)
+                .SetProperty(x => x.ObservedAt, x => invalidateText && !x.IsFolder ? now : x.ObservedAt)
+                .SetProperty(x => x.Readiness, x => invalidateText && !x.IsFolder ? "Not queued" : x.Readiness));
+        await db.Entries.Where(x => x.Id == op.EntryId).ExecuteUpdateAsync(set => set
+            .SetProperty(x => x.IsMissing, false).SetProperty(x => x.Name, op.ToPath.Split('/').Last())
+            .SetProperty(x => x.ParentId, op.TargetParentId));
         op.State = "Completed";
         op.Error = null;
         if (op.FilingPreviewId is Guid previewId)
@@ -445,41 +469,35 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             }
         }
         await db.SaveChangesAsync();
+        if (transaction != null) await transaction.CommitAsync();
     }
 
     private async Task RecoverAsync(CatalogDb db)
     {
-        foreach (var op in await db.Operations.Where(x => x.State == "Prepared").ToListAsync())
+        foreach (var op in await db.Operations.Where(x => x.State == "Prepared").OrderBy(x => x.CreatedAt).ToListAsync())
         {
             var root = await db.Roots.SingleAsync(x => x.Id == op.RootId);
-            try
+            var observation = await ObserveRecoveryAsync(db, root, op);
+            // An unavailable share must remain pending. It is never evidence of missing bytes.
+            if (!observation.Source.Readable || !observation.Destination.Readable) continue;
+            var sourceMatches = observation.Source.Kind == (observation.IsFolder ? "Folder" : "File") &&
+                (observation.Original == null || observation.Source.Hash == observation.Original.Hash);
+            var complete = !observation.Source.Exists && observation.DestinationVerified && observation.CanComplete;
+            var cancel = observation.Source.Exists && !observation.Destination.Exists && sourceMatches && observation.CanCancel;
+            if (complete || cancel)
             {
-                await RequireOnlineAsync(root);
-                var source = StoragePaths.Exists(StoragePaths.Resolve(root.Location, op.FromPath));
-                var target = StoragePaths.Exists(StoragePaths.Resolve(root.Location, op.ToPath));
-                if (!source && target)
-                {
-                    if (op.FilingPreviewId is Guid previewId)
-                    {
-                        var preview = await db.FilingPreviews.SingleAsync(x => x.Id == previewId);
-                        var entry = await db.Entries.SingleAsync(x => x.Id == op.EntryId);
-                        var destination = new CatalogEntry { RootId = root.Id, RelativePath = op.ToPath, Name = op.ToPath.Split('/').Last(), Size = entry.Size, ModifiedAt = entry.ModifiedAt };
-                        try
-                        {
-                            if (await FingerprintAsync(root, destination) != preview.ContentHash) throw new StorageException("The recovery target fingerprint differs.");
-                        }
-                        catch (Exception ex) when (ex is StorageException or IOException or UnauthorizedAccessException)
-                        {
-                            op.State = "Needs review"; op.Error = "Interrupted filing target does not match the approved document or cannot be verified. Storage writes are paused; preserve both paths for review.";
-                            continue;
-                        }
-                    }
-                    await ApplyMoveAsync(db, op);
-                }
-                else if (source && !target) { op.State = "Cancelled"; op.Error = "Interrupted before moving. Original item preserved."; }
-                else { op.State = "Needs review"; op.Error = "Interrupted move has ambiguous disk state. Storage writes are paused; inspect both paths before repairing the operation record."; }
+                var decision = complete ? "Complete" : "Cancel";
+                db.OperationRecoveries.Add(new() { OperationId = op.Id, Actor = "system-recovery", CreatedAt = time.GetUtcNow(), ExpiresAt = time.GetUtcNow(), AppliedAt = time.GetUtcNow(),
+                    ObservationHash = Digest(observation), ObservationJson = System.Text.Json.JsonSerializer.Serialize(observation), Decision = decision,
+                    Reason = complete ? "Only the destination exists and its contents match the original fingerprint." : "Only the original location exists; the move did not finish.", Outcome = complete ? "Completed" : "Cancelled" });
+                if (complete) await ApplyMoveAsync(db, op, invalidateText: true);
+                else await CancelRecoveredOperationAsync(db, op, "Interrupted before moving. Original item preserved.");
             }
-            catch (StorageException) { continue; } // Offline is not evidence of deletion.
+            else
+            {
+                op.State = "Needs review";
+                op.Error = "Interrupted operation requires a recovery decision. Preserve both paths and inspect Recovery; storage writes remain paused.";
+            }
         }
         await db.SaveChangesAsync();
     }

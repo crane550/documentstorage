@@ -159,6 +159,7 @@ public sealed class FileOperation
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? Error { get; set; }
     public Guid? FilingPreviewId { get; set; }
+    public string SourceSnapshotJson { get; set; } = "";
 }
 
 public sealed class LibraryUser : IdentityUser;
@@ -180,6 +181,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
     {
         base.OnModelCreating(model);
         ConfigureAssistants(model);
+        ConfigureRecovery(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

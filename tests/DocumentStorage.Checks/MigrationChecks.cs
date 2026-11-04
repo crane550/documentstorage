@@ -14,7 +14,16 @@ internal static class MigrationChecks
         var settings = new OllamaSettings { Instructions = "Keep the original global instructions." };
         var type = new DocumentTypeProfile { Key = "legacy_type", Name = "Legacy type", Instructions = "Keep the original type instructions." };
         db.Roots.Add(root); db.Entries.Add(folder); db.OllamaConfigurations.Add(settings); db.DocumentTypes.Add(type); await db.SaveChangesAsync();
+        var legacyOperation = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Operations" ("Id", "RootId", "EntryId", "Kind", "FromPath", "ToPath", "State", "CreatedAt")
+            VALUES ({legacyOperation}, {root.Id}, {folder.Id}, {"Move"}, {"legacy-source"}, {"legacy-target"}, {"Needs review"}, {DateTimeOffset.UtcNow})
+            """);
         await migrator.MigrateAsync();
+        var retained = await db.Operations.SingleAsync(x => x.Id == legacyOperation);
+        check(retained.State == "Needs review" && retained.SourceSnapshotJson == "" && !await db.OperationRecoveries.AnyAsync(),
+            "recovery migration preserves an existing blocked journal without inventing fingerprints or decisions");
+        db.Operations.Remove(retained);
         var versions = await db.InstructionRevisions.ToListAsync();
         check(versions.Count == 3 && versions.All(x=>x.Revision==1 && x.Actor=="imported-existing-guidance") &&
             versions.Single(x=>x.TargetKind=="folder").Text==folder.Instructions && versions.Single(x=>x.TargetKind=="global").Text==settings.Instructions && versions.Single(x=>x.TargetKind=="document_type").Text==type.Instructions,

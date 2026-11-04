@@ -144,6 +144,13 @@ internal static class AssistantChecks
         await library.ScanAsync();
         await using (var db = await factory.CreateDbContextAsync()) check((await db.Operations.SingleAsync(x=>x.Id==badOperation.Id)).State=="Needs review" && (await db.AssistantProposals.SingleAsync(x=>x.Id==badApproval.Id)).State=="Approved",
             "a recovery target with different bytes never completes MCP approval, even when size and timestamp match");
+        var recovery = await library.InspectRecoveryAsync(badOperation.Id, actor);
+        await refuses(() => library.ResolveRecoveryAsync(recovery.Id, "Complete", "Checked the mismatched synthetic recovery target.", true, actor), "browser recovery cannot bypass an approved filing fingerprint");
+        await library.ResolveRecoveryAsync(recovery.Id, "Cancel", "Preserved the changed destination and retained the original unavailable identity.", true, actor);
+        await using (var db = await factory.CreateDbContextAsync()) check((await db.FilingPreviews.SingleAsync(x=>x.Id==badApproval.FilingPreviewId)).State=="Cancelled" && (await db.AssistantProposals.SingleAsync(x=>x.Id==badApproval.Id)).State=="Failed",
+            "cancelling interrupted filing invalidates its preview and assistant approval in the recovery transaction");
+        await refuses(() => library.ExecuteAssistantFilingAsync(badApproval.Id, caller), "a cancelled recovery cannot revive an old assistant filing approval");
+        check(File.Exists(badPath), "cancelled filing recovery preserves the differing destination bytes");
         await library.RevokeAssistantConnectionAsync(connection.Id, actor);
         await refuses(() => library.ExecuteAssistantFilingAsync(filing.Id, caller), "revoking a connection blocks already-approved execution immediately");
         check(File.Exists(Path.Combine(scratch,"Incoming/second.txt")), "revoked approval preserves document bytes and source location");

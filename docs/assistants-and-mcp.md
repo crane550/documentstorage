@@ -94,6 +94,8 @@ This milestone does not expose arbitrary shell commands, physical root registrat
 
 ## Verification and deployment
 
+Interrupted filing now also participates in [verified operation recovery](recovery.md). Cancelling its journal operation invalidates the old preview and assistant proposal in the same transaction. Recovery cannot override a mismatched filing fingerprint, and MCP has no recovery-decision tool.
+
 The additive `AddAssistantInstructionsAndOAuth` migration creates conversation/version, connection, proposal, audit and OpenIddict tables. Existing document bytes, accounts and rules remain in place. Existing folder/global/type guidance is imported as an initial immutable baseline. It initializes no external connections or access grants. EF Core and its pinned migration tool move to `10.0.14` to satisfy the OAuth store dependency; the Blazor assets pin remains `10.0.12` for locked restore across supported server SDKs.
 
 Run the real PostgreSQL/filesystem checks, `tests/DocumentStorage.AuthenticationChecks`, and `tests/DocumentStorage.McpChecks`. The latter drives real consent, PKCE/code/refresh replay, the official client, current/older HTTP protocols, scoped discovery/calls, actual journaled filing, origin/body/rate limits and account/connection revocation. `node tests/browser/instructions-mcp.mjs` covers instruction drafts/clarification/history, one-time client setup, real browser OAuth, external proposals, browser acceptance and revocation using synthetic files and a protocol-compatible model fixture. The model fixture validates integration, not summary quality.
