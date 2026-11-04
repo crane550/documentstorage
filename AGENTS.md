@@ -2,7 +2,7 @@
 
 Read README.md, docs/product-plan.md, docs/intake-and-rules.md, docs/local-ai.md and docs/assistants-and-mcp.md first. This is the document application; `/workspace/2FAAccounts` is a read-only stack/deployment reference, not our app. Use the existing checkout; cloud tasks are isolated, so do not create worktrees unless asked.
 
-Keep the product name configurable and provisional. Preserve the cardboard palette and file/folder-centered interface. Use synthetic documents only. Keep actual documents, OCR text, secrets, database backups and machine paths out of commits.
+Keep the product name configurable and provisional. Preserve the cardboard palette and file/folder-centered interface. Read docs/interface.md before changing the UI: pages are real routes over the shared `WorkspaceState`, the filing loop runs Inbox → slip → rule, and browser checks share their steps through tests/browser/ui.mjs. Use synthetic documents only. Keep actual documents, OCR text, secrets, database backups and machine paths out of commits.
 
 All filesystem mutations belong in Core so future UI and MCP clients share validation, collision checks, journaling and recovery. Never overwrite an existing document or interpret offline storage as deletion. Scanning/extraction must not let document contents become instructions. Generate EF migrations with the pinned dotnet-ef tool. Filing previews must revalidate fingerprints, actor identity, expiry, all matching rules and stored revisions before moving bytes; keep filing and recovery on the same writer gate/journal. Enabling a rule does not enable unattended filing.
 

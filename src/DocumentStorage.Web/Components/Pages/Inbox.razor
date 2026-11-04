@@ -1,0 +1,258 @@
+@page "/"
+@page "/inbox"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@implements IAsyncDisposable
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<Inbox> Logger
+
+<PageTitle>Inbox · @Workspace.DisplayName</PageTitle>
+
+<header class="page-head">
+    <div>
+        <h1>Inbox</h1>
+        @if (queue.Total > 0) { <p class="page-sub">@Summary</p> }
+    </div>
+</header>
+
+@if (proposals.Count > 0)
+{
+    <section class="waiting" aria-label="Suggestions waiting for you">
+        <h2 class="section-label"><Icon Name="plug" Size="15" />From your assistants</h2>
+        <div class="waiting-list">
+            @foreach (var item in proposals)
+            {
+                <button class="waiting-card" @key="item.Id" @onclick="() => reviewing = item"><span class="waiting-icon"><Icon Name="@ProposalDialog.KindIcon(item.Kind)" Size="17" /></span><span><strong>@ProposalDialog.Name(item)</strong><small>@ConnectionName(item.ConnectionId) · @WorkspaceState.Ago(item.CreatedAt)</small></span><span class="waiting-go">Review<Icon Name="arrow" Size="13" /></span></button>
+            }
+        </div>
+    </section>
+}
+
+@if (!loaded) { <div class="loading-sheet" aria-busy="true"></div> }
+else if (!SetUp)
+{
+    <section class="setup sheet">
+        <h2>Three steps to a self-sorting inbox</h2>
+        <ol class="steps">
+            <li class="@(HasStorage ? "done" : "current")">
+                <span class="step-mark">@if (HasStorage) { <Icon Name="check" Size="15" Stroke="2.4" /> } else { <span>1</span> }</span>
+                <div><h3>Connect your storage</h3><p>A folder on the server or a NAS share. Files stay where they are.</p>
+                    @if (!HasStorage) { <button class="button primary" @onclick="() => connecting = true"><Icon Name="drive" Size="16" />Connect storage</button> }
+                </div>
+            </li>
+            <li class="@(!HasStorage ? "todo" : "current")">
+                <span class="step-mark"><span>2</span></span>
+                <div><h3>Pick the folder new scans land in</h3><p>Point your scanner here. Everything that arrives waits in this inbox.</p>
+                    @if (HasStorage)
+                    {
+                        <div class="step-choices">
+                            @foreach (var root in Workspace.Overview.Roots.Where(x => x.IsOnline))
+                            {
+                                if (Workspace.RootFolder(root.Id) is { } top) { <button class="button primary" disabled="@busy" @onclick="() => CreateInbox(top)"><Icon Name="folder-plus" Size="16" />Create “Inbox” in @root.Name</button> }
+                            }
+                            @if (Candidates.Any())
+                            {
+                                <label class="sr-only" for="setup-inbox">Use an existing folder</label>
+                                <select id="setup-inbox" @bind="chosenInbox"><option value="@Guid.Empty">…or use an existing folder</option>@foreach (var folder in Candidates) { <option value="@folder.Id">@Workspace.FolderLabel(folder)</option> }</select>
+                                <button class="button" disabled="@(busy || chosenInbox == Guid.Empty)" @onclick="UseChosen">Use as inbox</button>
+                            }
+                        </div>
+                    }
+                </div>
+            </li>
+            <li class="todo">
+                <span class="step-mark"><span>3</span></span>
+                <div><h3>File the first one</h3><p>Fill in a few facts and say where it goes. That becomes a rule, and the next one like it files itself.</p></div>
+            </li>
+        </ol>
+    </section>
+}
+else if (queue.Total == 0)
+{
+    <section class="caught-up">
+        <div class="tray-art" aria-hidden="true"><Icon Name="inbox" Size="54" Stroke="1.2" /></div>
+        <h2>All caught up</h2>
+        <p>New scans in @string.Join(", ", Workspace.InboxFolders.Select(x => Workspace.FolderLabel(x))) show up here. You can also drop files anywhere on this page.</p>
+        @if (!Workspace.ReaderEnabled) { <p class="hint"><Icon Name="spark" Size="14" /><a href="/settings?tab=reader">Connect an AI reader</a> to have types and facts suggested for you.</p> }
+    </section>
+}
+else
+{
+    <div class="inbox @(selected != null ? "has-selection" : "")">
+        <section class="tray" aria-label="Inbox documents">
+            <header class="tray-head"><span>@queue.Total @(queue.Total == 1 ? "document" : "documents")</span></header>
+            <ul class="tray-list">
+                @foreach (var item in queue.Items)
+                {
+                    var status = StatusOf(item);
+                    <li @key="item.Entry.Id">
+                        <button class="intake-item @(selected?.Entry.Id == item.Entry.Id ? "selected" : "")" aria-current="@(selected?.Entry.Id == item.Entry.Id ? "true" : null)" @onclick="() => Select(item)">
+                            <span class="file-badge" data-ext="@WorkspaceState.Extension(item.Entry.Name)"><Icon Name="@(DocumentPreview.Format(item.Entry.Name).Kind == "image" ? "image" : "file")" Size="18" /></span>
+                            <span class="item-text"><strong>@item.Entry.Name</strong><small>@WorkspaceState.Ago(item.Entry.ObservedAt) · @WorkspaceState.FormatSize(item.Entry.Size)</small></span>
+                            <Stamp Text="@status.Text" Tone="@status.Tone" />
+                        </button>
+                    </li>
+                }
+            </ul>
+            @if (queue.Total > 100) { <footer class="tray-pager"><button class="text-button" disabled="@(offset == 0)" @onclick="Previous">Previous</button><span>@(offset + 1)–@(offset + queue.Items.Count) of @queue.Total</span><button class="text-button" disabled="@(offset + 100 >= queue.Total)" @onclick="Next">Next</button></footer> }
+        </section>
+        @if (selected != null)
+        {
+            <div class="inbox-preview"><DocumentPreviewPanel Entry="selected.Entry" @key="selected.Entry.Id" /></div>
+            <FilingSlip @key="selected.Entry.Id" Item="selected" Rules="rules" Types="types" Identification="identification"
+                        Filed="Filed" Changed="RefreshAsync" IdentificationChanged="LoadIdentification" RequestMove="e => moving = e" />
+        }
+    </div>
+}
+
+@if (connecting) { <ConnectStorageDialog OnClose="() => connecting = false" OnConnected="Connected" /> }
+@if (moving != null) { <EntryDialog Mode="move" Entry="moving" OnClose="() => moving = null" OnDone="Moved" /> }
+@if (reviewing != null) { <ProposalDialog Proposal="reviewing" Source="@ConnectionName(reviewing.ConnectionId)" Types="types" OnClose="() => reviewing = null" OnDecided="Decided" /> }
+
+@code {
+    [SupplyParameterFromQuery(Name = "open")] public string? Open { get; set; }
+    private IntakePage queue = new([], 0);
+    private IntakeItem? selected;
+    private IdentificationJob? identification;
+    private Dictionary<Guid, IdentificationJob> jobs = [];
+    private List<FilingRuleDefinition> rules = [];
+    private List<DocumentTypeProfile> types = [];
+    private List<AssistantProposal> proposals = [];
+    private List<AssistantConnection> connections = [];
+    private AssistantProposal? reviewing;
+    private CatalogEntry? moving;
+    private Guid chosenInbox;
+    private bool loaded, busy, connecting;
+    private int offset;
+    private readonly CancellationTokenSource lifetime = new();
+    private Task? polling;
+    private bool HasStorage => Workspace.Overview.Roots.Count > 0;
+    private bool SetUp => HasStorage && Workspace.InboxFolders.Count > 0;
+    private IEnumerable<CatalogEntry> Candidates => Workspace.Overview.Folders.Where(x => x.ParentId != null && Workspace.IsWritable(x.RootId)).OrderBy(x => Workspace.FolderLabel(x)).Take(200);
+    private string Summary
+    {
+        get
+        {
+            var ready = queue.Items.Count(x => StatusOf(x).Tone == "ready");
+            var waiting = queue.Items.Count - ready;
+            return ready > 0 ? $"{ready} ready to file · {waiting} need a look" : $"{waiting} need a look";
+        }
+    }
+    [Inject] private IServiceScopeFactory Scopes { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Workspace.Changed += WorkspaceChanged;
+        await Workspace.EnsureLoadedAsync();
+        await RefreshAsync();
+        if (Guid.TryParse(Open, out var open) && queue.Items.FirstOrDefault(x => x.Entry.Id == open) is { } wanted) await Select(wanted);
+        else if (queue.Items.Count > 0) await Select(queue.Items[0]);
+        loaded = true;
+        polling = PollAsync();
+    }
+
+    public async Task RefreshAsync()
+    {
+        try
+        {
+            queue = await Library.IntakeAsync(offset);
+            var identificationOverview = await Library.IdentificationOverviewAsync();
+            types = identificationOverview.Types;
+            jobs = identificationOverview.Jobs.GroupBy(x => x.EntryId).ToDictionary(x => x.Key, x => x.OrderByDescending(j => j.CreatedAt).First());
+            rules = await Library.RulesAsync();
+            var actor = await Workspace.ActorAsync();
+            proposals = (await Library.AssistantChangesAsync(actor)).Proposals.Where(x => x.State == "Pending").ToList();
+            if (proposals.Any(x => x.ConnectionId != null))
+            {
+                await using var scope = Scopes.CreateAsyncScope();
+                connections = await scope.ServiceProvider.GetRequiredService<DocumentStorage.Web.Mcp.AssistantConnections>().ListAsync(actor);
+            }
+            if (selected != null) selected = queue.Items.FirstOrDefault(x => x.Entry.Id == selected.Entry.Id);
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Inbox refresh failed"); Workspace.Notify("The inbox could not refresh. Check storage and try again.", true); }
+    }
+
+    private (string Text, string Tone) StatusOf(IntakeItem item)
+    {
+        if (item.Status == "Storage offline") return ("Offline", "muted");
+        if (item.Entry.Readiness != "Ready") return ("Arriving", "muted");
+        var job = jobs.GetValueOrDefault(item.Entry.Id);
+        if (job?.State is "Queued" or "Running" or "Retry") return ("Reading", "working");
+        if (item.Status == "Document changed") return ("Changed", "attention");
+        if (item.Status == "Reviewed" && item.Review != null)
+        {
+            var facts = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string,string>>(item.Review.FactsJson) ?? [];
+            facts["extension"] = Path.GetExtension(item.Entry.Name).TrimStart('.'); facts["original_stem"] = Path.GetFileNameWithoutExtension(item.Entry.Name);
+            var plan = FilingRules.Preview(new(item.Review.DocumentType, false, facts), rules.Where(x => x.Enabled).Select(WorkspaceState.ToEngine));
+            return plan.Ready ? ("Ready", "ready") : ("No rule", "attention");
+        }
+        if (item.Status == "Needs review") return ("Draft", "attention");
+        return job?.State == "Succeeded" && job.ContentHash == item.Entry.ContentHash ? ("Suggested", "new") : ("New", "new");
+    }
+
+    private async Task Select(IntakeItem item) { selected = item; identification = null; await LoadIdentification(); }
+    private async Task LoadIdentification()
+    {
+        if (selected == null) return;
+        var id = selected.Entry.Id;
+        var latest = await Library.LatestIdentificationAsync(id);
+        if (selected?.Entry.Id == id) { identification = latest; if (latest != null) jobs[id] = latest; }
+    }
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+                await InvokeAsync(async () => { if (selected != null && !busy) { await LoadIdentification(); StateHasChanged(); } });
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning("Reader status refresh stopped: {Kind}", ex.GetType().Name); }
+    }
+    private void WorkspaceChanged() => InvokeAsync(async () => { if (!busy) { await RefreshAsync(); StateHasChanged(); } });
+
+    private async Task Filed(string message)
+    {
+        // Move straight on to the next document in the pile.
+        var index = selected == null ? 0 : queue.Items.FindIndex(x => x.Entry.Id == selected.Entry.Id);
+        var filedId = selected?.Entry.Id;
+        selected = null; identification = null;
+        await Workspace.RefreshAsync(); await RefreshAsync();
+        var remaining = queue.Items.Where(x => x.Entry.Id != filedId).ToList();
+        if (remaining.Count > 0) await Select(remaining[Math.Clamp(index, 0, remaining.Count - 1)]);
+        Workspace.Notify(message);
+    }
+    private async Task Moved(Guid _) { moving = null; selected = null; await RefreshAsync(); if (queue.Items.Count > 0) await Select(queue.Items[0]); Workspace.Notify("Moved out of the inbox."); }
+    private async Task Decided(string message) { reviewing = null; await RefreshAsync(); Workspace.Notify(message); }
+    private async Task Connected(Guid rootId) { connecting = false; await Workspace.RefreshAsync(); Workspace.Notify("Storage connected. Now pick the folder new scans land in."); }
+    private async Task CreateInbox(CatalogEntry top) => await Run(async () =>
+    {
+        var id = Workspace.Overview.Folders.FirstOrDefault(x => x.ParentId == top.Id && string.Equals(x.Name, "Inbox", StringComparison.OrdinalIgnoreCase))?.Id
+            ?? await Library.CreateFolderAsync(top.Id, "Inbox", top.RelativePath);
+        await Library.SetIntakeAsync(id, true);
+        await Workspace.RefreshAsync(); await RefreshAsync();
+        Workspace.Notify("Inbox ready. Point your scanner at " + Workspace.FolderLabel(id) + ".");
+    });
+    private async Task UseChosen() => await Run(async () =>
+    {
+        await Library.SetIntakeAsync(chosenInbox, true);
+        await Workspace.RefreshAsync(); await RefreshAsync();
+        Workspace.Notify("Inbox ready.");
+    });
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true;
+        try { await action(); }
+        catch (Exception ex) { Logger.LogError(ex, "Inbox action failed"); Workspace.Notify(ex is StorageException ? ex.Message : "That could not finish. Check storage and try again.", true); }
+        finally { busy = false; }
+    }
+    private string ConnectionName(Guid? id) => id == null ? "the reader" : connections.FirstOrDefault(x => x.Id == id)?.Name ?? "an assistant";
+    private async Task Previous() { offset = Math.Max(0, offset - 100); await RefreshAsync(); }
+    private async Task Next() { offset += 100; await RefreshAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        Workspace.Changed -= WorkspaceChanged;
+        lifetime.Cancel(); if (polling != null) await polling; lifetime.Dispose();
+    }
+}

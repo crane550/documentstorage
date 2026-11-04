@@ -1,20 +1,25 @@
+@* Name = value rows on ruled lines. A blank value is left out when saved. *@
 <div class="fact-editor">
     @foreach (var row in Rows)
     {
         <div class="fact-row" @key="row">
-            <input aria-label="@($"{Label} name")" value="@row.Name" @oninput="e => ChangeName(row, e)" placeholder="institution" maxlength="64" />
-            <span>=</span>
-            <input aria-label="@($"{Label} value")" value="@row.Value" @oninput="e => ChangeValue(row, e)" placeholder="Cedar Bank" maxlength="1000" />
-            <button type="button" class="icon-button" aria-label="@($"Remove {Label.ToLowerInvariant()}")" @onclick="() => Remove(row)"><Icon Name="close" Size="14" /></button>
+            <input class="fact-name" aria-label="@($"{Label} name")" value="@row.Name" @oninput="e => ChangeName(row, e)" placeholder="@NamePlaceholder" maxlength="64" spellcheck="false" autocomplete="off" />
+            <input class="fact-value" aria-label="@($"{Label} value")" value="@row.Value" @oninput="e => ChangeValue(row, e)" placeholder="@ValueHint(row)" maxlength="1000" autocomplete="off" />
+            <button type="button" class="icon-button small fact-remove" aria-label="@($"Remove {Label.ToLowerInvariant()}")" title="Remove" @onclick="() => Remove(row)"><Icon Name="close" Size="13" /></button>
         </div>
     }
-    <button type="button" class="text-button" @onclick="Add"><Icon Name="plus" Size="14" />Add @Label.ToLowerInvariant()</button>
-    <p class="field-hint">Blank values are left out.</p>
+    <button type="button" class="text-button fact-add" @onclick="Add"><Icon Name="plus" Size="14" />Add @Label.ToLowerInvariant()</button>
 </div>
 @code {
     [Parameter, EditorRequired] public List<FactField> Rows { get; set; } = [];
     [Parameter] public string Label { get; set; } = "Fact";
+    [Parameter] public string NamePlaceholder { get; set; } = "name";
     [Parameter] public EventCallback Edited { get; set; }
+    private static string ValueHint(FactField row)
+    {
+        var name = row.Name.ToLowerInvariant();
+        return name.Contains("date") || name.EndsWith("_end") || name.EndsWith("_start") || name.EndsWith("_on") ? "yyyy-mm-dd" : name.Contains("year") ? "yyyy" : "value";
+    }
     private async Task ChangeName(FactField row, ChangeEventArgs e) { row.Name = e.Value?.ToString() ?? ""; await Edited.InvokeAsync(); }
     private async Task ChangeValue(FactField row, ChangeEventArgs e) { row.Value = e.Value?.ToString() ?? ""; await Edited.InvokeAsync(); }
     private async Task Add() { Rows.Add(new()); await Edited.InvokeAsync(); }

@@ -1,0 +1,122 @@
+@inject LibraryService Library
+@inject IOllamaClient Ollama
+@inject WorkspaceState Workspace
+@inject ILogger<GuidanceCard> Logger
+@implements IDisposable
+@using System.Text.Json
+
+@* Plain-English guidance for the reader, written on a sticky note. Every save keeps a version; the reader can draft one from a request. *@
+<section class="sticky-note @(editing ? "editing" : "")" aria-label="@Title">
+    <header><Icon Name="note" Size="16" /><h3>@Title</h3>
+        @if (!editing && thread != null) { <button type="button" class="icon-button small" aria-label="@("Edit " + Title.ToLowerInvariant())" title="Edit" @onclick="StartEdit"><Icon Name="edit" Size="14" /></button> }
+    </header>
+    @if (thread == null) { <p class="note-empty">Loading…</p> }
+    else if (editing)
+    {
+        <label class="sr-only" for="@($"{id}-text")">@Title</label>
+        <textarea id="@($"{id}-text")" class="instruction-input" rows="7" maxlength="@Limit" @bind="draft" @bind:event="oninput" placeholder="@Placeholder" autofocus></textarea>
+        <div class="note-actions"><button type="button" class="button small" disabled="@busy" @onclick="() => editing = false">Cancel</button><button type="button" class="button small primary" disabled="@busy" @onclick="SaveManual">Save note</button></div>
+    }
+    else if (thread.Text.Length > 0) { <p class="instruction-canonical">@thread.Text</p> }
+    else { <button type="button" class="note-empty" @onclick="StartEdit">@Placeholder</button> }
+
+    @if (proposal != null && proposal.State == "Pending" && change != null)
+    {
+        <div class="note-proposal" role="status">
+            <div class="note-proposal-head"><Icon Name="spark" Size="14" /><strong>Suggested rewrite</strong></div>
+            @if (change.Explanation.Length > 0) { <p class="hint">@change.Explanation</p> }
+            <p class="instruction-canonical proposed">@change.Text</p>
+            <div class="note-actions"><button type="button" class="button small" disabled="@busy" @onclick="() => Decide(false)">Discard</button><button type="button" class="button small primary" disabled="@busy" @onclick="() => Decide(true)">Use this version</button></div>
+        </div>
+    }
+    @if (Workspace.ReaderEnabled && thread != null && !editing)
+    {
+        <form class="note-ask" @onsubmit="Send" @onsubmit:preventDefault>
+            <label class="sr-only" for="@($"{id}-ask")">Describe a change</label>
+            <input id="@($"{id}-ask")" @bind="request" @bind:event="oninput" maxlength="4000" placeholder="Tell the reader what to change…" disabled="@busy" />
+            <button type="submit" class="icon-button" aria-label="Ask the reader to draft" title="Ask the reader to draft a new version" disabled="@(busy || string.IsNullOrWhiteSpace(request))">@if (busy) { <span class="spin"><Icon Name="refresh" Size="15" /></span> } else { <Icon Name="spark" Size="15" /> }</button>
+            @if (busy && drafting) { <button type="button" class="text-button" @onclick="Cancel">Stop</button> }
+        </form>
+        @if (reply != null) { <p class="note-reply">@reply</p> }
+    }
+    @if (thread != null && (thread.Messages.Count > 0 || thread.History.Count > 0))
+    {
+        <details class="note-history">
+            <summary>@(thread.Messages.Count > 0 ? "Conversation and versions" : "Versions") · @thread.History.Count</summary>
+            @foreach (var item in thread.Messages) { <article class="instruction-message @item.Role"><small>@(item.Role == "user" ? "You asked" : "Reader") · @WorkspaceState.Ago(item.CreatedAt)</small><p>@item.Text</p></article> }
+            @foreach (var version in thread.History) { <article class="note-version"><small>Version @version.Revision · @version.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</small><p>@version.Text</p></article> }
+        </details>
+    }
+    @if (error != null) { <p class="form-error" role="alert">@error</p> }
+</section>
+@code {
+    [Parameter, EditorRequired] public InstructionTarget Target { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = "Notes for the reader";
+    [Parameter] public string Placeholder { get; set; } = "Add a note about what belongs here…";
+    [Parameter] public int Limit { get; set; } = 4000;
+    [Parameter] public EventCallback Saved { get; set; }
+    private readonly string id = "note-" + Guid.NewGuid().ToString("N")[..6];
+    private InstructionThread? thread;
+    private AssistantProposal? proposal;
+    private GuidanceChange? change;
+    private string draft = "", request = "";
+    private string? reply, error, loadedKey;
+    private bool editing, busy, drafting;
+    private CancellationTokenSource cancel = new();
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = Target.Kind + ":" + Target.Key;
+        if (key == loadedKey) return;
+        loadedKey = key; editing = false; proposal = null; change = null; reply = null; error = null;
+        await Load();
+    }
+    private async Task Load()
+    {
+        try { thread = await Library.InstructionThreadAsync(Target); }
+        catch (Exception ex) { Logger.LogWarning("Guidance load failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "These notes could not load."; }
+    }
+    private void StartEdit() { draft = thread?.Text ?? ""; editing = true; error = null; }
+    private async Task SaveManual() => await Run(async () =>
+    {
+        var actor = await Workspace.ActorAsync();
+        if (Target.Kind == "folder") await Library.SaveInstructionsAsync(Guid.Parse(Target.Key), draft, actor);
+        else
+        {
+            // Global and type guidance keep their version and source trail through the same reviewed-change path assistants use.
+            var context = await Library.AssistantContextAsync();
+            var made = await Library.ProposeAssistantAsync("Guidance", JsonSerializer.Serialize(new GuidanceChange(Target, thread!.Hash, draft, "Edited in the browser.", [])), context.Hash, Guid.NewGuid().ToString(), new(actor, null));
+            await Library.DecideAssistantProposalAsync(made.Id, made.Revision, true, actor);
+        }
+        editing = false; await Load(); await Workspace.RefreshAsync(); await Saved.InvokeAsync();
+        Workspace.Notify("Note saved.");
+    });
+    private async Task Send() => await Run(async () =>
+    {
+        drafting = true; reply = null;
+        var actor = await Workspace.ActorAsync();
+        await Library.AddInstructionMessageAsync(Target, request, new(actor, null)); request = "";
+        await Load();
+        var result = await Library.DraftInstructionsAsync(Target, actor, Ollama, cancel.Token);
+        proposal = result.Proposal; change = proposal?.Kind == "Guidance" ? JsonSerializer.Deserialize<GuidanceChange>(proposal.PayloadJson) : null;
+        reply = result.NeedsClarification ? result.Reply : null;
+        await Load();
+    });
+    private async Task Decide(bool accept) => await Run(async () =>
+    {
+        if (proposal == null) return;
+        await Library.DecideAssistantProposalAsync(proposal.Id, proposal.Revision, accept, await Workspace.ActorAsync());
+        proposal = null; change = null; await Load();
+        if (accept) { await Workspace.RefreshAsync(); await Saved.InvokeAsync(); Workspace.Notify("Note saved with the conversation that led to it."); }
+    });
+    private void Cancel() => cancel.Cancel();
+    private async Task Run(Func<Task> work)
+    {
+        if (busy) return; busy = true; error = null;
+        cancel.Dispose(); cancel = new();
+        try { await work(); }
+        catch (OperationCanceledException) { reply = "Stopped. Your request is kept in the conversation."; }
+        catch (Exception ex) { Logger.LogWarning("Guidance action failed: {Kind}", ex.GetType().Name); error = ex is StorageException or OllamaException ? ex.Message : "That could not be saved. Reload and try again."; }
+        finally { busy = false; drafting = false; }
+    }
+    public void Dispose() { cancel.Cancel(); cancel.Dispose(); }
+}

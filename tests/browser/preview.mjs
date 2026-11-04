@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { signIn, connectStorage, openFolder, enterFolder, newFolder, useAsInbox, inbox, openInboxItem, toast, noOverflow } from './ui.mjs';
 const base=process.env.DOCUMENTSTORAGE_TEST_URL||'http://127.0.0.1:5244';assert(['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname),'Disposable local instance only');
 const fixture=JSON.parse(await readFile('.local/preview-fixture.json','utf8'));
 const c=process.env.DOCUMENTSTORAGE_TEST_USERNAME&&process.env.DOCUMENTSTORAGE_TEST_PASSWORD?{username:process.env.DOCUMENTSTORAGE_TEST_USERNAME,password:process.env.DOCUMENTSTORAGE_TEST_PASSWORD}:JSON.parse(await readFile('.local/browser-credentials.json','utf8'));
@@ -11,8 +12,8 @@ async function select(name){await page.locator('.file-name').filter({has:page.lo
 async function loaded(){await page.waitForFunction(()=>document.querySelector('.document-preview')?.dataset.loaded==='true');}
 async function rendered(n=1){await page.waitForFunction(n=>document.querySelector(`.document-preview .page[data-page-number="${n}"] canvas`)?.width>0&&document.querySelector('.document-preview')?.dataset.rendered===String(n),n);}
 try{
- await page.goto(base);await page.getByLabel('Username',{exact:true}).fill(c.username);await page.getByLabel('Password',{exact:true}).fill(c.password);await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await page.getByRole('button',{name:'Add storage',exact:true}).click();await page.getByLabel('Location name').fill('Preview test archive');await page.getByLabel('Full path on the server').fill(fixture.directory);await page.getByRole('button',{name:'Connect storage',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+ await page.goto(base);await signIn(page,c);
+ await connectStorage(page,base,'Preview test archive',fixture.directory);
  await select('statement.pdf');await loaded();await rendered();
  await check(page.evaluate(()=>{const c=document.querySelector('.page[data-page-number="1"] canvas');const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let ink=0;for(let i=0;i<d.length;i+=4)if(d[i]<100&&d[i+1]<100&&d[i+2]<100)ink++;return ink>100;}),'PDF preview renders actual document ink inside the application');
  await check(page.evaluate(()=>{const c=document.querySelector('.page[data-page-number="1"] canvas');const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let red=0;for(let i=0;i<d.length;i+=4)if(d[i]>150&&d[i+1]<100&&d[i+2]<100)red++;return red>20;}),'PDF preview includes filled form appearances without editable widgets');
@@ -32,12 +33,12 @@ try{
  await select('locked.pdf');await root.locator('[data-password-form]:not([hidden])').waitFor();await root.getByLabel('PDF password',{exact:true}).fill('fixture-pass');await root.getByRole('button',{name:'Unlock PDF',exact:true}).click();await loaded();await rendered();await check(true,'password-protected PDF opens using a browser-only password prompt');
  // Switch repeatedly while renders/fetches may still be pending.
  for(const name of ['statement.pdf','photo.png','notes.md','statement.pdf'])await select(name);await loaded();await rendered();await check(root.locator('[data-pages]').textContent().then(t=>t==='of 3'),'rapid document switching cancels old previews without replacing the latest selection');
- await check(page.evaluate(()=>getComputedStyle(document.querySelector('.sidebar')).backgroundColor==='rgb(233, 221, 201)'),'PDF styles preserve the cardboard application sidebar');
+ await check(page.evaluate(()=>getComputedStyle(document.querySelector('.sidebar')).backgroundColor==='rgb(196, 161, 115)'),'PDF styles preserve the cardboard application sidebar');
  await page.screenshot({path:'.local/preview-documents.png',fullPage:true});
- // The same renderer stays alongside the intake facts editor.
- await page.locator('.tree-label').filter({hasText:'Preview test archive'}).click();await page.getByRole('button',{name:'New folder',exact:true}).click();await page.getByLabel('Name',{exact:true}).fill('Incoming previews');await page.getByRole('button',{name:'Create folder',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});await page.locator('.file-name').filter({hasText:'Incoming previews'}).click();await page.getByRole('button',{name:'Use as intake',exact:true}).click();
- await page.locator('input[aria-label="Copy files to intake"]').setInputFiles(fixture.directory+'/statement.pdf');await page.getByRole('status').filter({hasText:'1 of 1 files copied to intake.'}).waitFor();await page.locator('.main-nav').getByRole('button',{name:/^Intake/}).click();await page.locator('.intake-item').filter({hasText:'statement.pdf'}).click();await loaded();await rendered();
- await check(page.getByLabel('Document type',{exact:true}).isVisible()&&await root.isVisible(),'Intake keeps the actual PDF visible alongside its facts editor');await page.screenshot({path:'.local/preview-intake.png',fullPage:true});
- await page.setViewportSize({width:390,height:844});await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'PDF preview and intake controls fit a mobile viewport');await root.getByRole('button',{name:'Expand preview',exact:true}).click();await check(root.locator('.preview-surface').evaluate(x=>x.clientHeight>250),'expanded mobile preview uses the available screen');await page.keyboard.press('Escape');
+ // The same renderer stays beside the inbox filing slip.
+ await openFolder(page,'Preview test archive');await newFolder(page,'Incoming previews');await enterFolder(page,'Incoming previews');await useAsInbox(page);
+ await page.locator('input[aria-label="Copy files to inbox"]').setInputFiles(fixture.directory+'/statement.pdf');await toast(page,'1 of 1 files added to the inbox.');await inbox(page);await openInboxItem(page,'statement.pdf');await loaded();await rendered();
+ await check(page.getByLabel('Document type',{exact:true}).isVisible()&&await root.isVisible(),'the inbox keeps the actual PDF visible beside its filing slip');await page.screenshot({path:'.local/preview-intake.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'PDF preview and filing slip fit a mobile viewport');await root.getByRole('button',{name:'Expand preview',exact:true}).click();await check(root.locator('.preview-surface').evaluate(x=>x.clientHeight>250),'expanded mobile preview uses the available screen');await page.keyboard.press('Escape');
  await check(external.length===0,'PDF rendering and support assets stay on this app origin');await check(errors.length===0,'preview controls and rapid switching cause no browser script errors');console.log(`All ${checks} preview browser checks passed.`);
 }finally{await browser.close();}

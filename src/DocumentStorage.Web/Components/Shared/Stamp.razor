@@ -1,0 +1,8 @@
+@* A small rubber-stamp status. Tone carries the meaning; the words stay short. *@
+<span class="stamp @Tone" title="@Title">@if (IconName != null) { <Icon Name="@IconName" Size="12" Stroke="2.2" /> }@Text</span>
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "muted";
+    [Parameter] public string? IconName { get; set; }
+    [Parameter] public string? Title { get; set; }
+}

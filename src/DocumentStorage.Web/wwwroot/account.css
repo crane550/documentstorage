@@ -1,22 +1,26 @@
-.account-shell { min-height:100vh; padding:45px 20px; display:flex; align-items:center; justify-content:center; background:var(--canvas); }
-.account-card { width:430px; max-width:100%; padding:36px; background:var(--paper); border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 30px #654a3208; }
-.account-brand { display:flex; gap:13px; align-items:center; font-weight:650; font-size:18px; margin-bottom:36px; }
-.account-brand .brand-mark { width:44px; height:47px; }
-.account-card h1 { margin-top:11px; font-size:33px; }
-.account-intro { color:#8a7963; font-size:12px; line-height:1.8; margin:12px 0 26px; }
-.account-card label { display:block; font-size:12px; color:#766046; margin:18px 0 8px; }
-.account-card input:not([type=hidden]) { width:100%; border:1px solid #dbcdb8; border-radius:6px; padding:12px; background:#fbf7ef; font-size:14px; color:var(--ink); }
-.account-card .full-width { margin-top:25px; font-size:12px; padding:12px; }
-.account-footnote { color:#a18f75; font-size:10px; text-align:center; margin-top:27px; line-height:1.7; }
-.account-message { padding:12px; border-radius:5px; font-size:12px; line-height:1.8; margin:15px 0; }
-.account-message.error { background:#f5e8df; color:#9c5039; }
-.account-message.success { background:#edf0e4; color:#617548; }
-.account-footer { display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); margin-top:28px; padding-top:19px; font-size:11px; color:#8b7453; }
-.account-footer .text-button { font-size:11px; }
-.header-account { display:flex; align-items:center; gap:18px; }
-.header-account>a { font-size:10px; color:#8b7453; border-left:1px solid var(--line); padding-left:18px; }
-@media(max-width:500px) { .account-card { padding:28px 24px; } .header-account .version-label { display:none; } }
-.oauth-consent p,.oauth-consent li { font-size:12px; line-height:1.8; color:#887558; margin:13px 0; }
-.oauth-consent ul { list-style:disc; padding-left:18px; margin:20px 0; }
-.oauth-consent code { font-size:10px; overflow-wrap:anywhere; }
-.oauth-consent form { display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; }
+/* Sign-in, password and assistant-consent pages: a paper card on a cardboard desk. */
+.account-shell { min-height: 100vh; display: grid; place-items: center; padding: 40px 18px; background: var(--kraft) var(--kraft-texture) repeat; background-size: 512px; }
+.account-card {
+    position: relative; width: 420px; max-width: 100%; padding: 34px 34px 28px; border-radius: 8px; background: var(--paper);
+    box-shadow: 0 0 0 1px rgba(52, 38, 26, .2), 0 24px 50px -20px rgba(43, 30, 15, .6);
+}
+.account-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; border-radius: 8px 8px 0 0; background: var(--brown); }
+.account-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 28px; font-weight: 720; font-size: 17px; }
+.account-card .eyebrow { font: 700 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.account-card h1 { margin-top: 8px; font-size: 25px; font-weight: 720; letter-spacing: -.02em; }
+.account-intro { margin: 8px 0 18px; color: var(--muted); line-height: 1.55; }
+.account-card label { display: block; margin: 14px 0 5px; font-size: 12.5px; font-weight: 620; color: var(--ink-2); }
+.account-card .full-width { width: 100%; height: 40px; margin-top: 22px; }
+.account-footnote { margin-top: 20px; text-align: center; color: var(--faint); font-size: 12.5px; }
+.account-message { margin: 12px 0; padding: 10px 12px; border-radius: 6px; font-size: 13px; line-height: 1.5; }
+.account-message.error { background: var(--red-bg); color: #7a2720; border: 1px solid #ecc6bf; }
+.account-message.success { background: var(--green-bg); color: #24452d; border: 1px solid #c9dac3; }
+.account-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 13px; }
+.account-footer a { color: var(--brown); font-weight: 600; }
+.oauth-consent p, .oauth-consent li { margin: 10px 0; line-height: 1.55; color: var(--ink-2); font-size: 13.5px; }
+.oauth-consent ul { margin: 14px 0; padding-left: 18px; }
+.oauth-consent code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.oauth-consent form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+/* Older consent markup used "subtle" for the secondary button. */
+.button.subtle { background: var(--paper); }
+@media (max-width: 500px) { .account-card { padding: 26px 20px 22px; } }

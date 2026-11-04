@@ -1,6 +1,6 @@
 # In-app document previews
 
-Select a document in **Documents** to open its preview beside the file list. Select an **Intake** item to keep its original visible beside the facts editor. Opening a preview brings it into view. Indexed OCR remains available separately; rendering uses the actual original file rather than an extracted-text substitute. Originals are never modified by preview controls.
+Select a document in the **Library** to open its preview beside the file list. Select an **Inbox** item to keep its original visible beside its filing slip. Opening a preview brings it into view. Indexed OCR remains available separately; rendering uses the actual original file rather than an extracted-text substitute. Originals are never modified by preview controls.
 
 ## Controls and formats
 
@@ -10,7 +10,7 @@ Select a document in **Documents** to open its preview beside the file list. Sel
 
 **Expand** opens a large in-app viewer. Escape or **Close expanded preview** returns to the workspace; keyboard focus stays in the expanded viewer. **Reload preview** retries a failed load. **Download original** remains available for every type, including unsupported and damaged files. PDFs are limited to 250 MiB and images to 32 MiB for inline loading. Text shows at most 200,000 characters and clearly reports truncation.
 
-Use a current browser supporting ES modules, workers, canvas and CSS scopes. The viewer adapts to narrow/mobile screens. Desktop Intake keeps the original alongside the review form; narrow layouts stack the panels. Zoom/rotation are viewing settings and do not rewrite the original.
+Use a current browser supporting ES modules, workers, canvas and CSS scopes. The viewer adapts to narrow/mobile screens. The desktop Inbox keeps the original alongside the filing slip; narrow layouts stack the panels. Zoom/rotation are viewing settings and do not rewrite the original.
 
 ## Serving and lifecycle
 

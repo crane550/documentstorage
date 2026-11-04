@@ -1,16 +1,17 @@
-<div class="tree-branch">
-    <div class="tree-row @(SelectedId == Folder.Id ? "selected" : "")" style="padding-left:@(Depth * 16 + 8)px">
-        <button class="tree-toggle" aria-label="@(expanded ? "Collapse " + Folder.Name : "Expand " + Folder.Name)" @onclick="() => expanded = !expanded" disabled="@(!Children.Any())" aria-expanded="@expanded">
-            <span class="@(expanded ? "turn" : "")"><Icon Name="arrow" Size="12" /></span>
-        </button>
-        <button class="tree-label" @onclick="() => OnSelect.InvokeAsync(Folder.Id)"><Icon Name="@(Folder.IsIntake ? "inbox" : "folder")" Size="17" /><span>@Folder.Name</span></button>
-        <button class="icon-button tree-manage" aria-label="Manage folder @Folder.Name" title="Manage folder" @onclick="() => OnManage.InvokeAsync(Folder.Id)"><Icon Name="edit" Size="13" /></button>
+<div class="tree-branch @(Depth == 0 ? "tree-top" : "")">
+    <div class="tree-row @(SelectedId == Folder.Id ? "selected" : "") @(Online ? "" : "offline")" style="--depth:@Depth">
+        <button class="tree-toggle @(expanded ? "open" : "")" aria-label="@((expanded ? "Collapse " : "Expand ") + Folder.Name)" aria-expanded="@(expanded ? "true" : "false")" disabled="@(!Children.Any())" @onclick="() => expanded = !expanded"><Icon Name="arrow" Size="11" Stroke="2.2" /></button>
+        <a class="tree-label" href="@($"/library?folder={Folder.Id}")" aria-current="@(SelectedId == Folder.Id ? "page" : null)" @onclick="() => OnNavigate.InvokeAsync()">
+            <Icon Name="@IconName" Size="16" />
+            <span>@Folder.Name</span>
+            @if (Folder.IsIntake) { <span class="tree-tag">Inbox</span> }
+        </a>
     </div>
     @if (expanded)
     {
         @foreach (var child in Children)
         {
-            <FolderBranch @key="child.Id" Folder="child" AllFolders="AllFolders" SelectedId="SelectedId" Depth="@(Depth + 1)" OnSelect="OnSelect" OnManage="OnManage" />
+            <FolderBranch @key="child.Id" Folder="child" AllFolders="AllFolders" SelectedId="SelectedId" Depth="@(Depth + 1)" OnNavigate="OnNavigate" Online="Online" />
         }
     }
 </div>
@@ -19,8 +20,23 @@
     [Parameter, EditorRequired] public List<CatalogEntry> AllFolders { get; set; } = [];
     [Parameter] public Guid? SelectedId { get; set; }
     [Parameter] public int Depth { get; set; }
-    [Parameter] public EventCallback<Guid> OnSelect { get; set; }
-    [Parameter] public EventCallback<Guid> OnManage { get; set; }
-    private bool expanded = true;
-    private IEnumerable<CatalogEntry> Children => AllFolders.Where(x => x.ParentId == Folder.Id);
+    [Parameter] public bool Network { get; set; }
+    [Parameter] public bool Online { get; set; } = true;
+    [Parameter] public EventCallback OnNavigate { get; set; }
+    private bool expanded, touched;
+    private Guid? lastSelected;
+    private string IconName => Depth == 0 ? (Network ? "nas" : "drive") : Folder.IsIntake ? "inbox" : "folder";
+    private IEnumerable<CatalogEntry> Children => AllFolders.Where(x => x.ParentId == Folder.Id).OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase);
+    protected override void OnParametersSet()
+    {
+        // Storage roots start open; deeper folders open themselves when the selection is inside them.
+        if (!touched) { expanded = Depth == 0; touched = true; }
+        if (SelectedId != lastSelected) { lastSelected = SelectedId; if (SelectedId != Folder.Id && Contains(SelectedId)) expanded = true; }
+    }
+    private bool Contains(Guid? id)
+    {
+        var current = AllFolders.FirstOrDefault(x => x.Id == id);
+        while (current?.ParentId != null) { if (current.ParentId == Folder.Id) return true; current = AllFolders.FirstOrDefault(x => x.Id == current.ParentId); }
+        return false;
+    }
 }

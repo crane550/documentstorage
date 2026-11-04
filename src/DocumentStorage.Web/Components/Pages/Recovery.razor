@@ -1,0 +1,11 @@
+@page "/recovery"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@inject WorkspaceState Workspace
+
+<PageTitle>Recovery · @Workspace.DisplayName</PageTitle>
+<header class="page-head"><div><h1>Recovery</h1></div></header>
+<HistoryTabs Current="recovery" />
+<RecoveryWorkspace Changed="Workspace.RefreshAsync" />
+@code {
+    protected override Task OnInitializedAsync() => Workspace.EnsureLoadedAsync();
+}

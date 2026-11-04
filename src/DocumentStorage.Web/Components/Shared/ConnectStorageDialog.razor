@@ -1,0 +1,29 @@
+@inject LibraryService Library
+@inject ILogger<ConnectStorageDialog> Logger
+
+<Modal Title="Connect storage" IconName="drive" OnClose="OnClose" Busy="busy">
+    <form class="form" @onsubmit="Save" @onsubmit:preventDefault>
+        <p class="lede">Point at a folder that already exists on the server. Files are indexed where they are; nothing is copied.</p>
+        <label for="root-name">Location name</label>
+        <input id="root-name" required maxlength="180" @bind="name" placeholder="Household archive" autofocus />
+        <label for="root-path">Full path on the server</label>
+        <input id="root-path" class="mono" required @bind="path" placeholder="D:\Documents  or  /mnt/documents" />
+        <label class="check"><input type="checkbox" @bind="network" /><span>Network share or NAS</span></label>
+        @if (error != null) { <p class="form-error" role="alert">@error</p> }
+        <div class="form-actions"><button type="button" class="button" disabled="@busy" @onclick="OnClose">Cancel</button><button type="submit" class="button primary" disabled="@busy">@(busy ? "Connecting…" : "Connect storage")</button></div>
+    </form>
+</Modal>
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Guid> OnConnected { get; set; }
+    private string name = "", path = "";
+    private bool network, busy;
+    private string? error;
+    private async Task Save()
+    {
+        if (busy) return; busy = true; error = null;
+        try { var id = await Library.AddRootAsync(name, path, network); await OnConnected.InvokeAsync(id); }
+        catch (Exception ex) { Logger.LogWarning("Connect storage failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The location could not be connected. Check the path and the service account's access."; }
+        finally { busy = false; }
+    }
+}

@@ -1,9 +1,164 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject WorkspaceState Workspace
+@inject LibraryService Library
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider Authentication
+@inject ILogger<MainLayout> Logger
 
-@Body
+@if (!signedIn)
+{
+    @Body
+}
+else
+{
+<div class="shell @(menuOpen ? "menu-open" : "")">
+    <aside class="sidebar" aria-label="Workspace">
+        <a class="brand" href="/" @onclick="CloseMenu"><span class="brand-mark"><Icon Name="box" Size="22" Stroke="1.8" /></span><span class="brand-name">@Workspace.DisplayName</span></a>
+
+        <nav class="main-nav" aria-label="Main">
+            <a href="/" class="@Active("inbox")" aria-current="@Current("inbox")" @onclick="CloseMenu"><Icon Name="inbox" /><span>Inbox</span>@if (InboxCount > 0) { <span class="count" title="@($"{InboxCount} waiting")">@InboxCount</span> }</a>
+            <a href="/library" class="@Active("library")" aria-current="@Current("library")" @onclick="CloseMenu"><Icon Name="cabinet" /><span>Library</span></a>
+            <a href="/rules" class="@Active("rules")" aria-current="@Current("rules")" @onclick="CloseMenu"><Icon Name="signpost" /><span>Rules</span></a>
+        </nav>
+
+        <div class="drawer-heading"><span>Storage</span><a class="icon-button small" href="/settings?tab=storage" title="Storage locations" aria-label="Storage locations" @onclick="CloseMenu"><Icon Name="plus" Size="15" /></a></div>
+        <div class="folder-tree" aria-label="Folders">
+            @foreach (var root in Workspace.Overview.Roots)
+            {
+                var top = Workspace.RootFolder(root.Id);
+                if (top != null) { <FolderBranch @key="root.Id" Folder="top" AllFolders="Workspace.Overview.Folders" SelectedId="folderId" OnNavigate="CloseMenu" Network="root.IsNetwork" Online="root.IsOnline" /> }
+            }
+            @if (Workspace.Loaded && Workspace.Overview.Roots.Count == 0) { <a class="tree-empty" href="/settings?tab=storage" @onclick="CloseMenu"><Icon Name="plus" Size="15" />Connect storage</a> }
+        </div>
+
+        <nav class="nav-secondary" aria-label="More">
+            @if (Workspace.Overview.RecoveryCount > 0) { <a href="/recovery" class="@Active("recovery") alert" aria-current="@Current("recovery")" @onclick="CloseMenu"><Icon Name="alert" Size="18" /><span>Recovery</span><span class="count danger">@Workspace.Overview.RecoveryCount</span></a> }
+            <a href="/history" class="@Active("history")" aria-current="@Current("history")" @onclick="CloseMenu"><Icon Name="history" Size="18" /><span>History</span></a>
+            <a href="/history?tab=trash" class="@Active("trash")" aria-current="@Current("trash")" @onclick="CloseMenu"><Icon Name="trash" Size="18" /><span>Trash</span></a>
+            <a href="/settings" class="@Active("settings")" aria-current="@Current("settings")" @onclick="CloseMenu"><Icon Name="gear" Size="18" /><span>Settings</span></a>
+            <a href="/account" class="account-link" data-enhance-nav="false"><span class="avatar">@Initial</span><span>@userName</span></a>
+        </nav>
+    </aside>
+    <div class="menu-scrim" aria-hidden="true" @onclick="CloseMenu"></div>
+
+    <div class="main">
+        <header class="topbar">
+            <button class="icon-button menu-button" aria-label="Open menu" aria-expanded="@(menuOpen ? "true" : "false")" @onclick="() => menuOpen = !menuOpen"><Icon Name="menu" /></button>
+            <form class="global-search" role="search" @onsubmit="Search" @onsubmit:preventDefault>
+                <Icon Name="search" Size="17" />
+                <input type="search" aria-label="Search documents" placeholder="Search names and text…" @bind="query" />
+            </form>
+            <div class="topbar-actions">
+                <button class="icon-button" title="Check storage for new and changed files" aria-label="Rescan storage" disabled="@scanning" @onclick="Rescan"><span class="@(scanning ? "spin" : "")"><Icon Name="refresh" Size="18" /></span></button>
+                <IntakeUpload Overview="Workspace.Overview" PreferredFolderId="folderId" Changed="Uploaded" />
+            </div>
+        </header>
+
+        @foreach (var root in Workspace.Overview.Roots.Where(x => !x.IsOnline))
+        {
+            <div class="banner warning"><Icon Name="drive" Size="18" /><span><strong>@root.Name is offline.</strong> Its documents stay in the catalog; nothing is treated as deleted. @root.LastError</span></div>
+        }
+        @if (Workspace.Overview.RecoveryCount > 0 && page != "recovery")
+        {
+            <div class="banner danger recovery-banner"><Icon Name="alert" Size="18" /><span>@Workspace.Overview.RecoveryCount unfinished @(Workspace.Overview.RecoveryCount == 1 ? "operation" : "operations"). Changes are paused on @string.Join(", ", Workspace.Overview.Roots.Where(x => Workspace.IsBlocked(x.Id)).Select(x => x.Name)).</span><a class="button small" href="/recovery">Review</a></div>
+        }
+
+        <main class="page" id="main">@Body</main>
+    </div>
+
+    @if (Workspace.Current is { } notice)
+    {
+        <div class="toast @(notice.Error ? "error" : "")" role="@(notice.Error ? "alert" : "status")" @key="notice.Id">
+            <Icon Name="@(notice.Error ? "alert" : "check-circle")" Size="18" /><span>@notice.Text</span>
+            <button class="icon-button small" aria-label="Dismiss message" @onclick="() => Workspace.Dismiss(notice.Id)"><Icon Name="close" Size="14" /></button>
+        </div>
+    }
+</div>
+}
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
+    Something went wrong on this page.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private bool signedIn, menuOpen, scanning;
+    private string page = "inbox", query = "", userName = "";
+    private Guid? folderId, timedNotice;
+    private Timer? timer;
+    private int InboxCount => Workspace.Overview.IntakeDocuments + Workspace.PendingProposals;
+    private string Initial => userName.Length > 0 ? userName[..1].ToUpperInvariant() : "?";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await Authentication.GetAuthenticationStateAsync()).User;
+        signedIn = user.Identity?.IsAuthenticated == true && user.IsInRole(IdentitySetup.Administrator);
+        userName = user.Identity?.Name ?? "Account";
+        Read(Navigation.Uri);
+        Navigation.LocationChanged += Moved;
+        Workspace.Changed += Repaint; Workspace.NoticeChanged += Repaint;
+        if (!signedIn) return;
+        try { await Workspace.EnsureLoadedAsync(); }
+        catch (Exception ex) { Logger.LogError(ex, "Workspace overview failed"); Workspace.Notify("The library could not load. Check the database and storage, then reload.", true); }
+        // Keep counts and the folder tree current while the background scanner works.
+        timer = new Timer(_ => InvokeAsync(async () =>
+        {
+            try { await Workspace.RefreshAsync(); }
+            catch (Exception ex) { Logger.LogWarning("Background overview refresh failed: {Kind}", ex.GetType().Name); }
+        }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void Read(string uri)
+    {
+        var address = new Uri(uri);
+        var path = address.AbsolutePath.TrimEnd('/').ToLowerInvariant();
+        var parameters = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(address.Query);
+        page = path switch
+        {
+            "" or "/inbox" => "inbox",
+            "/library" or "/folders" => "library",
+            "/rules" => "rules",
+            "/recovery" => "recovery",
+            "/history" => parameters.TryGetValue("tab", out var tab) && tab == "trash" ? "trash" : "history",
+            "/settings" => "settings",
+            _ => ""
+        };
+        folderId = page == "library" && parameters.TryGetValue("folder", out var folder) && Guid.TryParse(folder, out var id) ? id : null;
+        if (page == "library" && folderId == null) folderId = Workspace.Overview.Folders.FirstOrDefault(x => x.ParentId == null)?.Id;
+    }
+    private void Moved(object? sender, LocationChangedEventArgs e) { Read(e.Location); menuOpen = false; InvokeAsync(StateHasChanged); }
+    private void Repaint()
+    {
+        // Confirmations fade after a few seconds; errors stay until dismissed.
+        if (Workspace.Current is { Error: false } notice && timedNotice != notice.Id)
+        {
+            timedNotice = notice.Id;
+            _ = Task.Delay(TimeSpan.FromSeconds(8)).ContinueWith(_ => InvokeAsync(() => Workspace.Dismiss(notice.Id)), TaskScheduler.Default);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+    private string Active(string name) => page == name ? "active" : "";
+    private string? Current(string name) => page == name ? "page" : null;
+    private void CloseMenu() => menuOpen = false;
+    private void Search()
+    {
+        var text = query.Trim();
+        Navigation.NavigateTo(text.Length == 0 ? "/library" : "/library?q=" + Uri.EscapeDataString(text));
+    }
+    private async Task Rescan()
+    {
+        if (scanning) return;
+        scanning = true;
+        try { await Library.ScanAsync(); await Workspace.RefreshAsync(); Workspace.Notify("Storage checked. New and changed files are indexed."); }
+        catch (Exception ex) { Logger.LogError(ex, "Rescan failed"); Workspace.Notify(ex is StorageException ? ex.Message : "Storage could not be checked. Confirm it is available, then try again.", true); }
+        finally { scanning = false; }
+    }
+    private async Task Uploaded() { try { await Workspace.RefreshAsync(); } catch (Exception ex) { Logger.LogWarning("Refresh after upload failed: {Kind}", ex.GetType().Name); } }
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= Moved; Workspace.Changed -= Repaint; Workspace.NoticeChanged -= Repaint;
+        timer?.Dispose();
+    }
+}

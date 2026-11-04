@@ -44,6 +44,10 @@ Ordinary file/folder moves, trash, restore and deterministic filing now save bou
 
 Documents and Intake share a locally bundled PDF.js viewer with multipage scrolling, page navigation, zoom/fit, rotation, selectable text, search and browser-only PDF password entry. Native image formats and bounded escaped source-text previews share the expand/reload/download workflow. The existing cookie login protects range-enabled, version-bound preview streams. See [Previews](previews.md).
 
+## Completed interface milestone
+
+The workspace is organized around the filing loop: **Inbox** (documents, assistant suggestions and first-run setup), **Library** (folders, files and folder notes), **Rules** (document types and their rules), **History** (activity, trash, recovery) and **Settings** (storage, AI reader, assistants). A filing slip beside each inbox preview shows the destination live from the enabled rules; **Make a rule from this** drafts a rule from the document in front of you, which is how the app learns. Kraft cardboard frames the app and paper carries the work. See [The interface](interface.md).
+
 ## Subsequent milestones
 
 1. **Catalog hardening and search:** robust external rename reconciliation using fingerprints, extraction retry/backoff and PostgreSQL full-text search. Add bounded bulk filing after the per-document workflow is exercised.

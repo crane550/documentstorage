@@ -4,6 +4,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { signIn, ready, nav, connectStorage, newFolder, toast, noOverflow } from './ui.mjs';
 
 const base=process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5240';
 assert(['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname),'Use only a disposable local catalog');
@@ -34,7 +35,9 @@ const browser=await chromium.launch({executablePath:process.env.DOCUMENTSTORAGE_
 const page=await browser.newPage({viewport:{width:1440,height:1050}});
 const errors=[];page.on('pageerror',error=>errors.push(error.message));let enabled=false,checks=0;
 async function check(value,label){assert(await value,label);checks++;console.log('PASS '+label);}
-const nav=name=>page.locator('.main-nav').getByRole('button',{name,exact:true}).click();
+const reader=async()=>{await page.goto(base+'/settings?tab=reader');await ready(page);await page.getByLabel('Ollama server address',{exact:true}).waitFor();};
+const assistants=async()=>{await page.goto(base+'/settings?tab=assistants');await ready(page);await page.getByLabel('Connection name',{exact:true}).waitFor();};
+const note=()=>page.locator('.sticky-note').filter({hasText:'General guidance'});
 let token,clientId,secret,rpcId=0;
 async function protocol(method,params){
     const response=await fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'application/json, text/event-stream','MCP-Protocol-Version':'2025-11-25'},body:JSON.stringify({jsonrpc:'2.0',id:++rpcId,method,params})});
@@ -50,43 +53,35 @@ async function tool(name,args={}){
 }
 try{
     await page.goto(base);
-    await page.getByLabel('Username',{exact:true}).fill(credentials.username);await page.getByLabel('Password',{exact:true}).fill(credentials.password);
-    await page.getByRole('button',{name:'Sign in',exact:true}).click();
-    await page.waitForFunction(()=>{const b=document.querySelector('.heading-actions .primary');return b&&!b.disabled;});
-    const tree=page.locator('.tree-label').filter({hasText:'Assistant browser archive'});
-    if(await tree.count()===0){
-        await page.getByRole('button',{name:'Add storage',exact:true}).click();await page.getByLabel('Location name').fill('Assistant browser archive');await page.getByLabel('Full path on the server').fill(directory);
-        await page.getByRole('button',{name:'Connect storage',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
-    }else{await tree.click();await page.locator('.breadcrumbs').filter({hasText:'Assistant browser archive'}).waitFor();}
+    await signIn(page,credentials);
+    await connectStorage(page,base,'Assistant browser archive',directory);
     const destination='Filed '+stamp;
-    await page.getByRole('button',{name:'New folder',exact:true}).click();await page.getByLabel('Name',{exact:true}).fill(destination);
-    await page.getByRole('button',{name:'Create folder',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
-    await nav('Local AI');
+    await newFolder(page,destination);
+    await reader();
     await page.getByLabel('Ollama server address',{exact:true}).fill(endpoint);await page.getByLabel('Installed model',{exact:true}).fill('synthetic-guide:latest');
-    await page.getByLabel('Enable local document identification',{exact:true}).check();await page.getByLabel('Automatically identify new intake documents',{exact:true}).uncheck();
-    await page.getByRole('button',{name:'Save local AI settings',exact:true}).click();await page.getByRole('status').filter({hasText:'Local identification enabled'}).waitFor();enabled=true;
-    await nav('Instructions');await page.getByLabel('Instructions for',{exact:true}).waitFor();
-    const before=await page.locator('.instruction-canonical').first().textContent();
-    await page.getByLabel('Your instruction',{exact:true}).fill('These are monthly bank statements. Use the closing date and keep only the last four account digits.');
-    await page.getByRole('button',{name:'Send instruction',exact:true}).click();
-    await page.getByRole('button',{name:'Save this version',exact:true}).waitFor();
-    await check(page.locator('.instruction-canonical').first().textContent().then(x=>x===before),'conversational drafting preserves canonical guidance until acceptance');
-    await check((await page.locator('.instruction-message').count())>=2&&modelCalls===1,'source request and structured local assistant reply appear in the conversation');
-    await check(page.locator('.instruction-message img').count().then(x=>x===0),'assistant conversation content is escaped as text');
-    await page.getByRole('button',{name:'Save this version',exact:true}).click();
-    await page.getByRole('status').filter({hasText:'Instruction version saved with its source conversation'}).waitFor();
-    await check(page.locator('.instruction-canonical').first().textContent().then(x=>x===guide),'accepting a conversational draft publishes the exact proposed guidance');
-    await page.getByLabel('Your instruction',{exact:true}).fill('What should happen with a missing closing date?');
-    await page.getByRole('button',{name:'Send instruction',exact:true}).click();
-    await page.getByRole('status').filter({hasText:'Which date should be used'}).waitFor();
-    await check((await page.getByRole('button',{name:'Save this version',exact:true}).count())===0&&(await page.locator('.instruction-canonical').first().textContent())===guide,'a clarification question never publishes the model\'s replacement text');
-    await page.getByText('Edit a draft yourself',{exact:true}).click();
+    await page.getByLabel('Use the AI reader',{exact:true}).check();await page.getByLabel('Read new inbox documents automatically',{exact:true}).uncheck();
+    await page.getByRole('button',{name:'Save reader settings',exact:true}).click();await toast(page,'AI reader on');enabled=true;
+    await note().getByLabel('Describe a change',{exact:true}).waitFor();
+    const before=await note().locator('.instruction-canonical').first().textContent();
+    await note().getByLabel('Describe a change',{exact:true}).fill('These are monthly bank statements. Use the closing date and keep only the last four account digits.');
+    await note().getByRole('button',{name:'Ask the reader to draft',exact:true}).click();
+    await note().getByRole('button',{name:'Use this version',exact:true}).waitFor();
+    await check(note().locator('.instruction-canonical').first().textContent().then(x=>x===before),'conversational drafting keeps the saved guidance until you accept a version');
+    await check((await note().locator('.instruction-message').count())>=2&&modelCalls===1,'the request and the reader\'s structured reply are kept in the conversation');
+    await check(note().locator('.instruction-message img').count().then(x=>x===0),'conversation content is escaped as text');
+    await note().getByRole('button',{name:'Use this version',exact:true}).click();
+    await toast(page,'Note saved with the conversation');
+    await check(note().locator('.instruction-canonical').first().textContent().then(x=>x===guide),'accepting a drafted version publishes exactly the proposed guidance');
+    await note().getByLabel('Describe a change',{exact:true}).fill('What should happen with a missing closing date?');
+    await note().getByRole('button',{name:'Ask the reader to draft',exact:true}).click();
+    await note().locator('.note-reply').filter({hasText:'Which date should be used'}).waitFor();
+    await check((await note().getByRole('button',{name:'Use this version',exact:true}).count())===0&&(await note().locator('.instruction-canonical').first().textContent())===guide,'a clarifying question never publishes the model\'s replacement text');
     const manual=guide+'\nFlag missing closing dates for review.';
-    await page.getByLabel('Replacement instructions',{exact:true}).fill(manual);await page.getByRole('button',{name:'Review this version',exact:true}).click();
-    await page.getByRole('button',{name:'Save this version',exact:true}).click();await page.getByRole('status').filter({hasText:'Instruction version saved'}).waitFor();
-    await nav('Assistants & MCP');await nav('Instructions');
-    await check((await page.locator('.instruction-canonical').first().textContent())===manual&&(await page.locator('.instruction-message').count())>=4,'conversation and accepted instruction versions survive navigation and reload');
-    await nav('Assistants & MCP');
+    await note().getByRole('button',{name:'Edit general guidance',exact:true}).click();
+    await note().getByRole('textbox',{name:'General guidance',exact:true}).fill(manual);await note().getByRole('button',{name:'Save note',exact:true}).click();await toast(page,'Note saved.');
+    await assistants();await reader();
+    await check((await note().locator('.instruction-canonical').first().textContent())===manual&&(await note().locator('.instruction-message').count())>=4,'the conversation and saved versions survive navigation and reload');
+    await assistants();
     const connectionName='Browser assistant '+stamp+' <img src=x>';
     await page.getByLabel('Connection name',{exact:true}).fill(connectionName);
     const redirect='https://client.example.test/browser-callback';await page.getByLabel('OAuth callback URLs',{exact:true}).fill(redirect);
@@ -123,31 +118,32 @@ try{
     const source=await tool('add_instruction_message',{kind:'global',key:'global',text:'Never infer account numbers that are absent from a statement.',idempotency_key:'browser-source-'+stamp});
     const proposalArguments={kind:'global',key:'global',base_hash:instructions.hash,text:manual+'\nNever infer absent account numbers.',explanation:'Synthetic external assistant instruction update.',source_messages:[source.message_id],context_hash:context.context_hash,idempotency_key:'browser-guidance-'+stamp};
     const proposal=await tool('propose_instructions',proposalArguments);
-    await page.goto(base);await page.waitForFunction(()=>{const b=document.querySelector('.heading-actions .primary');return b&&!b.disabled;});await nav('Instructions');
-    await check(page.locator('.instruction-canonical').first().textContent().then(x=>x===manual),'an external MCP instruction proposal waits for browser acceptance');
-    await nav('Assistants & MCP');await page.locator('.rule-list-item').filter({hasText:connectionName}).filter({hasText:'Instruction update'}).click();
-    await page.getByRole('button',{name:'Save instruction version',exact:true}).click();await page.getByRole('status').filter({hasText:'Proposed change saved'}).waitFor();
+    await reader();
+    await check(note().locator('.instruction-canonical').first().textContent().then(x=>x===manual),'an external MCP guidance proposal waits for browser acceptance');
+    await assistants();await page.locator('.proposal-row').filter({hasText:connectionName}).filter({hasText:'Guidance update'}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Use this version',exact:true}).click();await toast(page,'Guidance updated.');
     await check((await tool('get_proposal',{proposal_id:proposal.id})).state==='Applied','browser acceptance is visible as a completed result to the MCP client');
     await check((await tool('propose_instructions',proposalArguments)).id===proposal.id,'replaying an accepted MCP proposal returns the original result after context changes');
     const storage=(await tool('list_storage')).items.find(x=>x.name==='Assistant browser archive');
     const folder=(await tool('list_folders',{storage_id:storage.id})).items.find(x=>x.name===destination);
     const ruleName='Browser proposed rule '+stamp;
     const rule=await tool('propose_rule',{input:{id:null,expected_revision:0,name:ruleName,document_type:'browser_statement_'+stamp,destination_folder_id:folder.id,match:{},filename_template:'{document_date:yyyy-MM-dd}.{extension}',required_facts:['document_date'],enabled:false},source_request:'File these synthetic statements by document date in the selected folder.',context_hash:(await tool('get_context')).context_hash,idempotency_key:'browser-rule-'+stamp});
-    await page.getByRole('button',{name:'Refresh assistant activity',exact:true}).click();await page.locator('.rule-list-item').filter({hasText:ruleName}).click();
-    await page.getByRole('button',{name:'Save paused rule',exact:true}).click();await page.getByRole('status').filter({hasText:'Proposed change saved'}).waitFor();
-    await nav('Filing rules');await page.locator('.rule-list-item').filter({hasText:ruleName}).getByText('Paused',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'Refresh assistant activity',exact:true}).click();await page.locator('.proposal-row').filter({hasText:ruleName}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Add paused rule',exact:true}).click();await toast(page,'Rule added');
+    await nav(page,'Rules');await page.locator('.rule-card').filter({hasText:ruleName}).locator('.stamp').filter({hasText:'Paused'}).waitFor();
     await check((await tool('get_proposal',{proposal_id:rule.id})).state==='Applied','an MCP rule proposal becomes a paused versioned rule only after browser acceptance');
-    await nav('Assistants & MCP');await page.locator('.connection-row').filter({hasText:connectionName}).getByRole('button',{name:'Revoke connection',exact:true}).click();
+    await assistants();await page.locator('.connection-row').filter({hasText:connectionName}).getByRole('button',{name:'Revoke connection',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Connection revoked'}).waitFor();
     const revoked=await protocol('tools/list',{});await check([401,403].includes(revoked.status),'browser revocation immediately blocks the issued MCP credentials');
-    await page.setViewportSize({width:390,height:844});await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'connection management and proposal review fit a mobile viewport');
+    await page.setViewportSize({width:390,height:844});await check(noOverflow(page),'connection management and suggestion review fit a mobile viewport');
     await page.screenshot({path:'.local/assistant-connections.png',fullPage:true});
-    await nav('Instructions');await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'instruction conversations and version history fit a mobile viewport');
+    await reader();await check(noOverflow(page),'guidance conversations and versions fit a mobile viewport');
     await page.screenshot({path:'.local/instruction-conversation.png',fullPage:true});
     await check(errors.length===0,'instruction and MCP workflows have no browser JavaScript errors');
     console.log(`All ${checks} instruction and MCP browser checks passed (synthetic model fixture).`);
 }finally{
     try{
-        if(clientId){await page.goto(base);await page.waitForFunction(()=>{const b=document.querySelector('.heading-actions .primary');return b&&!b.disabled;});await nav('Assistants & MCP');const revoke=page.locator('.connection-row').filter({hasText:clientId}).getByRole('button',{name:'Revoke connection',exact:true});if(await revoke.count()){await revoke.click();await page.getByRole('status').filter({hasText:'Connection revoked'}).waitFor();}}
-        if(enabled){await page.goto(base);await page.waitForFunction(()=>{const b=document.querySelector('.heading-actions .primary');return b&&!b.disabled;});await nav('Local AI');await page.getByLabel('Enable local document identification',{exact:true}).uncheck();await page.getByRole('button',{name:'Save local AI settings',exact:true}).click();await page.getByRole('status').filter({hasText:'Local identification is off'}).waitFor();}}finally{await browser.close();await new Promise(resolve=>fixture.close(resolve));}
+        await page.setViewportSize({width:1440,height:1050});
+        if(clientId){await assistants();const revoke=page.locator('.connection-row').filter({hasText:clientId}).getByRole('button',{name:'Revoke connection',exact:true});if(await revoke.count()){await revoke.click();await toast(page,'Connection revoked');}}
+        if(enabled){await reader();await page.getByLabel('Use the AI reader',{exact:true}).uncheck();await page.getByRole('button',{name:'Save reader settings',exact:true}).click();await toast(page,'AI reader off');}}finally{await browser.close();await new Promise(resolve=>fixture.close(resolve));}
 }

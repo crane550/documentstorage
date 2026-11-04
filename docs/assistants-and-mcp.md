@@ -4,15 +4,15 @@ The application now provides two ways to maintain organizing instructions: an in
 
 ## Instruction conversations
 
-Open **Instructions**, then select general guidance, a folder, or a document type. **Send instruction** saves your original request immediately. If a local model is enabled in **Local AI**, it proposes a concise, complete replacement instruction document. A clarification question creates no publishable replacement. Existing instructions remain canonical until **Save this version**.
+Guidance lives on sticky notes: **General guidance** in Settings › AI reader and **Folder notes** on each folder in the Library (document-type guidance is edited with the type in Rules). With the reader on, type a request in a note's “Tell the reader what to change…” box. Sending saves your original request immediately, and the reader proposes a concise, complete replacement. A clarification question creates no publishable replacement. Existing guidance remains canonical until **Use this version**; the pencil edits a note by hand.
 
-You can edit a draft yourself without Ollama. Compare the proposal with the saved text, then accept or reject it. Each accepted version retains its immutable text, timestamp, actor and source-message IDs. Ordinary folder/type/global guidance editors also record versions. The chat displays the latest 30 messages and latest 20 versions; older saved versions and their linked source messages remain accessible through paginated MCP history tools.
+Without Ollama, edit a note by hand; saving it records a new version straight away (general guidance goes through the same reviewed-change path, accepted by you in one step). Each accepted version retains its immutable text, timestamp, actor and source-message IDs. The note's history shows the latest 30 messages and latest 20 versions; older saved versions and their linked source messages remain accessible through paginated MCP history tools.
 
 Drafting runs outside the filesystem writer and is limited to one active guidance draft. Cancellation retains the source request. Changed guidance, newer conversation requests or changed local-model settings block a stale model result. Repeating a completed request returns its saved proposal without another model call. The local adapter checks model metadata before sending the conversation, refuses cloud-backed models, uses a strict reply/guidance/clarification schema, and never executes model tools. See [local AI setup](local-ai.md).
 
 ## Connect an external assistant
 
-1. Open **Assistants & MCP** and create a named connection. Use one connection per client.
+1. Open **Settings › Assistants** and create a named connection. Use one connection per client.
 2. Paste the exact OAuth callback URL supplied by that client. Normal web clients use HTTPS. Public desktop clients can use HTTP loopback callbacks with S256 PKCE. URLs cannot contain credentials, query strings or fragments.
 3. Choose its permissions. Connections cover all registered storage locations; this release does not provide per-folder grants.
 4. Copy the MCP server address, client ID and one-time client secret into the client's private OAuth settings. The app stores a secret hash and cannot show it again. Public desktop clients use the advanced PKCE option without a client secret.

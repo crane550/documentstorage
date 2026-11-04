@@ -90,6 +90,7 @@ builder.Services.AddHostedService<LibraryScanner>();
 builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHostedService<IdentificationWorker>();
+builder.Services.AddScoped<WorkspaceState>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment());
 
 var app = builder.Build();

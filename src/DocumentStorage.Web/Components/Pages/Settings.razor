@@ -1,0 +1,23 @@
+@page "/settings"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@inherits WorkspaceComponent
+
+<PageTitle>Settings · @Workspace.DisplayName</PageTitle>
+<header class="page-head"><div><h1>Settings</h1></div></header>
+<nav class="folder-tabs" aria-label="Settings">
+    <a href="/settings?tab=storage" class="@(Current == "storage" ? "active" : "")" aria-current="@(Current == "storage" ? "page" : null)"><Icon Name="drive" Size="15" />Storage</a>
+    <a href="/settings?tab=reader" class="@(Current == "reader" ? "active" : "")" aria-current="@(Current == "reader" ? "page" : null)"><Icon Name="spark" Size="15" />AI reader</a>
+    <a href="/settings?tab=assistants" class="@(Current == "assistants" ? "active" : "")" aria-current="@(Current == "assistants" ? "page" : null)"><Icon Name="plug" Size="15" />Assistants</a>
+    <a href="/account" data-enhance-nav="false"><Icon Name="user" Size="15" />Account</a>
+</nav>
+@switch (Current)
+{
+    case "reader": <ReaderSettings /> break;
+    case "assistants": <AssistantSettings /> break;
+    default: <StorageSettings /> break;
+}
+@code {
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    private string Current => Tab is "reader" or "assistants" ? Tab : "storage";
+    protected override Task OnInitializedAsync() => Workspace.EnsureLoadedAsync();
+}

@@ -1,18 +1,18 @@
 # Intake and deterministic filing
 
-This milestone makes a complete **review → rule → preview → file** workflow available without an AI connection. Optional [local Ollama identification](local-ai.md) now proposes types and facts into this same workflow, with explicit acceptance and human review. Human review and the filing engine are distinct; no document content is treated as instructions or executable code.
+This milestone makes a complete **review → rule → preview → file** workflow available without an AI connection. The screens are described in [The interface](interface.md); the UI calls intake folders **inboxes**. Optional [local Ollama identification](local-ai.md) now proposes types and facts into this same workflow, with explicit acceptance and human review. Human review and the filing engine are distinct; no document content is treated as instructions or executable code.
 
 ## Set up folders
 
-Register a storage location as usual. Inside it, create two sibling folders such as `Incoming` and `Bank statements`. Open Incoming and choose **Use as intake** in its details. Multiple non-overlapping intake subfolders are supported. Files in their descendants enter the queue too. A storage root itself cannot be intake; keep a destination outside intake in the same storage location for this milestone.
+Register a storage location as usual (Settings › Storage, or the setup steps on an empty Inbox, which can also create an `Inbox` folder for you). Inside it, create sibling folders such as `Incoming` and `Bank statements` in the Library. Open Incoming and choose **Use as inbox** in its details. Multiple non-overlapping intake subfolders are supported. Files in their descendants enter the queue too. A storage root itself cannot be intake; keep a destination outside intake in the same storage location for this milestone.
 
-A new or changed file needs two observations at least five seconds apart with unchanged size/timestamp before it becomes ready. An empty file or one held exclusively by a scanner remains pending. Stable files receive SHA-256 fingerprints; timestamps are normalized to PostgreSQL's microsecond precision. Use **Rescan storage** after the file settles, or wait for the existing one-minute background scan. Refresh Intake updates the displayed queue; it does not bypass readiness checks.
+A new or changed file needs two observations at least five seconds apart with unchanged size/timestamp before it becomes ready. An empty file or one held exclusively by a scanner remains pending. Stable files receive SHA-256 fingerprints; timestamps are normalized to PostgreSQL's microsecond precision. Use **Rescan storage** (the refresh button in the top bar) after the file settles, or wait for the existing one-minute background scan. Rescanning updates the displayed queue; it does not bypass readiness checks.
 
 Offline storage keeps its queue entries and existing index. It cannot produce an executable filing preview. Intake remains a scope on existing files; marking/unmarking a folder does not move documents.
 
 ## Copy files from the browser
 
-Drop individual files anywhere in the app window, or use **Choose files**, to copy them into the displayed **Intake destination**. The copy controls remain available across app views. A single intake folder is selected automatically; with several, choose a destination explicitly or open an intake folder in Documents. Offline destinations are unavailable. Removing a selected intake designation clears the selection rather than choosing somewhere else.
+Drop individual files anywhere in the app window, or use **Add to inbox** in the top bar, to copy them into an inbox folder. The control is on every page. A single inbox is used automatically; with several, choose one in the **Inbox folder** list beside the button, or open an inbox folder in the Library. Offline destinations are unavailable. Removing a selected intake designation clears the selection rather than choosing somewhere else.
 
 Original files stay on your computer. Each batch accepts up to 20 files, at most 100 MB each. Folder drops and batches exceeding these limits are rejected before copying. Existing names are never overwritten; a collision fails that file while other files in the batch continue. Per-file results show what succeeded and what needs retrying. Keep the browser page open until copying finishes. Successful copies appear in the catalog and intake queue; the usual stable-file checks still apply before identification or filing.
 
@@ -20,9 +20,9 @@ The server rechecks that the destination is still an available intake folder und
 
 ## Review a document
 
-Open **Intake**, select a document, and read its indexed text or download the original. Folder guidance from its ancestors is available alongside the review.
+Open the **Inbox** and select a document. Its preview sits beside the **filing slip**; the slip's **Extracted text** shows the indexed text, and its download button returns the original.
 
-Enter a document type and facts. Example:
+Enter a document type (a tap on a known type lays out its facts) and facts. Example:
 
 | Field | Value |
 | --- | --- |
@@ -33,11 +33,11 @@ Enter a document type and facts. Example:
 
 Types/fact names use lowercase letters, numbers and underscores. Values remain text, preserving account suffixes with leading zeros. Blank UI rows are omitted. Up to 32 facts, 1,000 characters per value, are supported. `extension` and `original_stem` come from the actual file and cannot be overridden.
 
-Check **I checked these facts against the document** and save. The review is bound to the file's current fingerprint. New contents require a fresh review, including changes that preserve size and timestamp. Review edits have revision checks to protect against conflicting tabs.
+**Confirm facts** (or **Confirm & file** when a rule already matches) records that you checked these facts against the document; **Save draft** keeps them unconfirmed. The review is bound to the file's current fingerprint. New contents require a fresh review, including changes that preserve size and timestamp. Review edits have revision checks to protect against conflicting tabs.
 
 ## Make and test a rule
 
-In **Filing rules**, choose a descriptive name, matching document type, exact-match conditions and destination folder. Conditions are ANDed and ignore letter case. A rule without conditions matches all documents of its type.
+In **Rules**, choose **New rule** (or **Make a rule from this** on a slip, which fills the editor from that document), then a descriptive name, matching document type, exact-match conditions and destination folder. Conditions are ANDed and ignore letter case. A rule without conditions matches all documents of its type.
 
 A filename pattern could be:
 
@@ -47,13 +47,13 @@ A filename pattern could be:
 
 Facts in a pattern are required. Additional required facts may be listed separately. Dates must be ISO `yyyy-MM-dd` and support these output formats: `yyyy`, `yyyy-MM`, `yyyy-MM-dd`. Generated names must be valid portable filenames, preserve the original extension, and stay inside the chosen folder. Values containing path separators cause review rather than path traversal or silent cleanup.
 
-Save a draft, then choose **Test against intake**. This evaluates the first 25 queue documents against that draft and the other enabled rules. It displays proposed names or blocking reasons, creates no executable preview tokens, and changes no files or operation history. Paused rules can be tested this way without enabling them.
+Save the rule (switch **Use this rule when filing** off to keep it paused), then choose **Try on inbox**. This evaluates the first 25 queue documents against that draft and the other enabled rules. It displays proposed names or blocking reasons, creates no executable preview tokens, and changes no files or operation history. Paused rules can be tested this way without enabling them.
 
 Every save, including enabling/pausing, makes a new immutable version snapshot. History remains available in the editor. Concurrent edits must reload before saving; an old form never silently overwrites a newer version.
 
 ## Preview and file
 
-Enable the intended rule, return to Intake, review the document, and choose **Save & preview**. A ready preview shows the precise rule version, filename and destination. Choose **Rename & file** to apply it.
+Turn the intended rule on (the switch on its card) and return to the Inbox. The slip works out the destination and filename live from the enabled rules as you type. **Confirm & file** saves the confirmed review, asks the server for an exact preview of the precise rule version, filename and destination, and applies it only when it matches what the slip showed; otherwise the server's preview is shown for a second look.
 
 Previews expire after 15 minutes and are bound to the requesting sign-in, source path/content, review revision, rule revision and destination path. Apply checks the current rules again, so a newly enabled conflicting rule also stops an old preview. Missing facts, an offline/missing destination, changed contents, expired/stale previews, duplicate names and competing rules stop filing. Nothing is overwritten.
 
@@ -73,6 +73,6 @@ The server services behind UI and MCP callers are `SetIntakeAsync`, `SaveReviewA
 
 `tests/DocumentStorage.Checks` covers readiness/locks, reviewed facts, immutable rules, dry runs, rule conflicts, stale/expired/actor-bound previews, collisions, changed bytes, destination renames, offline queues, restart recovery and idempotent filing with PostgreSQL and real temporary files.
 
-`node tests/browser/intake.mjs` drives folder designation, upload/review, a draft simulation, activation/version history, exact preview, real filing, operation history and mobile layout. Like the other browser checks, run only against a disposable local catalog; it registers synthetic files under ignored `.local/intake-browser-storage` and writes `.local/intake-preview.png` and `.local/filing-rules.png`.
+`node tests/browser/intake.mjs` drives inbox designation, upload/review, a paused-rule trial, activation/version history, the live destination, real filing, operation history and mobile layout. Like the other browser checks, run only against a disposable local catalog; it registers synthetic files under ignored `.local/intake-browser-storage` and writes `.local/intake-preview.png` and `.local/filing-rules.png`.
 
 The additive `AddIntakeAndFilingRules` migration creates reviews, rule/version history and preview tables, and adds queue/fingerprint fields to catalog entries. Back up an existing server catalog before deploying. No folder is automatically designated as intake and no rule is automatically enabled by the migration.

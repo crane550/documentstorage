@@ -1,0 +1,264 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<FilingSlip> Logger
+@using System.Text.Json
+
+@*
+    The index card beside an inbox document: what it is, the facts that name it, and exactly where it will go.
+    The destination is worked out live from the enabled rules as facts are typed; filing still asks the server for a
+    fingerprint-bound preview and only moves the file when that preview is the one shown here.
+*@
+<section class="slip" aria-label="Filing slip" aria-busy="@(busy ? "true" : "false")">
+    <header class="slip-head">
+        <span class="slip-kicker">Filing slip</span>
+        <h2 title="@Item.Entry.Name">@Item.Entry.Name</h2>
+        <div class="slip-tools">
+            <a class="icon-button small" href="@($"/documents/{Item.Entry.Id}/download")" download title="Download original" aria-label="Download original"><Icon Name="download" Size="16" /></a>
+            <Menu Label="More actions" ButtonClass="icon-button small" IconSize="16">
+                <button role="menuitem" type="button" @onclick="() => RequestMove.InvokeAsync(Item.Entry)"><Icon Name="move" Size="15" />Move by hand…</button>
+                <a role="menuitem" href="@($"/library?folder={Item.Entry.ParentId}&doc={Item.Entry.Id}")"><Icon Name="cabinet" Size="15" />Show in library</a>
+                @if (Workspace.ReaderEnabled && !ReaderActive) { <button role="menuitem" type="button" disabled="@(!Ready)" @onclick="Identify"><Icon Name="spark" Size="15" />Read again with AI</button> }
+            </Menu>
+        </div>
+    </header>
+
+    @if (!Ready) { <p class="slip-alert"><Icon Name="clock" Size="15" />@ReadinessText</p> }
+    else if (Item.Status == "Document changed") { <p class="slip-alert"><Icon Name="alert" Size="15" />The file changed after its facts were saved. Check them again.</p> }
+
+    @* The reader's suggestion stays separate until you choose to use it. *@
+    @if (Identification is { } job)
+    {
+        @if (ReaderActive)
+        {
+            <div class="reader working"><span class="spin"><Icon Name="refresh" Size="15" /></span><span>Reading with @job.Model…@(job.State == "Retry" ? " waiting to retry" : "")</span><button type="button" class="text-button" disabled="@busy" @onclick="CancelIdentification">Cancel</button></div>
+            @if (job.LastError != null) { <p class="hint">@job.LastError</p> }
+        }
+        else if (job.State == "Succeeded" && SuggestionCurrent && !suggestionUsed)
+        {
+            <div class="reader suggestion ai-proposal">
+                <div class="reader-head"><Icon Name="spark" Size="15" /><span>The reader thinks this is</span><strong>@TypeName(job.DocumentType)</strong></div>
+                @if (job.Summary.Length > 0) { <p class="reader-summary">@job.Summary</p> }
+                @if (job.NeedsReview) { <p class="reader-caution"><Icon Name="alert" Size="13" />Unsure or shortened text — check closely.</p> }
+                <dl class="ai-facts">@foreach (var fact in SuggestedFacts) { <div><dt>@fact.Key</dt><dd>@(fact.Value)@if (Evidence.GetValueOrDefault(fact.Key) is { Length: > 0 } quote) { <blockquote>@quote</blockquote> }</dd></div> }</dl>
+                <div class="reader-actions"><button type="button" class="button small" disabled="@busy" @onclick="UseIdentification"><Icon Name="check" Size="14" />Use suggestion</button><button type="button" class="text-button" @onclick="() => suggestionUsed = true">Ignore</button></div>
+            </div>
+        }
+        else if (job.State == "Succeeded" && !SuggestionCurrent && !suggestionUsed) { <p class="hint reader-note">The reader's suggestion is out of date. <button type="button" class="text-button" disabled="@busy" @onclick="Identify">Read again</button></p> }
+        else if (job.State is "Failed" or "Cancelled" or "Superseded") { <p class="hint reader-note">@(job.LastError ?? "Reading stopped.") <button type="button" class="text-button" disabled="@(busy || !Ready)" @onclick="Identify">Try again</button></p> }
+    }
+    else if (Workspace.ReaderEnabled && Ready && documentType.Length == 0)
+    {
+        <button type="button" class="reader-start" disabled="@busy" @onclick="Identify"><Icon Name="spark" Size="16" /><span><strong>Read with AI</strong><small>Suggest the type and facts</small></span></button>
+    }
+
+    <div class="slip-card">
+        <label class="slip-label" for="slip-type">Document type</label>
+        <input id="slip-type" class="slip-field" list="slip-types" value="@documentType" @oninput="TypeChanged" @onchange="TypeCommitted" placeholder="bank_statement" maxlength="64" autocomplete="off" />
+        <datalist id="slip-types">@foreach (var type in KnownTypes) { <option value="@type.Key">@type.Name</option> }</datalist>
+        @if (documentType.Trim().Length == 0 && KnownTypes.Any())
+        {
+            <div class="type-picks" aria-label="Choose a document type">@foreach (var type in KnownTypes.Take(8)) { <button type="button" class="token" @onclick="() => PickType(type.Key)">@type.Name</button> }</div>
+        }
+
+        <span class="slip-label">Facts</span>
+        <FactEditor Rows="fields" Edited="Edited" />
+    </div>
+
+    <div class="destination @(Plan?.Ready == true ? "ready" : "pending")" aria-live="polite">
+        @if (Plan?.Ready == true)
+        {
+            <div class="folder-tab"><Icon Name="folder" Size="15" /><span>@Workspace.FolderLabel(Plan.FolderId!.Value)</span></div>
+            <p class="destination-name">@Plan.Filename</p>
+            <p class="destination-rule"><Icon Name="signpost" Size="13" />@RuleName(Plan.RuleId)</p>
+        }
+        else if (documentType.Trim().Length == 0) { <p class="destination-empty">Choose a document type to see where it goes.</p> }
+        else if (factProblem != null) { <p class="destination-empty">@factProblem</p> }
+        else if (Plan != null && Plan.Reason == "No filing rule matched.")
+        {
+            <p class="destination-empty"><strong>No rule files this yet.</strong>@(PausedMatch != null ? " A paused rule would." : "")</p>
+            <div class="destination-actions">
+                @if (PausedMatch is { } paused) { <a class="button small" href="@($"/rules?rule={paused.Id}")"><Icon Name="play" Size="13" />Turn on “@paused.Name”</a> }
+                <button type="button" class="button small" disabled="@busy" @onclick="TeachRule"><Icon Name="signpost" Size="14" />Make a rule from this</button>
+            </div>
+        }
+        else if (Plan != null) { <p class="destination-empty">@Friendly(Plan.Reason)</p> }
+    </div>
+
+    @if (serverBlock != null) { <p class="form-error filing-preview blocked" role="alert">@serverBlock</p> }
+    @if (confirmProposal is { Ready: true } check)
+    {
+        <div class="filing-preview ready" role="status">
+            <p>The destination changed since you looked. It will be filed as:</p>
+            <h3>@check.Filename</h3><p class="preview-destination">@Workspace.RootName(Item.Entry.RootId) / @check.DestinationPath</p>
+            <button type="button" class="button primary" disabled="@busy" @onclick="ApplyChecked"><Icon Name="move" Size="16" />File it here</button>
+        </div>
+    }
+
+    <footer class="slip-actions">
+        <button type="button" class="text-button" disabled="@(busy || !dirty)" @onclick="SaveDraft">Save draft</button>
+        @if (Plan?.Ready == true)
+        {
+            <button type="button" class="button primary" disabled="@(busy || !Ready)" @onclick="ConfirmAndFile"><Icon Name="check" Size="16" />@(busy ? "Filing…" : "Confirm & file")</button>
+        }
+        else
+        {
+            <button type="button" class="button @(reviewedNow ? "" : "primary")" disabled="@(busy || !Ready || documentType.Trim().Length == 0 || reviewedNow)" @onclick="ConfirmOnly" title="Mark these facts as checked against the document">@(reviewedNow ? "Facts confirmed" : "Confirm facts")</button>
+        }
+    </footer>
+    @if (error != null) { <p class="form-error" role="alert">@error</p> }
+
+    @if (Item.Entry.ExtractedText.Length > 0)
+    {
+        <details class="slip-text review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre>@Item.Entry.ExtractedText</pre></details>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IntakeItem Item { get; set; } = default!;
+    [Parameter, EditorRequired] public List<FilingRuleDefinition> Rules { get; set; } = [];
+    [Parameter, EditorRequired] public List<DocumentTypeProfile> Types { get; set; } = [];
+    [Parameter] public IdentificationJob? Identification { get; set; }
+    [Parameter] public EventCallback<string> Filed { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public EventCallback IdentificationChanged { get; set; }
+    [Parameter] public EventCallback<CatalogEntry> RequestMove { get; set; }
+
+    private List<FactField> fields = [];
+    private string documentType = "";
+    private int revision;
+    private bool busy, dirty, suggestionUsed, reviewedNow;
+    private string? error, serverBlock, factProblem;
+    private FilingProposal? confirmProposal;
+    private FilingPlan? Plan;
+
+    private bool Ready => Item.Entry.Readiness == "Ready" && Item.Status != "Storage offline";
+    private bool ReaderActive => Identification?.State is "Queued" or "Running" or "Retry";
+    private string ReadinessText => Item.Status == "Storage offline" ? "Its storage is offline." : Item.Entry.Readiness switch
+    {
+        "Finishing scan" => "Still arriving — the file must stay unchanged for a few seconds.",
+        "Empty file" => "The file is empty. Wait for the scanner to finish, then rescan.",
+        "Waiting for access" => "Another program is holding the file. Rescan once it lets go.",
+        _ => "Waiting for the next scan."
+    };
+    private bool SuggestionCurrent => Identification != null && (Item.Review?.Revision ?? 0) == Identification.ReviewRevision && Item.Entry.ContentHash == Identification.ContentHash && Item.Entry.RelativePath == Identification.SourcePath;
+    private Dictionary<string,string> SuggestedFacts => Identification == null ? [] : JsonSerializer.Deserialize<Dictionary<string,string>>(Identification.FactsJson) ?? [];
+    private Dictionary<string,string> Evidence => Identification == null ? [] : JsonSerializer.Deserialize<Dictionary<string,string>>(Identification.EvidenceJson) ?? [];
+    private IEnumerable<(string Key, string Name)> KnownTypes => Types.Select(x => (x.Key, x.Name))
+        .Concat(Rules.Select(x => (x.DocumentType, x.DocumentType))).DistinctBy(x => x.Item1).OrderBy(x => x.Item2);
+    private string TypeName(string key) => Types.FirstOrDefault(x => x.Key == key)?.Name ?? key;
+    private string RuleName(Guid? id) { var rule = Rules.FirstOrDefault(x => x.Id == id); return rule == null ? "" : $"{rule.Name} · v{rule.Revision}"; }
+    private FilingRuleDefinition? PausedMatch;
+
+    protected override void OnInitialized()
+    {
+        var review = Item.Review;
+        documentType = review?.DocumentType ?? ""; revision = review?.Revision ?? 0;
+        reviewedNow = review?.Reviewed == true && review.ContentHash == Item.Entry.ContentHash;
+        fields = review == null ? [] : FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(review.FactsJson)!);
+        AddTypeFacts();
+        Recalculate();
+    }
+    protected override void OnParametersSet() => Recalculate();
+
+    private void AddTypeFacts()
+    {
+        // Choosing a known type lays out its fact names, keeping anything already typed.
+        var profile = Types.FirstOrDefault(x => x.Key == documentType.Trim().ToLowerInvariant());
+        var names = profile == null ? [] : JsonSerializer.Deserialize<string[]>(profile.FactNamesJson) ?? [];
+        if (names.Length > 0) fields.RemoveAll(x => x.Name.Trim().Length == 0 && x.Value.Trim().Length == 0);
+        foreach (var name in names.Where(n => !fields.Any(f => string.Equals(f.Name.Trim(), n, StringComparison.OrdinalIgnoreCase)))) fields.Add(new() { Name = name });
+        if (fields.Count == 0) fields.Add(new());
+    }
+    private void Recalculate()
+    {
+        factProblem = null; Plan = null; PausedMatch = null;
+        var type = documentType.Trim().ToLowerInvariant();
+        if (type.Length == 0) return;
+        Dictionary<string,string> facts;
+        try { facts = FactField.Read(fields).ToDictionary(x => x.Key.ToLowerInvariant(), x => x.Value, StringComparer.Ordinal); }
+        catch (StorageException ex) { factProblem = ex.Message; return; }
+        facts["extension"] = Path.GetExtension(Item.Entry.Name).TrimStart('.');
+        facts["original_stem"] = Path.GetFileNameWithoutExtension(Item.Entry.Name);
+        Plan = FilingRules.Preview(new(type, false, facts), Rules.Where(x => x.Enabled).Select(WorkspaceState.ToEngine));
+        if (!Plan.Ready && Plan.Reason == "No filing rule matched.")
+        {
+            var paused = FilingRules.Preview(new(type, false, facts), Rules.Where(x => !x.Enabled).Select(WorkspaceState.ToEngine));
+            if (paused.RuleId != null) PausedMatch = Rules.FirstOrDefault(x => x.Id == paused.RuleId);
+        }
+    }
+    private static string Friendly(string reason) => reason.StartsWith("Required fact is missing: ", StringComparison.Ordinal)
+        ? "Add “" + reason["Required fact is missing: ".Length..].TrimEnd('.') + "” to file it." : reason;
+
+    private void Touched() { dirty = true; reviewedNow = false; serverBlock = null; confirmProposal = null; }
+    private void Edited() { Touched(); Recalculate(); }
+    private void TypeChanged(ChangeEventArgs e) { documentType = e.Value?.ToString() ?? ""; Edited(); }
+    private void TypeCommitted(ChangeEventArgs e) { documentType = e.Value?.ToString() ?? ""; AddTypeFacts(); Recalculate(); }
+    private void PickType(string key) { documentType = key; Touched(); AddTypeFacts(); Recalculate(); }
+
+    private async Task<DocumentReview> SaveReview(bool reviewed)
+    {
+        var review = await Library.SaveReviewAsync(Item.Entry.Id, revision, documentType, FactField.Read(fields), reviewed, await Workspace.ActorAsync());
+        revision = review.Revision; dirty = false; reviewedNow = reviewed;
+        return review;
+    }
+    private async Task SaveDraft() => await Run(async () => { await SaveReview(false); await Changed.InvokeAsync(); Workspace.Notify("Draft saved. It is not filed until you confirm it."); });
+    private async Task ConfirmOnly() => await Run(async () => { await SaveReview(true); await Changed.InvokeAsync(); Workspace.Notify("Facts confirmed. It will file as soon as a rule matches."); });
+    private async Task ConfirmAndFile() => await Run(async () =>
+    {
+        var shown = Plan;
+        await SaveReview(true);
+        var actor = await Workspace.ActorAsync();
+        var proposal = await Library.PreviewFilingAsync(Item.Entry.Id, actor);
+        if (!proposal.Ready) { serverBlock = Friendly(proposal.Reason); await Changed.InvokeAsync(); return; }
+        // Only move without a second look when the server's exact preview is the one on screen.
+        if (shown?.Ready != true || proposal.Filename != shown.Filename || proposal.MatchedRuleId != shown.RuleId) { confirmProposal = proposal; await Changed.InvokeAsync(); return; }
+        await Library.ApplyFilingAsync(proposal.PreviewId!.Value, actor);
+        await Filed.InvokeAsync($"Filed as {proposal.Filename} in {Workspace.RootName(Item.Entry.RootId)} / {Path.GetDirectoryName(proposal.DestinationPath)?.Replace('\\', '/')}.");
+    });
+    private async Task ApplyChecked() => await Run(async () =>
+    {
+        if (confirmProposal?.PreviewId is not Guid id) return;
+        await Library.ApplyFilingAsync(id, await Workspace.ActorAsync());
+        await Filed.InvokeAsync($"Filed as {confirmProposal.Filename}.");
+    });
+    private async Task TeachRule() => await Run(async () =>
+    {
+        // Keep what was typed, then open the rule editor filled in from this document.
+        if (dirty) await SaveReview(false);
+        await Changed.InvokeAsync();
+        Navigation.NavigateTo($"/rules?from={Item.Entry.Id}");
+    });
+    private async Task Identify() => await Run(async () =>
+    {
+        await Library.QueueIdentificationAsync(Item.Entry.Id, await Workspace.ActorAsync(), true);
+        suggestionUsed = false; await IdentificationChanged.InvokeAsync();
+    });
+    private async Task CancelIdentification() => await Run(async () =>
+    {
+        if (Identification == null) return;
+        await Library.CancelIdentificationAsync(Identification.Id, await Workspace.ActorAsync());
+        await IdentificationChanged.InvokeAsync();
+    });
+    private async Task UseIdentification() => await Run(async () =>
+    {
+        if (Identification == null) return;
+        var usable = await Library.UsableIdentificationAsync(Identification.Id);
+        if (usable.EntryId != Item.Entry.Id) return;
+        documentType = usable.DocumentType;
+        fields = FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(usable.FactsJson)!);
+        AddTypeFacts(); suggestionUsed = true; Touched(); Recalculate();
+        Workspace.Notify("Suggestion copied in. Check each fact against the document before confirming.");
+    });
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true; error = null;
+        try { await action(); }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Filing slip action failed");
+            error = ex is StorageException ? ex.Message : "That could not finish. Rescan storage and try again.";
+        }
+        finally { busy = false; }
+    }
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+}

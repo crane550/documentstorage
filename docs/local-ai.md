@@ -4,15 +4,15 @@ Ollama reads indexed OCR text and proposes a document type and facts. The determ
 
 ## Connect your model
 
-Open **Local AI**. Enter the direct address of your own Ollama server, normally `http://127.0.0.1:11434` when it runs on the same computer as the application. The address is resolved from the application server, not your browser. A local network Ollama machine is supported too. Use the root HTTP/HTTPS address without credentials, query strings or a path.
+Open **Settings › AI reader**. Enter the direct address of your own Ollama server, normally `http://127.0.0.1:11434` when it runs on the same computer as the application. The address is resolved from the application server, not your browser. A local network Ollama machine is supported too. Use the root HTTP/HTTPS address without credentials, query strings or a path.
 
 Choose **Check connection & list models**, then select an installed chat model. This sends no document text and does not download a model. Model choice depends on your machine and extraction quality; the app does not select or install one automatically. Model listing excludes cloud-backed entries. Each identification checks `/api/show` before sending OCR to `/api/chat` and refuses models reporting an upstream host/model. HTTP redirects are disabled; normal HTTPS certificate verification remains enabled. Use a direct Ollama endpoint you control.
 
-Save with **Enable local document identification** checked. Identification and automatic identification are both off on a fresh catalog. The default request limit is ten minutes. You can allow 30–1,800 seconds for slower hardware. A temporary connection/server error retries after 30 seconds and then 120 seconds, up to three model attempts. Invalid structured responses fail without repeatedly asking the model. You can explicitly identify again after fixing a problem.
+Save with **Use the AI reader** switched on. Identification and automatic identification are both off on a fresh catalog. The default request limit is ten minutes. You can allow 30–1,800 seconds for slower hardware. A temporary connection/server error retries after 30 seconds and then 120 seconds, up to three model attempts. Invalid structured responses fail without repeatedly asking the model. You can explicitly identify again after fixing a problem.
 
 ## Give it context
 
-General identification guidance, inherited folder instructions, document-type guidance and hints from enabled filing rules are compiled into a compact, versioned JSON context for each job. Document types have a stable identifier, a readable name, recognition instructions and fact names. Edit these under **Document guidance**. For example:
+General identification guidance, inherited folder instructions, document-type guidance and hints from enabled filing rules are compiled into a compact, versioned JSON context for each job. Document types have a stable identifier, a readable name, recognition instructions and fact names. Edit these in **Rules**: select a type and choose **Edit type**. For example:
 
 > A bank statement describes an account over a statement period. Use the period's closing date, not the download or print date. Extract the institution and last four account digits. Leave missing facts out.
 
@@ -24,14 +24,14 @@ Instruction conversations, immutable source-linked versions and external MCP res
 
 ## Review a proposal
 
-1. Designate a subfolder as intake and let the scan settle and index.
-2. Open the document in **Intake** and choose **Identify with Ollama**.
-3. Continue using the library while the job runs. The selected document's status refreshes periodically. **Local AI** shows the latest 50 jobs and provides cancellation and retry controls.
+1. Make a subfolder an inbox and let the scan settle and index.
+2. Open the document in the **Inbox** and choose **Read with AI** on its filing slip.
+3. Continue using the library while the job runs. The selected document's status refreshes periodically. **Settings › AI reader** shows recent jobs and provides cancellation and retry controls.
 4. Inspect the proposed type, summary, facts and OCR evidence. Uncertain/shortened inputs are flagged. Unsupported evidence is omitted. Evidence supports review; it does not prove the model's interpretation or normalized fact is correct.
-5. Choose **Use proposed facts** to replace the draft fields. This always clears the human-review checkbox. You can edit the fields yourself.
-6. Check the facts against the original, confirm your review, and use **Save & preview**. The existing rule engine must produce a valid preview before **Rename & file** is available.
+5. Choose **Use suggestion** to replace the slip's fields. Nothing is confirmed by doing so. You can edit the fields yourself.
+6. Check the facts against the original, then choose **Confirm & file** (or **Confirm facts**). The existing rule engine must produce a valid preview before **Rename & file** is available.
 
-**Automatically identify new intake documents** queues ready, indexed, unreviewed intake files in rotating batches. It only creates proposals. It does not overwrite manual reviews, approve facts or enable unattended filing. Cancelled/failed jobs are not repeatedly requeued with identical source, review and guidance; use an explicit retry. Changed inputs can produce a new job.
+**Read new inbox documents automatically** queues ready, indexed, unreviewed intake files in rotating batches. It only creates proposals. It does not overwrite manual reviews, approve facts or enable unattended filing. Cancelled/failed jobs are not repeatedly requeued with identical source, review and guidance; use an explicit retry. Changed inputs can produce a new job.
 
 ## Durability and boundaries
 

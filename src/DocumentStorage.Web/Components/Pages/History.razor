@@ -1,0 +1,62 @@
+@page "/history"
+@page "/trash"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@implements IDisposable
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<History> Logger
+
+<PageTitle>@(Trash ? "Trash" : "History") · @Workspace.DisplayName</PageTitle>
+<header class="page-head"><div><h1>@(Trash ? "Trash" : "History")</h1></div></header>
+<HistoryTabs Current="@(Trash ? "trash" : "activity")" />
+
+@if (!Trash)
+{
+    <section class="sheet ledger activity-panel" aria-label="File operations">
+        @foreach (var op in Workspace.Overview.Activity)
+        {
+            <div class="activity-row" @key="op.Id">
+                <span class="ledger-icon"><Icon Name="@(op.Kind == "Trash" ? "trash" : op.Kind == "Restore" ? "restore" : op.Kind == "File" ? "stamp" : "move")" Size="17" /></span>
+                <div class="ledger-text"><strong>@Label(op.Kind)</strong><p><span class="mono">@op.FromPath</span><Icon Name="arrow-right" Size="13" /><span class="mono">@op.ToPath</span></p>@if (op.Error != null) { <p class="error-text">@op.Error</p> }</div>
+                <Stamp Text="@op.State" Tone="@(op.State == "Completed" ? "ready" : op.State is "Prepared" or "Needs review" ? "danger" : "muted")" />
+                <time datetime="@op.CreatedAt.ToString("O")">@op.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</time>
+            </div>
+        }
+        @if (Workspace.Overview.Activity.Count == 0) { <div class="empty-state"><Icon Name="history" Size="38" Stroke="1.3" /><h2>Nothing has moved yet</h2><p>Every rename, move, filing and trash shows up here.</p></div> }
+    </section>
+    @if (Workspace.Overview.Activity.Count >= 50) { <p class="hint">Showing the latest 50.</p> }
+}
+else
+{
+    <section class="sheet ledger" aria-label="Trash">
+        @foreach (var entry in trash)
+        {
+            <div class="activity-row" @key="entry.Id">
+                <span class="ledger-icon"><Icon Name="@(entry.IsFolder ? "folder" : "file")" Size="17" /></span>
+                <div class="ledger-text"><strong>@entry.Name</strong><p>@Workspace.RootName(entry.RootId) · @(entry.IsMissing ? "No longer on storage" : entry.IsFolder ? "Folder and contents" : WorkspaceState.FormatSize(entry.Size))</p></div>
+                <button class="button small" disabled="@(busy || entry.IsMissing)" @onclick="() => Restore(entry)"><Icon Name="restore" Size="15" />Restore</button>
+            </div>
+        }
+        @if (trash.Count == 0 && loaded) { <div class="empty-state"><Icon Name="trash" Size="38" Stroke="1.3" /><h2>The trash is empty</h2><p>Anything you trash waits here, on its own storage, until you restore it. Nothing is ever deleted for good.</p></div> }
+    </section>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    private bool Trash => Tab == "trash" || new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/').Equals("/trash", StringComparison.OrdinalIgnoreCase);
+    private List<CatalogEntry> trash = [];
+    private bool busy, loaded;
+    private static string Label(string kind) => kind switch { "File" => "Filed", "Trash" => "Moved to trash", "Restore" => "Restored", _ => kind };
+    protected override async Task OnInitializedAsync() { Workspace.Changed += Changed; await Workspace.EnsureLoadedAsync(); }
+    protected override async Task OnParametersSetAsync() { if (Trash) { trash = await Library.TrashAsync(); loaded = true; } }
+    private void Changed() => InvokeAsync(async () => { if (Trash && !busy) trash = await Library.TrashAsync(); StateHasChanged(); });
+    private async Task Restore(CatalogEntry entry)
+    {
+        if (busy) return; busy = true;
+        try { await Library.RestoreAsync(entry.Id); trash = await Library.TrashAsync(); await Workspace.RefreshAsync(); Workspace.Notify($"{entry.Name} restored to its original folder."); }
+        catch (Exception ex) { Logger.LogWarning("Restore failed: {Kind}", ex.GetType().Name); Workspace.Notify(ex is StorageException ? ex.Message : "It could not be restored. Check storage and try again.", true); }
+        finally { busy = false; }
+    }
+    public void Dispose() => Workspace.Changed -= Changed;
+}

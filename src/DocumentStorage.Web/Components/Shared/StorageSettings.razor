@@ -1,0 +1,28 @@
+@inherits WorkspaceComponent
+@inject NavigationManager Navigation
+
+<div class="storage-grid">
+    @foreach (var root in Workspace.Overview.Roots)
+    {
+        <article class="sheet storage-card @(root.IsOnline ? "" : "offline")" @key="root.Id">
+            <header><span class="storage-icon"><Icon Name="@(root.IsNetwork ? "nas" : "drive")" Size="22" /></span><Stamp Text="@(root.IsOnline ? "Connected" : "Offline")" Tone="@(root.IsOnline ? "ready" : "danger")" /></header>
+            <h3>@root.Name</h3>
+            <code class="mono">@root.Location</code>
+            <dl class="metadata"><div><dt>Kind</dt><dd>@(root.IsNetwork ? "Network / NAS" : "Local disk")</dd></div><div><dt>Last scan</dt><dd>@(root.LastScan?.ToLocalTime().ToString("MMM d, h:mm tt") ?? "Not yet")</dd></div></dl>
+            @if (!root.IsOnline && root.LastError != null) { <p class="error-text">@root.LastError</p> }
+            <footer><a class="text-button" href="@($"/library?folder={Workspace.RootFolder(root.Id)?.Id}")">Open<Icon Name="arrow" Size="13" /></a></footer>
+        </article>
+    }
+    <button class="add-card" @onclick="() => connecting = true"><Icon Name="plus" Size="26" /><strong>Connect storage</strong><span>A local folder or a mounted NAS share</span></button>
+</div>
+<p class="hint storage-note"><Icon Name="info" Size="14" />Paths are on the server running this app. Each location keeps a small identity file, so a disconnected share is shown as offline, never as empty.</p>
+@if (connecting) { <ConnectStorageDialog OnClose="() => connecting = false" OnConnected="Connected" /> }
+@code {
+    private bool connecting;
+    private async Task Connected(Guid rootId)
+    {
+        connecting = false; await Workspace.RefreshAsync();
+        Workspace.Notify("Storage connected and indexed.");
+        Navigation.NavigateTo($"/library?folder={Workspace.RootFolder(rootId)?.Id}");
+    }
+}

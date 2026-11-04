@@ -1,0 +1,121 @@
+@inject LibraryService Library
+@inject IServiceScopeFactory Scopes
+@inject WorkspaceState Workspace
+@inject IJSRuntime JS
+@inject DocumentStorage.Web.Mcp.McpAddress Address
+@inject ILogger<AssistantSettings> Logger
+@using DocumentStorage.Web.Mcp
+@using System.Text.Json
+
+@* Claude, ChatGPT or any MCP client, each with its own revocable key. They can only suggest; you decide. *@
+<div class="settings-grid">
+    <section class="sheet settings-card" aria-labelledby="assistant-new">
+        <h2 id="assistant-new">Connect an assistant</h2>
+        <div class="server-address"><span>MCP server</span><code class="mono">@Address.Resource</code><button type="button" class="icon-button small" aria-label="Copy server address" title="Copy" @onclick="() => Copy(Address.Resource.ToString())"><Icon Name="paperclip" Size="14" /></button></div>
+        @if (registered == null)
+        {
+            <form class="form" @onsubmit="Register" @onsubmit:preventDefault>
+                <label for="connection-name">Connection name</label>
+                <input id="connection-name" @bind="name" maxlength="80" placeholder="Claude on my laptop" required />
+                <label for="connection-callbacks">OAuth callback URLs</label>
+                <textarea id="connection-callbacks" class="mono" @bind="callbacks" rows="2" placeholder="Paste the callback URL your assistant gives you — one per line" required></textarea>
+                <fieldset class="permissions"><legend>It may</legend>
+                    <label class="check"><input type="checkbox" checked disabled /><span>See folder names, rules and guidance</span></label>
+                    <label class="check"><input type="checkbox" @bind="readDocuments" /><span>Read indexed document text and reviewed facts</span></label>
+                    <label class="check"><input type="checkbox" @bind="proposeInstructions" /><span>Suggest guidance for you to review</span></label>
+                    <label class="check"><input type="checkbox" @bind="proposeRules" /><span>Suggest rules for you to review</span></label>
+                    <label class="check"><input type="checkbox" @bind="execute" /><span>File documents you approve one at a time</span></label>
+                </fieldset>
+                <details class="advanced"><summary>Desktop client options</summary><label class="check"><input type="checkbox" @bind="publicClient" /><span>Public client with PKCE and no client secret</span></label><p class="hint">Leave this off when your client asks for a client ID and secret.</p></details>
+                <div class="form-actions"><button type="submit" class="button primary" disabled="@busy">Create MCP connection</button></div>
+            </form>
+        }
+        else
+        {
+            <div class="secret-panel" role="status">
+                <h3><Icon Name="lock" Size="16" />Copy these into your assistant now</h3>
+                <label for="new-client-id">OAuth client ID</label>
+                <div class="input-row"><textarea id="new-client-id" class="mono" readonly rows="1">@registered.Connection.ClientId</textarea><button type="button" class="icon-button" aria-label="Copy client ID" @onclick="() => Copy(registered.Connection.ClientId)"><Icon Name="paperclip" Size="15" /></button></div>
+                @if (registered.Secret != null)
+                {
+                    <label for="new-client-secret">OAuth client secret · shown once</label>
+                    <div class="input-row"><textarea id="new-client-secret" class="mono" readonly rows="2">@registered.Secret</textarea><button type="button" class="icon-button" aria-label="Copy client secret" @onclick="() => Copy(registered.Secret)"><Icon Name="paperclip" Size="15" /></button></div>
+                }
+                <p class="hint">Only a hash of the secret is kept, so it cannot be shown again.</p>
+                <button type="button" class="button" @onclick="() => registered = null">Hide connection details</button>
+            </div>
+        }
+    </section>
+
+    <div class="settings-side">
+        <section class="sheet settings-card" aria-labelledby="assistant-connections">
+            <h2 id="assistant-connections">Connections</h2>
+            @foreach (var connection in connections)
+            {
+                <div class="connection-row @(connection.RevokedAt == null ? "" : "revoked")" @key="connection.Id">
+                    <div><strong>@connection.Name</strong><small class="mono">@connection.ClientId</small><small>@string.Join(" · ", (JsonSerializer.Deserialize<string[]>(connection.ScopesJson) ?? []).Select(ScopeName))</small></div>
+                    @if (connection.RevokedAt == null) { <button class="button small danger-text" disabled="@busy" @onclick="() => Revoke(connection.Id)">Revoke connection</button> } else { <Stamp Text="Revoked" Tone="muted" /> }
+                </div>
+            }
+            @if (connections.Count == 0) { <p class="hint">No assistant can connect yet. Give each one its own connection so you can revoke it alone.</p> }
+        </section>
+        <section class="sheet settings-card" aria-labelledby="assistant-proposals">
+            <h2 id="assistant-proposals">Suggestions</h2>
+            @foreach (var item in changes.Proposals)
+            {
+                <button class="rule-list-item proposal-row" @key="item.Id" @onclick="() => reviewing = item"><Icon Name="@ProposalDialog.KindIcon(item.Kind)" Size="16" /><span><strong>@ProposalDialog.Name(item)</strong><small>@ConnectionName(item.ConnectionId) · @WorkspaceState.Ago(item.CreatedAt)</small></span><Stamp Text="@item.State" Tone="@ProposalDialog.StateTone(item.State)" /></button>
+            }
+            @if (changes.Proposals.Count == 0) { <p class="hint">Suggestions from assistants and the reader land here and in the Inbox.</p> }
+            <button class="text-button" disabled="@busy" @onclick="Refresh"><Icon Name="refresh" Size="14" />Refresh assistant activity</button>
+        </section>
+        @if (changes.Audit.Count > 0)
+        {
+        <details class="sheet settings-card assistant-audit"><summary>Activity log · latest @changes.Audit.Count</summary>
+            @foreach (var item in changes.Audit) { <div><time>@item.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</time><strong>@item.Action</strong><span>@item.Outcome</span><small>@ConnectionName(item.ConnectionId)</small></div> }
+        </details>
+        }
+    </div>
+</div>
+@if (reviewing != null) { <ProposalDialog Proposal="reviewing" Source="@ConnectionName(reviewing.ConnectionId)" OnClose="() => reviewing = null" OnDecided="Decided" /> }
+
+@code {
+    private string name = "", callbacks = "";
+    private bool readDocuments, proposeInstructions = true, proposeRules = true, execute, publicClient, busy;
+    private RegisteredAssistant? registered;
+    private List<AssistantConnection> connections = [];
+    private AssistantPage changes = new([], []);
+    private AssistantProposal? reviewing;
+    private string ConnectionName(Guid? id) => id == null ? "This workspace" : connections.FirstOrDefault(x => x.Id == id)?.Name ?? "Assistant";
+    private static string ScopeName(string scope) => scope switch { "catalog.read" => "folders", "documents.read" => "document text", "instructions.propose" => "guidance", "rules.propose" => "rules", "filing.execute" => "approved filing", _ => scope };
+    protected override async Task OnInitializedAsync() => await Load();
+    private async Task Load()
+    {
+        var actor = await Workspace.ActorAsync(); await using var scope = Scopes.CreateAsyncScope();
+        connections = await scope.ServiceProvider.GetRequiredService<AssistantConnections>().ListAsync(actor);
+        changes = await Library.AssistantChangesAsync(actor);
+    }
+    private async Task Refresh() => await Run(Load);
+    private async Task Register() => await Run(async () =>
+    {
+        var permissions = new List<string> { "catalog.read" };
+        if (readDocuments || execute) permissions.Add("documents.read"); if (proposeInstructions) permissions.Add("instructions.propose"); if (proposeRules) permissions.Add("rules.propose"); if (execute) permissions.Add("filing.execute");
+        await using var scope = Scopes.CreateAsyncScope();
+        registered = await scope.ServiceProvider.GetRequiredService<AssistantConnections>().CreateAsync(name, callbacks.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), permissions.ToArray(), publicClient, await Workspace.ActorAsync());
+        name = callbacks = ""; await Load();
+        Workspace.Notify("Connection created. Copy its details, then sign in from your assistant.");
+    });
+    private async Task Revoke(Guid id) => await Run(async () => { await Library.RevokeAssistantConnectionAsync(id, await Workspace.ActorAsync()); registered = null; await Load(); await Workspace.RefreshAsync(); Workspace.Notify("Connection revoked. Its pending and approved suggestions are blocked too."); });
+    private async Task Decided(string message) { reviewing = null; await Load(); Workspace.Notify(message); }
+    private async Task Copy(string text)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); Workspace.Notify("Copied."); }
+        catch (JSException) { Workspace.Notify("Copy is blocked here. Select the text and copy it instead.", true); }
+    }
+    private async Task Run(Func<Task> work)
+    {
+        if (busy) return; busy = true;
+        try { await work(); }
+        catch (Exception ex) { Logger.LogWarning("Assistant action failed: {Kind}", ex.GetType().Name); Workspace.Notify(ex is StorageException ? ex.Message : "That could not finish. Refresh and try again.", true); }
+        finally { busy = false; }
+    }
+}

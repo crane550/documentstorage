@@ -1,0 +1,94 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject IServiceScopeFactory Scopes
+@inject ILogger<ProposalDialog> Logger
+@using System.Text.Json
+@using Microsoft.EntityFrameworkCore
+
+@* An assistant's suggestion, side by side with what it would change. Nothing happens until you accept it. *@
+<Modal Title="@Name(Proposal)" IconName="@KindIcon(Proposal.Kind)" OnClose="OnClose" Busy="busy" Wide="true" Class="proposal-details">
+    <p class="proposal-meta"><Stamp Text="@Proposal.State" Tone="@StateTone(Proposal.State)" /><span>From @Source · @WorkspaceState.Ago(Proposal.CreatedAt)</span></p>
+    @if (Proposal.SourceRequest.Length > 0) { <div class="quote"><span>What was asked</span><p>@Proposal.SourceRequest</p></div> }
+    @if (Proposal.Kind == "Guidance" && guidance != null)
+    {
+        <p class="lede">@TargetName(guidance.Target)@(guidance.Explanation.Length > 0 ? " — " + guidance.Explanation : "")</p>
+        <div class="compare"><div><h3>Now</h3><pre class="instruction-canonical">@(current.Length > 0 ? current : "(empty)")</pre></div><div><h3>Suggested</h3><pre class="instruction-canonical proposed">@guidance.Text</pre></div></div>
+    }
+    else if (Proposal.Kind == "Rule" && rule != null)
+    {
+        <dl class="ai-facts rule-facts">
+            <div><dt>Document type</dt><dd>@rule.DocumentType</dd></div>
+            @foreach (var condition in rule.Match) { <div><dt>When @condition.Key is</dt><dd>@condition.Value</dd></div> }
+            <div><dt>Goes to</dt><dd>@Workspace.FolderLabel(rule.DestinationFolderId)</dd></div>
+            <div><dt>Named</dt><dd class="mono">@rule.FilenameTemplate</dd></div>
+        </dl>
+        <p class="hint">Accepting adds this rule switched off. Turn it on in Rules when you are happy with it.</p>
+    }
+    else if (preview != null)
+    {
+        <div class="compare move-compare"><div><h3>Now</h3><code>@preview.SourcePath</code></div><div><h3>Would move to</h3><code>@preview.DestinationPath</code></div></div>
+        <p class="hint">Approving lets this assistant make only this one move, before @preview.ExpiresAt.ToLocalTime().ToString("h:mm tt"). The file and rules are checked again when it runs.</p>
+    }
+    @if (error != null) { <p class="form-error" role="alert">@error</p> }
+    @if (Proposal.State == "Pending")
+    {
+        <div class="form-actions">
+            <button type="button" class="button" disabled="@busy" @onclick="() => Decide(false)">Reject</button>
+            <button type="button" class="button primary" disabled="@busy" @onclick="() => Decide(true)">@(Proposal.Kind == "Filing" ? "Approve this move" : Proposal.Kind == "Rule" ? "Add paused rule" : "Use this version")</button>
+        </div>
+    }
+</Modal>
+@code {
+    [Parameter, EditorRequired] public AssistantProposal Proposal { get; set; } = default!;
+    [Parameter] public string Source { get; set; } = "an assistant";
+    [Parameter] public List<DocumentTypeProfile> Types { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnDecided { get; set; }
+    private GuidanceChange? guidance;
+    private RuleInput? rule;
+    private FilingPreview? preview;
+    private string current = "";
+    private string? error;
+    private bool busy;
+    public static string Name(AssistantProposal item) => item.Kind switch
+    {
+        "Guidance" => "Guidance update",
+        "Rule" => "New rule: " + (JsonSerializer.Deserialize<RuleInput>(item.PayloadJson)?.Name ?? ""),
+        _ => "File one document"
+    };
+    public static string KindIcon(string kind) => kind switch { "Guidance" => "note", "Rule" => "signpost", _ => "move" };
+    public static string StateTone(string state) => state switch { "Pending" => "attention", "Applied" or "Approved" or "Executed" => "ready", "Rejected" or "Expired" or "Blocked" => "muted", _ => "muted" };
+    private string TargetName(InstructionTarget target) => target.Kind switch
+    {
+        "global" => "General reader guidance",
+        "folder" => "Notes for " + (Guid.TryParse(target.Key, out var id) ? Workspace.FolderLabel(id) : "a folder"),
+        _ => "How to recognize " + (Types.FirstOrDefault(x => x.Key == target.Key)?.Name ?? target.Key)
+    };
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (Proposal.Kind == "Guidance") { guidance = JsonSerializer.Deserialize<GuidanceChange>(Proposal.PayloadJson); if (guidance != null) current = (await Library.InstructionThreadAsync(guidance.Target)).Text; }
+            else if (Proposal.Kind == "Rule") rule = JsonSerializer.Deserialize<RuleInput>(Proposal.PayloadJson);
+            else if (Proposal.FilingPreviewId != null)
+            {
+                await using var scope = Scopes.CreateAsyncScope();
+                await using var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<CatalogDb>>().CreateDbContextAsync();
+                preview = await db.FilingPreviews.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Proposal.FilingPreviewId);
+            }
+        }
+        catch (Exception ex) { Logger.LogWarning("Proposal details failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The details could not load."; }
+    }
+    private async Task Decide(bool accept)
+    {
+        if (busy) return; busy = true; error = null;
+        try
+        {
+            await Library.DecideAssistantProposalAsync(Proposal.Id, Proposal.Revision, accept, await Workspace.ActorAsync());
+            await Workspace.RefreshAsync();
+            await OnDecided.InvokeAsync(!accept ? "Suggestion rejected." : Proposal.Kind == "Filing" ? "Move approved. The assistant can carry it out before it expires." : Proposal.Kind == "Rule" ? "Rule added, switched off." : "Guidance updated.");
+        }
+        catch (Exception ex) { Logger.LogWarning("Proposal decision failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "That could not be saved. Refresh and try again."; }
+        finally { busy = false; }
+    }
+}

@@ -1,0 +1,19 @@
+@* A small cardboard dropdown: a button that opens a list of actions. Choosing one, Escape or clicking away closes it. *@
+<div class="menu @(open ? "open" : "")" @onkeydown="Key">
+    <button type="button" class="@ButtonClass" aria-label="@Label" title="@Label" aria-haspopup="true" aria-expanded="@(open ? "true" : "false")" @onclick="() => open = !open"><Icon Name="@IconName" Size="@IconSize" /></button>
+    @if (open)
+    {
+        <div class="menu-dismiss" @onclick="() => open = false"></div>
+        <div class="menu-list @(AlignRight ? "right" : "")" role="menu" @onclick="() => open = false">@ChildContent</div>
+    }
+</div>
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string IconName { get; set; } = "more";
+    [Parameter] public int IconSize { get; set; } = 18;
+    [Parameter] public string ButtonClass { get; set; } = "button icon-only";
+    [Parameter] public bool AlignRight { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    private bool open;
+    private void Key(KeyboardEventArgs e) { if (e.Key == "Escape") open = false; }
+}

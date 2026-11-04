@@ -1,0 +1,188 @@
+@page "/rules"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@implements IDisposable
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<RulesPage> Logger
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
+<PageTitle>Rules · @Workspace.DisplayName</PageTitle>
+
+<header class="page-head">
+    <div><h1>Rules</h1>@if (definitions.Count > 0) { <p class="page-sub">@definitions.Count(x => x.Enabled) on · @definitions.Count(x => !x.Enabled) paused</p> }</div>
+    <div class="head-actions">
+        <button class="button" @onclick="() => editingType = NewType"><Icon Name="tag" Size="16" />New type</button>
+        <button class="button primary" @onclick="NewRule"><Icon Name="plus" Size="16" />New rule</button>
+    </div>
+</header>
+
+<div class="rules-layout">
+    <nav class="sheet type-list" aria-label="Document types">
+        <a href="/rules" class="type-item @(TypeKey == null ? "active" : "")" aria-current="@(TypeKey == null ? "page" : null)"><Icon Name="signpost" Size="16" /><span>All rules</span><span class="count">@definitions.Count</span></a>
+        <h2 class="section-label">Document types</h2>
+        @foreach (var type in TypeEntries)
+        {
+            <a href="@($"/rules?type={type.Key}")" class="type-item @(TypeKey == type.Key ? "active" : "")" aria-current="@(TypeKey == type.Key ? "page" : null)" @key="type.Key">
+                <Icon Name="tag" Size="15" /><span>@type.Name</span><span class="count">@type.Rules</span>
+            </a>
+        }
+        @if (!TypeEntries.Any()) { <p class="hint">No types yet.</p> }
+    </nav>
+
+    <section class="rules-main">
+        @if (SelectedProfile is { } profile)
+        {
+            <article class="type-card sheet">
+                <header><div><h2>@profile.Name</h2><code>@profile.Key</code></div><button class="button small" @onclick="() => editingType = profile"><Icon Name="edit" Size="14" />Edit type</button></header>
+                @if (profile.Instructions.Length > 0) { <p class="type-guidance">@profile.Instructions</p> } else { <p class="hint">No description yet — the reader recognizes it by name only.</p> }
+                @if (FactsOf(profile) is { Length: > 0 } facts) { <div class="fact-chips">@foreach (var fact in facts) { <span class="chip">@fact</span> }</div> }
+            </article>
+        }
+        else if (TypeKey != null && SelectedProfile == null)
+        {
+            <article class="type-card sheet muted-card">
+                <header><div><h2>@TypeKey</h2></div><button class="button small" @onclick="() => { suggestedKey = TypeKey; editingType = NewType; }"><Icon Name="tag" Size="14" />Describe this type</button></header>
+                <p class="hint">Used by rules, but not described. A description helps the reader recognize it.</p>
+            </article>
+        }
+
+        <div class="rule-cards">
+            @foreach (var rule in Shown)
+            {
+                <article class="rule-card @(rule.Enabled ? "" : "paused")" @key="rule.Id">
+                    <header>
+                        <h3>@rule.Name</h3>
+                        <button class="toggle @(rule.Enabled ? "on" : "")" role="switch" aria-checked="@(rule.Enabled ? "true" : "false")" aria-label="@("Use " + rule.Name)" title="@(rule.Enabled ? "On — click to pause" : "Paused — click to turn on")" disabled="@busy" @onclick="() => Toggle(rule)"><span></span></button>
+                    </header>
+                    <div class="rule-line"><span class="rule-label">Takes</span><span class="chip type">@TypeName(rule.DocumentType)</span>@foreach (var condition in Conditions(rule)) { <span class="chip">@condition.Key = @condition.Value</span> }</div>
+                    <div class="rule-line"><span class="rule-label">Files to</span><span class="folder-tab small"><Icon Name="folder" Size="13" />@Workspace.FolderLabel(rule.DestinationFolderId)</span></div>
+                    <div class="rule-line"><span class="rule-label">Named</span><span class="pattern">@foreach (var part in Pattern(rule.FilenameTemplate)) { if (part.Token) { <span class="tok">@part.Text</span> } else { <text>@part.Text</text> } }</span></div>
+                    <footer><Stamp Text="@(rule.Enabled ? "On" : "Paused")" Tone="@(rule.Enabled ? "ready" : "muted")" /><small>v@(rule.Revision) · @WorkspaceState.Ago(rule.UpdatedAt)</small><button class="text-button" @onclick="() => Edit(rule)"><Icon Name="edit" Size="14" />Edit</button></footer>
+                </article>
+            }
+        </div>
+        @if (!Shown.Any() && loaded)
+        {
+            <div class="empty-state sheet">
+                <Icon Name="signpost" Size="40" Stroke="1.3" />
+                <h2>@(TypeKey == null ? "No rules yet" : "No rules for this type")</h2>
+                <p>The easiest way to make one: open a document in the Inbox, fill in its facts and choose <strong>Make a rule from this</strong>.</p>
+                <button class="button primary" @onclick="NewRule"><Icon Name="plus" Size="16" />New rule</button>
+            </div>
+        }
+    </section>
+</div>
+
+@if (editing) { <RuleEditor @key="editorKey" Rule="editingRule" Draft="draft" SampleFacts="sample" Types="profiles" OnClose="CloseEditor" OnSaved="Saved" /> }
+@if (editingType != null) { <TypeEditor Profile="@(ReferenceEquals(editingType, NewType) ? null : editingType)" SuggestedKey="suggestedKey" OnClose="() => { editingType = null; suggestedKey = null; }" OnSaved="TypeSaved" /> }
+
+@code {
+    [SupplyParameterFromQuery(Name = "type")] public string? TypeKey { get; set; }
+    [SupplyParameterFromQuery(Name = "rule")] public string? RuleParameter { get; set; }
+    [SupplyParameterFromQuery(Name = "from")] public string? FromParameter { get; set; }
+    private static readonly DocumentTypeProfile NewType = new();
+    private List<FilingRuleDefinition> definitions = [];
+    private List<DocumentTypeProfile> profiles = [];
+    private FilingRuleDefinition? editingRule;
+    private DocumentTypeProfile? editingType;
+    private RuleInput? draft;
+    private Dictionary<string,string>? sample;
+    private Guid? learningFrom;
+    private string? suggestedKey, handledQuery;
+    private bool editing, busy, loaded;
+    private Guid editorKey = Guid.NewGuid();
+    private DocumentTypeProfile? SelectedProfile => TypeKey == null ? null : profiles.FirstOrDefault(x => x.Key == TypeKey);
+    private IEnumerable<FilingRuleDefinition> Shown => definitions.Where(x => TypeKey == null || x.DocumentType == TypeKey).OrderByDescending(x => x.Enabled).ThenBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase);
+    private IEnumerable<(string Key, string Name, int Rules)> TypeEntries => profiles.Select(x => x.Key).Concat(definitions.Select(x => x.DocumentType)).Distinct()
+        .Select(key => (key, TypeName(key), definitions.Count(r => r.DocumentType == key))).OrderBy(x => x.Item2, StringComparer.CurrentCultureIgnoreCase);
+    private string TypeName(string key) => profiles.FirstOrDefault(x => x.Key == key)?.Name ?? key;
+    private static string[] FactsOf(DocumentTypeProfile profile) => JsonSerializer.Deserialize<string[]>(profile.FactNamesJson) ?? [];
+    private static Dictionary<string,string> Conditions(FilingRuleDefinition rule) => JsonSerializer.Deserialize<Dictionary<string,string>>(rule.MatchJson) ?? [];
+    private static IEnumerable<(string Text, bool Token)> Pattern(string template)
+    {
+        var last = 0;
+        foreach (Match match in Regex.Matches(template, @"\{[a-z][a-z0-9_]*(?::[yMd-]+)?\}"))
+        {
+            if (match.Index > last) yield return (template[last..match.Index], false);
+            yield return (match.Value.Trim('{', '}').Split(':')[0].Replace('_', ' '), true);
+            last = match.Index + match.Length;
+        }
+        if (last < template.Length) yield return (template[last..], false);
+    }
+
+    protected override async Task OnInitializedAsync() { Workspace.Changed += WorkspaceChanged; await Workspace.EnsureLoadedAsync(); await Load(); loaded = true; }
+    protected override async Task OnParametersSetAsync()
+    {
+        var query = RuleParameter + "|" + FromParameter;
+        if (query == handledQuery) return;
+        handledQuery = query;
+        if (!loaded) await Load();
+        if (Guid.TryParse(RuleParameter, out var ruleId) && definitions.FirstOrDefault(x => x.Id == ruleId) is { } rule) Edit(rule);
+        else if (Guid.TryParse(FromParameter, out var entryId)) await LearnFrom(entryId);
+    }
+    private async Task Load()
+    {
+        try { definitions = await Library.RulesAsync(); profiles = (await Library.IdentificationOverviewAsync()).Types; }
+        catch (Exception ex) { Logger.LogError(ex, "Rules failed to load"); Workspace.Notify("Rules could not load. Reload the page.", true); }
+    }
+    private void WorkspaceChanged() => InvokeAsync(async () => { if (!busy) { await Load(); StateHasChanged(); } });
+    private void NewRule() { editingRule = null; draft = TypeKey == null ? null : new(null, 0, "", TypeKey, Guid.Empty, [], "{original_stem}.{extension}", [], true); sample = null; learningFrom = null; Open(); }
+    private void Edit(FilingRuleDefinition rule) { editingRule = rule; draft = null; sample = null; learningFrom = null; Open(); }
+    private void Open() { editorKey = Guid.NewGuid(); editing = true; }
+    private void CloseEditor()
+    {
+        editing = false;
+        if (RuleParameter != null || FromParameter != null) Navigation.NavigateTo(TypeKey == null ? "/rules" : $"/rules?type={TypeKey}", replace: true);
+    }
+    private async Task LearnFrom(Guid entryId)
+    {
+        // A rule drafted from a real document: its type, its most telling fact as the condition, and a name built from its facts.
+        var review = await Library.ReviewAsync(entryId);
+        var entry = await Library.EntryAsync(entryId);
+        if (review == null || entry == null || review.DocumentType.Length == 0) { NewRule(); return; }
+        var facts = JsonSerializer.Deserialize<Dictionary<string,string>>(review.FactsJson) ?? [];
+        static bool DateLike(string fact) => fact.Contains("date") || fact.EndsWith("_end") || fact.EndsWith("_start") || fact.EndsWith("_on");
+        string[] telling = ["institution", "counterparty", "vendor", "issuer", "company", "provider", "sender", "employer", "payee"];
+        var condition = facts.Keys.FirstOrDefault(x => telling.Contains(x)) ?? facts.Keys.FirstOrDefault(x => !DateLike(x) && !x.Contains("number") && !x.Contains("suffix") && !x.Contains("amount"));
+        var date = facts.Keys.FirstOrDefault(DateLike);
+        var parts = new List<string>();
+        if (date != null) parts.Add("{" + date + ":yyyy-MM-dd}");
+        if (condition != null) parts.Add("{" + condition + "}");
+        parts.AddRange(facts.Keys.Where(x => x != date && x != condition && (x.Contains("suffix") || x.Contains("number") || x.Contains("year"))).Take(1).Select(x => "{" + x + "}"));
+        var template = (parts.Count > 0 ? string.Join(" - ", parts) : "{original_stem}") + ".{extension}";
+        var match = condition == null ? new Dictionary<string,string>() : new() { [condition] = facts[condition] };
+        draft = new(null, 0, TypeName(review.DocumentType) + (condition != null ? " · " + facts[condition] : ""), review.DocumentType, Guid.Empty, match, template, [], true);
+        sample = new(facts) { ["extension"] = Path.GetExtension(entry.Name).TrimStart('.'), ["original_stem"] = Path.GetFileNameWithoutExtension(entry.Name) };
+        editingRule = null; learningFrom = entryId; Open();
+    }
+    private async Task Saved(FilingRuleDefinition saved)
+    {
+        await Load(); await Workspace.RefreshAsync();
+        if (learningFrom is Guid entry && saved.Enabled) { editing = false; Workspace.Notify("Rule saved. Back to the document — it now knows where to go."); Navigation.NavigateTo($"/?open={entry}"); return; }
+        editingRule = definitions.FirstOrDefault(x => x.Id == saved.Id) ?? saved;
+        Workspace.Notify(saved.Revision == 1 ? "Rule saved." : $"Rule saved as version {saved.Revision}.");
+    }
+    private async Task Toggle(FilingRuleDefinition rule)
+    {
+        if (busy) return; busy = true;
+        try
+        {
+            var input = new RuleInput(rule.Id, rule.Revision, rule.Name, rule.DocumentType, rule.DestinationFolderId, Conditions(rule), rule.FilenameTemplate,
+                JsonSerializer.Deserialize<string[]>(rule.RequiredFactsJson) ?? [], !rule.Enabled);
+            await Library.SaveRuleAsync(input, await Workspace.ActorAsync());
+            await Load();
+            Workspace.Notify(rule.Enabled ? $"“{rule.Name}” paused." : $"“{rule.Name}” is on.");
+        }
+        catch (Exception ex) { Logger.LogWarning("Rule toggle failed: {Kind}", ex.GetType().Name); Workspace.Notify(ex is StorageException ? ex.Message : "The rule could not be changed. Reload and try again.", true); }
+        finally { busy = false; }
+    }
+    private async Task TypeSaved(DocumentTypeProfile saved)
+    {
+        editingType = null; suggestedKey = null; await Load();
+        Workspace.Notify("Document type saved. New reading jobs use it.");
+        Navigation.NavigateTo($"/rules?type={saved.Key}");
+    }
+    public void Dispose() => Workspace.Changed -= WorkspaceChanged;
+}

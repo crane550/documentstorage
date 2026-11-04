@@ -2,7 +2,7 @@
 
 A filesystem-first document workspace. Files stay in ordinary server folders; PostgreSQL holds the catalog, extracted text, folder guidance, and operation history. The display name is a placeholder, configurable through `Application:DisplayName`.
 
-Built with .NET 10, Blazor Server, EF Core and PostgreSQL. The interface uses warm paper, kraft cardboard, brown, and sage. `crane550/2FAAccounts` is an infrastructure reference only; this project has its own code and database.
+Built with .NET 10, Blazor Server, EF Core and PostgreSQL. The interface uses kraft cardboard for its frame and paper for the work: index-card filing slips, manila destinations, rubber-stamp statuses and sticky-note guidance. `crane550/2FAAccounts` is an infrastructure reference only; this project has its own code and database.
 
 ## Working features
 
@@ -10,21 +10,23 @@ Working now:
 
 - Register existing local directories or mounted NAS shares; browse a nested folder tree.
 - Discover existing files in place, rescan every minute or on demand, and retain indexed text when a root is offline.
-- Dedicated **Folders** workspace (`/folders`) with search, storage filtering, subfolder creation, rename/move previews and sidebar management shortcuts.
+- One **Library** for folders and files: a sidebar folder tree, breadcrumbs, folder tools in the header, rename/move with path previews, and folder notes.
 - Create folders; upload files (100 MB each, 20 per selection); download originals; rename and move within a root.
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
-- In-app PDF viewer with page navigation, zoom, rotation, search, selectable text and password support; image and safe source-text previews in Documents and alongside Intake facts.
+- In-app PDF viewer with page navigation, zoom, rotation, search, selectable text and password support; image and safe source-text previews in the Library and beside each Inbox filing slip.
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves with content fingerprints before touching disk; verify moved files and complete folder trees, and recover verified interrupted moves on rescan.
 - Dedicated **Recovery** workspace with actor-bound inspections, explicit catalog repair, preserved disk copies, transactional decision receipts and paused-storage indicators.
-- Intake folder designation, window-wide drag-and-drop copying with explicit destinations and per-file results, stable-file readiness, and a queue for reviewing document types/facts.
-- Persisted, versioned filing rules with draft simulations and exact filename/destination previews.
-- Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
+- Inbox folders, window-wide drag-and-drop and an always-present **Add to inbox** button with per-file results, stable-file readiness, and an **Inbox** where each document gets a filing slip beside its preview.
+- Persisted, versioned filing rules (grouped by document type, made from a real document in one step) with trial runs and a live filename/destination on every slip.
+- Explicit, fingerprint-checked **Confirm & file** through the existing recovery journal.
 - Configurable local Ollama identification with durable jobs, cancellation/retries and document-type guidance.
 - Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
+
+See [The interface](docs/interface.md) for how the screens fit together, the filing loop and the design language.
 
 See [Document previews](docs/previews.md) for formats, controls and preview verification.
 

@@ -1,0 +1,189 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<RuleEditor> Logger
+@using System.Globalization
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
+@* One rule: which documents it takes, the folder they go to and the name they get. Every save is a new version. *@
+<Modal Title="@(Rule == null ? "New rule" : "Edit rule")" IconName="signpost" OnClose="OnClose" Busy="busy" Wide="true" Class="rule-editor">
+    <form class="form rule-form" @onsubmit="Save" @onsubmit:preventDefault>
+        <label for="rule-name">Rule name</label>
+        <input id="rule-name" class="rule-name-input" @bind="name" @bind:event="oninput" @bind:after="Edited" maxlength="100" placeholder="@(DefaultName.Trim().Length > 0 ? DefaultName : "Bank statements from Cedar Bank")" />
+        <div class="rule-grid">
+            <div class="rule-step">
+                <span class="step-num">1</span>
+                <div class="step-body">
+                    <h3>Which documents</h3>
+                    <label for="rule-type">Document type</label>
+                    <input id="rule-type" list="rule-types" @bind="documentType" @bind:event="oninput" @bind:after="Edited" maxlength="64" placeholder="bank_statement" autocomplete="off" spellcheck="false" />
+                    <datalist id="rule-types">@foreach (var type in Types) { <option value="@type.Key">@type.Name</option> }</datalist>
+                    <span class="field-label">Only when <small>(optional — every condition must match)</small></span>
+                    <FactEditor Rows="conditions" Label="Condition" NamePlaceholder="@FactHint" Edited="Edited" />
+                </div>
+            </div>
+            <div class="rule-step">
+                <span class="step-num">2</span>
+                <div class="step-body">
+                    <h3>Where they go</h3>
+                    <label for="rule-destination">Destination folder</label>
+                    <select id="rule-destination" @bind="destination" @bind:after="Edited">
+                        <option value="@Guid.Empty">Choose a folder…</option>
+                        @foreach (var folder in Destinations) { <option value="@folder.Id">@Workspace.FolderLabel(folder)</option> }
+                    </select>
+                </div>
+            </div>
+            <div class="rule-step">
+                <span class="step-num">3</span>
+                <div class="step-body">
+                    <h3>What they're called</h3>
+                    <label for="rule-template">Filename pattern</label>
+                    <input id="rule-template" class="mono" @bind="template" @bind:event="oninput" @bind:after="Edited" maxlength="300" spellcheck="false" />
+                    <div class="token-buttons" aria-label="Insert a fact">
+                        @foreach (var token in Tokens) { <button type="button" class="token" @onclick="() => Append(token.Value)">+ @token.Label</button> }
+                    </div>
+                    <div class="example"><span>Example</span><code>@Example</code></div>
+                    <details class="advanced"><summary>Also require</summary>
+                        <label for="rule-required">Required facts</label>
+                        <input id="rule-required" @bind="required" @bind:after="Edited" placeholder="account_suffix, statement_end" spellcheck="false" />
+                        <p class="hint">Facts in the pattern are always required. List any others that must be present.</p>
+                    </details>
+                </div>
+            </div>
+        </div>
+
+        <label class="switch"><input type="checkbox" @bind="enabled" @bind:after="Edited" /><span class="switch-track"></span><span>Use this rule when filing</span></label>
+
+        @if (error != null) { <p class="form-error" role="alert">@error</p> }
+        <div class="form-actions">
+            @if (Rule != null) { <button type="button" class="button" disabled="@(busy || dirty)" title="@(dirty ? "Save first" : "Check which inbox documents it would take")" @onclick="Test"><Icon Name="eye" Size="15" />Try on inbox</button> }
+            <span class="grow"></span>
+            <button type="button" class="button" disabled="@busy" @onclick="OnClose">@(Rule == null || dirty ? "Cancel" : "Close")</button>
+            <button type="submit" class="button primary" disabled="@(busy || (!dirty && Rule != null))">@(busy ? "Saving…" : Rule == null ? "Save rule" : "Save changes")</button>
+        </div>
+
+        @if (simulation != null)
+        {
+            <section class="simulation-panel" aria-label="Rule test results">
+                <h3 class="section-label">On the first @simulation.Count inbox @(simulation.Count == 1 ? "document" : "documents") · nothing moved</h3>
+                @foreach (var item in simulation)
+                {
+                    <div class="simulation-row"><Stamp Text="@(item.Proposal.Ready ? "Matches" : "Skipped")" Tone="@(item.Proposal.Ready ? "ready" : "muted")" /><div><strong>@item.Name</strong><p>@(item.Proposal.Ready ? item.Proposal.DestinationPath : item.Proposal.Reason)</p></div></div>
+                }
+                @if (simulation.Count == 0) { <p class="hint">The inbox is empty.</p> }
+            </section>
+        }
+        @if (history.Count > 0)
+        {
+            <details class="rule-history"><summary>Versions · @history.Count</summary>
+                @foreach (var version in history)
+                {
+                    var snapshot = JsonSerializer.Deserialize<FilingRuleDefinition>(version.SnapshotJson)!;
+                    <div><strong>v@(version.Revision) · @(snapshot.Enabled ? "On" : "Paused")</strong><small>@version.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</small><code>@snapshot.FilenameTemplate</code></div>
+                }
+            </details>
+        }
+    </form>
+</Modal>
+
+@code {
+    [Parameter] public FilingRuleDefinition? Rule { get; set; }
+    [Parameter] public RuleInput? Draft { get; set; }
+    [Parameter] public Dictionary<string,string>? SampleFacts { get; set; }
+    [Parameter] public List<DocumentTypeProfile> Types { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<FilingRuleDefinition> OnSaved { get; set; }
+    private string name = "", documentType = "", template = "", required = "";
+    private Guid destination;
+    private bool enabled = true, dirty, busy;
+    private string? error;
+    private int revision;
+    private List<FactField> conditions = [];
+    private List<FilingRuleRevision> history = [];
+    private List<RuleSimulation>? simulation;
+
+    private DocumentTypeProfile? Profile => Types.FirstOrDefault(x => x.Key == documentType.Trim().ToLowerInvariant());
+    private string[] ProfileFacts => Profile == null ? [] : JsonSerializer.Deserialize<string[]>(Profile.FactNamesJson) ?? [];
+    private string FactHint => ProfileFacts.FirstOrDefault() ?? "institution";
+    private IEnumerable<CatalogEntry> Destinations => Workspace.Overview.Folders.Where(x => !Workspace.InInbox(x)).OrderBy(x => Workspace.FolderLabel(x), StringComparer.OrdinalIgnoreCase);
+    private static bool DateLike(string fact) => fact.Contains("date") || fact.EndsWith("_end") || fact.EndsWith("_start") || fact.EndsWith("_on");
+    private IEnumerable<(string Label, string Value)> Tokens
+    {
+        get
+        {
+            var facts = ProfileFacts.Concat(SampleFacts?.Keys.Where(x => x is not "extension" and not "original_stem") ?? []).Concat(conditions.Select(x => x.Name.Trim().ToLowerInvariant())).Where(x => x.Length > 0).Distinct();
+            foreach (var fact in facts) yield return DateLike(fact) ? (fact.Replace('_', ' ') + " (date)", "{" + fact + ":yyyy-MM-dd}") : (fact.Replace('_', ' '), "{" + fact + "}");
+            yield return ("original name", "{original_stem}");
+            yield return ("extension", ".{extension}");
+        }
+    }
+    private string Example
+    {
+        get
+        {
+            var sample = new Dictionary<string,string>(SampleFacts ?? [], StringComparer.OrdinalIgnoreCase);
+            foreach (var condition in conditions.Where(x => x.Name.Length > 0 && x.Value.Length > 0)) sample.TryAdd(condition.Name.Trim(), condition.Value.Trim());
+            sample.TryAdd("extension", "pdf"); sample.TryAdd("original_stem", "scan-0042");
+            return Regex.Replace(template, @"\{([a-z][a-z0-9_]{0,63})(?::(yyyy-MM-dd|yyyy-MM|yyyy))?\}", match =>
+            {
+                var key = match.Groups[1].Value;
+                if (!sample.TryGetValue(key, out var value) || value.Length == 0) return match.Groups[2].Success ? match.Groups[2].Value.ToLowerInvariant() : "‹" + key.Replace('_', ' ') + "›";
+                if (match.Groups[2].Success && DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return date.ToString(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                return value;
+            });
+        }
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        if (Rule != null)
+        {
+            revision = Rule.Revision; name = Rule.Name; documentType = Rule.DocumentType; destination = Rule.DestinationFolderId; template = Rule.FilenameTemplate;
+            required = string.Join(", ", JsonSerializer.Deserialize<string[]>(Rule.RequiredFactsJson) ?? []);
+            conditions = FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(Rule.MatchJson) ?? []);
+            enabled = Rule.Enabled;
+            try { history = await Library.RuleHistoryAsync(Rule.Id); } catch (Exception ex) { Logger.LogWarning("Rule history failed: {Kind}", ex.GetType().Name); }
+        }
+        else if (Draft != null)
+        {
+            name = Draft.Name; documentType = Draft.DocumentType; destination = Draft.DestinationFolderId; template = Draft.FilenameTemplate;
+            required = string.Join(", ", Draft.RequiredFacts); conditions = FactField.From(Draft.Match); enabled = Draft.Enabled; dirty = true;
+        }
+        if (template.Length == 0) template = "{original_stem}.{extension}";
+        if (conditions.Count == 0) conditions.Add(new()); // An empty row shows where a condition goes; blank ones are not saved.
+    }
+    private void Edited() { dirty = true; simulation = null; error = null; }
+    private void Append(string token)
+    {
+        // Tokens go before the extension, joined with " - "; the starter pattern's original name gives way to the first one.
+        const string Ext = ".{extension}";
+        if (token == Ext) { if (!template.EndsWith(Ext, StringComparison.Ordinal)) template += Ext; Edited(); return; }
+        var hasExtension = template.EndsWith(Ext, StringComparison.Ordinal);
+        var stem = hasExtension ? template[..^Ext.Length] : template;
+        if (stem == "{original_stem}") stem = "";
+        template = (stem.Length > 0 ? stem + " - " + token : token) + (hasExtension ? Ext : "");
+        Edited();
+    }
+    private async Task Save()
+    {
+        if (busy) return; busy = true; error = null;
+        try
+        {
+            var input = new RuleInput(Rule?.Id, revision, name.Trim().Length > 0 ? name : DefaultName, documentType, destination, FactField.Read(conditions), template,
+                required.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), enabled);
+            var saved = await Library.SaveRuleAsync(input, await Workspace.ActorAsync());
+            revision = saved.Revision; dirty = false;
+            history = await Library.RuleHistoryAsync(saved.Id);
+            await OnSaved.InvokeAsync(saved);
+        }
+        catch (Exception ex) { Logger.LogWarning("Rule save failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The rule could not be saved. Reload and try again."; }
+        finally { busy = false; }
+    }
+    private string DefaultName => (Profile?.Name ?? documentType.Replace('_', ' ')) + (conditions.FirstOrDefault(x => x.Value.Length > 0) is { } c ? " · " + c.Value : "");
+    private async Task Test()
+    {
+        if (busy || Rule == null) return; busy = true; error = null;
+        try { simulation = await Library.SimulateRuleAsync(Rule.Id); }
+        catch (Exception ex) { Logger.LogWarning("Rule test failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The test could not run."; }
+        finally { busy = false; }
+    }
+}

@@ -1,0 +1,7 @@
+@inherits WorkspaceComponent
+<nav class="folder-tabs" aria-label="History">
+    <a href="/history" class="@(Current == "activity" ? "active" : "")" aria-current="@(Current == "activity" ? "page" : null)"><Icon Name="history" Size="15" />Activity</a>
+    <a href="/history?tab=trash" class="@(Current == "trash" ? "active" : "")" aria-current="@(Current == "trash" ? "page" : null)"><Icon Name="trash" Size="15" />Trash</a>
+    <a href="/recovery" class="@(Current == "recovery" ? "active" : "")" aria-current="@(Current == "recovery" ? "page" : null)"><Icon Name="restore" Size="15" /><span>Recovery</span>@if (Workspace.Overview.RecoveryCount > 0) { <span class="count danger">@Workspace.Overview.RecoveryCount</span> }</a>
+</nav>
+@code { [Parameter] public string Current { get; set; } = "activity"; }

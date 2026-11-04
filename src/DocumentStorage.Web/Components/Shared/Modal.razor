@@ -1,0 +1,24 @@
+@* One dialog frame for every form: a sheet of paper on a cardboard backdrop. Escape and the × close it unless busy. *@
+<div class="modal-backdrop" @onkeydown="Key" @onclick="BackdropClick">
+    <section class="modal @(Wide ? "wide" : "") @Class" role="dialog" aria-modal="true" aria-labelledby="@id" @onclick:stopPropagation="true">
+        <header class="modal-header">
+            @if (IconName != null) { <span class="modal-icon"><Icon Name="@IconName" Size="20" /></span> }
+            <h2 id="@id">@Title</h2>
+            <button type="button" class="icon-button" aria-label="Close dialog" disabled="@Busy" @onclick="Close"><Icon Name="close" Size="18" /></button>
+        </header>
+        <div class="modal-body">@ChildContent</div>
+    </section>
+</div>
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? IconName { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public string? Class { get; set; }
+    private readonly string id = "dialog-" + Guid.NewGuid().ToString("N")[..8];
+    private async Task Close() { if (!Busy) await OnClose.InvokeAsync(); }
+    private async Task Key(KeyboardEventArgs e) { if (e.Key == "Escape") await Close(); }
+    private Task BackdropClick() => Task.CompletedTask; // A stray click outside never discards a half-filled form.
+}

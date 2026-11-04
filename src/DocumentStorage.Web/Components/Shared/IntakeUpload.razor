@@ -3,31 +3,45 @@
 @inject ILogger<IntakeUpload> Logger
 @implements IAsyncDisposable
 
-<section class="paper-panel intake-upload" @ref="element" data-ready="@Ready.ToString().ToLowerInvariant()" aria-label="Copy files to intake" aria-busy="@uploading">
-    <div class="intake-upload-heading"><span class="stat-icon"><Icon Name="upload" /></span><div><h2>Drop files into intake.</h2><p>Drag files anywhere in this window to copy them to the selected intake folder. Originals stay on your computer.</p></div></div>
-    @if (Targets.Count == 0)
+@* Copies files from this computer into an inbox folder. Drop anywhere in the window, or use the button. *@
+<div class="intake-upload" @ref="element" data-ready="@Ready.ToString().ToLowerInvariant()" aria-busy="@(uploading ? "true" : "false")">
+    @if (Targets.Count > 1)
     {
-        <p class="field-hint">Choose a folder in Documents and select “Use as intake” to enable uploads here.</p>
+        <select id="intake-upload-target" class="inbox-target" aria-label="Inbox folder" value="@destination" @onchange="Choose" disabled="@uploading">
+            <option value="@Guid.Empty">Choose an inbox…</option>
+            @foreach (var folder in Targets) { <option value="@folder.Id" disabled="@(!Online(folder))">@FolderName(folder)@(!Online(folder) ? " (offline)" : "")</option> }
+        </select>
     }
-    else
-    {
-        <div class="intake-upload-controls"><label for="intake-upload-target">Intake destination</label><select id="intake-upload-target" value="@destination" @onchange="Choose" disabled="@uploading"><option value="@Guid.Empty">Choose an intake folder</option>@foreach (var folder in Targets) { <option value="@folder.Id" disabled="@(!Online(folder))">@FolderName(folder)@(!Online(folder) ? " (offline)" : "")</option> }</select>
-            <label class="button subtle intake-file-picker @(Ready ? "" : "disabled")">Choose files<InputFile @ref="picker" OnChange="Upload" multiple disabled="@(!Ready)" aria-label="Copy files to intake" /></label></div>
-    }
-    <p class="field-hint">Up to 20 files per batch, 100 MB each. Existing filenames are never overwritten.</p>
-    <p class="drop-feedback" role="status" data-drop-feedback></p>
-    @if (uploading) { <p role="status">Copying file @position of @total… Keep this page open until the batch finishes.</p> }
-    @if (notice != null) { <p class="@(failed ? "error-text" : "field-hint")" role="status">@notice</p> }
-    @if (results.Count > 0) { <ul class="intake-upload-results" aria-label="Intake upload results">@foreach (var result in results) { <li class="@(result.Success ? "uploaded" : "error-text")"><strong>@result.Name</strong><span>@result.Message</span></li> }</ul> }
-    <div class="window-drop-hint" aria-hidden="true"><Icon Name="inbox" Size="38" /><strong>@(Ready ? "Drop to copy into intake" : "Choose an available intake destination first")</strong><span>@(Targets.FirstOrDefault(x => x.Id == destination) is { } target ? FolderName(target) : "Your original files stay on your computer.")</span></div>
-</section>
+    <label class="button primary add-button @(Ready ? "" : "disabled")" title="@(Targets.Count == 0 ? "Choose a folder to use as your inbox first" : Ready ? "Copy files from this computer into " + TargetName : "Choose an inbox folder first")">
+        <Icon Name="upload" Size="17" /><span>Add to inbox</span>
+        <InputFile OnChange="Upload" multiple disabled="@(!Ready)" aria-label="Copy files to inbox" />
+    </label>
+    <div class="upload-pop @(uploading || notice != null || results.Count > 0 ? "open" : "")">
+        <p class="drop-feedback" role="status" data-drop-feedback></p>
+        @if (uploading) { <p class="upload-progress" role="status"><span class="spin"><Icon Name="refresh" Size="14" /></span>Copying @position of @total… keep this page open.</p> }
+        @if (notice != null) { <p class="@(failed ? "error-text" : "upload-summary")" role="status">@notice</p> }
+        @if (results.Count > 0)
+        {
+            <ul class="intake-upload-results" aria-label="Upload results">
+                @foreach (var result in results) { <li class="@(result.Success ? "uploaded" : "failed")"><Icon Name="@(result.Success ? "check" : "alert")" Size="14" /><strong>@result.Name</strong><span>@result.Message</span></li> }
+            </ul>
+        }
+        @if (!uploading && (notice != null || results.Count > 0)) { <button type="button" class="text-button" @onclick="Dismiss">Done</button> }
+    </div>
+    <div class="window-drop-hint" aria-hidden="true">
+        <div class="drop-box">
+            <Icon Name="inbox" Size="44" Stroke="1.4" />
+            <strong>@(Ready ? "Drop to add to your inbox" : Targets.Count == 0 ? "Choose an inbox folder first" : "Choose which inbox first")</strong>
+            <span>@(Ready ? TargetName : "Your original files stay on this computer.")</span>
+        </div>
+    </div>
+</div>
 
 @code {
     [Parameter, EditorRequired] public LibraryOverview Overview { get; set; } = default!;
     [Parameter] public Guid? PreferredFolderId { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
     private ElementReference element;
-    private InputFile? picker;
     private IJSObjectReference? module, registration;
     private Guid destination;
     private bool uploading, failed, manual, connected;
@@ -37,6 +51,7 @@
     private List<CatalogEntry> Targets => Overview.Folders.Where(x => x.IsIntake && !x.IsMissing && x.TrashBatchId == null).ToList();
     private bool Online(CatalogEntry folder) => Overview.Roots.Any(x => x.Id == folder.RootId && x.IsOnline);
     private bool Ready => connected && !uploading && Targets.Any(x => x.Id == destination && Online(x));
+    private string TargetName => Targets.FirstOrDefault(x => x.Id == destination) is { } target ? FolderName(target) : "";
     private string FolderName(CatalogEntry folder) => (Overview.Roots.FirstOrDefault(x => x.Id == folder.RootId)?.Name ?? "Storage") + " / " + folder.RelativePath;
     protected override void OnParametersSet()
     {
@@ -54,13 +69,18 @@
         }
     }
     private void Choose(ChangeEventArgs e) { if (!uploading) { Guid.TryParse(e.Value?.ToString(), out destination); manual = true; notice = null; } }
+    private async Task Dismiss()
+    {
+        notice = null; results = []; failed = false;
+        if (registration != null) try { await registration.InvokeVoidAsync("complete"); } catch (JSDisconnectedException) { }
+    }
     private async Task Upload(InputFileChangeEventArgs args)
     {
         if (uploading) return;
-        var target = destination; uploading = true; failed = false; notice = null; results = []; position = 0; total = args.FileCount;
+        var target = destination; batch++; uploading = true; failed = false; notice = null; results = []; position = 0; total = args.FileCount;
         try
         {
-            if (!Targets.Any(x => x.Id == target && Online(x))) throw new StorageException("Choose an available intake folder before copying files.");
+            if (!Targets.Any(x => x.Id == target && Online(x))) throw new StorageException("Choose an available inbox folder before adding files.");
             if (args.FileCount > 20) throw new StorageException("Choose at most 20 files per batch. No files were copied.");
             var files = args.GetMultipleFiles(20);
             if (files.Any(x => x.Size > LibraryService.MaxUploadBytes)) throw new StorageException("Each file must be 100 MB or smaller. No files were copied.");
@@ -71,15 +91,16 @@
                 {
                     await using var stream = file.OpenReadStream(LibraryService.MaxUploadBytes);
                     await Library.UploadToIntakeAsync(target, file.Name, stream);
-                    results.Add(new(file.Name, true, "Copied to intake"));
+                    results.Add(new(file.Name, true, "Added"));
                 }
                 catch (Exception ex)
                 {
-                    failed = true; Logger.LogWarning("Intake copy failed: {Kind}", ex.GetType().Name);
+                    failed = true; Logger.LogWarning("Inbox copy failed: {Kind}", ex.GetType().Name);
                     results.Add(new(file.Name, false, ex is StorageException ? ex.Message : "Copy failed. Check storage and retry this file."));
                 }
             }
-            notice = $"{results.Count(x => x.Success)} of {files.Count} files copied to intake.";
+            notice = $"{results.Count(x => x.Success)} of {files.Count} files added to the inbox.";
+            if (!failed) _ = CloseLater(++batch);
         }
         catch (StorageException ex) { failed = true; notice = ex.Message; }
         finally
@@ -93,6 +114,13 @@
     {
         try { if (registration != null) { await registration.InvokeVoidAsync("dispose"); await registration.DisposeAsync(); } if (module != null) await module.DisposeAsync(); }
         catch (JSDisconnectedException) { }
+    }
+    private int batch;
+    private async Task CloseLater(int which)
+    {
+        // A batch that fully succeeded needs no attention; problems stay until Done.
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        if (which == batch && !uploading && !failed) await InvokeAsync(async () => { await Dismiss(); StateHasChanged(); });
     }
     private sealed record UploadResult(string Name, bool Success, string Message);
 }

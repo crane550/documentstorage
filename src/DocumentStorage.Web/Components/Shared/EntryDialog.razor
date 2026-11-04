@@ -1,0 +1,90 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<EntryDialog> Logger
+
+@* New folder, rename/move and trash for one file or folder. Paths captured here are rechecked by the writer, so a stale tab cannot redirect a change. *@
+<Modal Title="@Title" IconName="@(Mode == "trash" ? "trash" : Mode == "new-folder" ? "folder-plus" : "move")" OnClose="OnClose" Busy="busy">
+    <form class="form" @onsubmit="Save" @onsubmit:preventDefault>
+        @if (Mode == "trash")
+        {
+            <div class="entry-chip"><Icon Name="@(Entry.IsFolder ? "folder" : "file")" Size="18" /><span>@Entry.Name</span></div>
+            <p class="lede">@(Entry.IsFolder ? "The folder and everything in it go to the trash on the same storage." : "The file goes to the trash on the same storage.") You can restore it from Trash.</p>
+        }
+        else
+        {
+            <label for="entry-name">@(Mode == "new-folder" ? "Folder name" : "Name")</label>
+            <input id="entry-name" required maxlength="180" @bind="name" @bind:event="oninput" autofocus />
+            @if (Mode == "move")
+            {
+                <label for="entry-destination-search">Find a folder</label>
+                <input id="entry-destination-search" type="search" @bind="filter" @bind:event="oninput" placeholder="Filter folders…" />
+                <label for="entry-destination">Destination folder</label>
+                <select id="entry-destination" size="7" class="folder-picker" @bind="destination">
+                    @foreach (var folder in Destinations) { <option value="@folder.Id">@Workspace.FolderLabel(folder)@(folder.Id == snapshotParent?.Id ? "  (current)" : "")</option> }
+                </select>
+            }
+            <div class="path-preview">
+                <span>@(Mode == "new-folder" ? "Inside" : "From")</span><code>@Workspace.FolderLabel(Entry)</code>
+                <span>@(Mode == "new-folder" ? "Creates" : "To")</span><code>@Preview</code>
+            </div>
+        }
+        @if (error != null) { <p class="form-error" role="alert">@error</p> }
+        <div class="form-actions">
+            <button type="button" class="button" disabled="@busy" @onclick="OnClose">Cancel</button>
+            <button type="submit" class="button @(Mode == "trash" ? "danger" : "primary")" disabled="@(busy || (Mode == "move" && destination == Guid.Empty))">@(busy ? "Working…" : Mode switch { "trash" => "Move to trash", "new-folder" => "Create folder", _ => "Save" })</button>
+        </div>
+    </form>
+</Modal>
+@code {
+    /// <summary>"new-folder" (Entry is the parent), "move" (rename and/or move Entry) or "trash".</summary>
+    [Parameter, EditorRequired] public string Mode { get; set; } = "move";
+    [Parameter, EditorRequired] public CatalogEntry Entry { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Guid> OnDone { get; set; }
+    private string name = "", filter = "", sourcePath = "";
+    private Guid destination;
+    private bool busy;
+    private string? error;
+    private List<CatalogEntry> snapshot = [];
+    private CatalogEntry? snapshotParent;
+    private string Title => Mode switch { "trash" => "Move to trash?", "new-folder" => "New folder", _ => "Rename or move" };
+    protected override void OnInitialized()
+    {
+        snapshot = Workspace.Overview.Folders.ToList(); sourcePath = Entry.RelativePath;
+        name = Mode == "new-folder" ? "" : Entry.Name;
+        snapshotParent = snapshot.FirstOrDefault(x => x.Id == Entry.ParentId);
+        destination = snapshotParent?.Id ?? Guid.Empty;
+    }
+    private IEnumerable<CatalogEntry> Destinations => snapshot.Where(x => x.RootId == Entry.RootId && x.Id != Entry.Id
+            && !(Entry.IsFolder && x.RelativePath.StartsWith(Entry.RelativePath + "/", StringComparison.Ordinal))
+            && (x.Id == destination || filter.Length == 0 || Workspace.FolderLabel(x).Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        .OrderBy(x => Workspace.FolderLabel(x), StringComparer.OrdinalIgnoreCase);
+    private string Preview
+    {
+        get
+        {
+            if (Mode == "new-folder") return Workspace.FolderLabel(Entry) + " / " + (name.Length > 0 ? name : "…");
+            var target = snapshot.FirstOrDefault(x => x.Id == destination);
+            return target == null ? "Choose a destination" : Workspace.FolderLabel(target) + " / " + (name.Length > 0 ? name : "…");
+        }
+    }
+    private async Task Save()
+    {
+        if (busy) return; busy = true; error = null;
+        try
+        {
+            var result = Entry.Id;
+            if (Mode == "new-folder") result = await Library.CreateFolderAsync(Entry.Id, name, sourcePath);
+            else if (Mode == "trash") await Library.TrashEntryAsync(Entry.Id);
+            else
+            {
+                var parent = snapshot.SingleOrDefault(x => x.Id == destination) ?? throw new StorageException("Choose a destination folder.");
+                await Library.MoveAsync(Entry.Id, parent.Id, name, sourcePath, parent.RelativePath);
+            }
+            await Workspace.RefreshAsync();
+            await OnDone.InvokeAsync(result);
+        }
+        catch (Exception ex) { Logger.LogWarning("Entry change failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The change could not finish. Check storage and refresh before trying again."; }
+        finally { busy = false; }
+    }
+}

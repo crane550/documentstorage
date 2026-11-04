@@ -1,0 +1,54 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<TypeEditor> Logger
+@using System.Text.Json
+@using System.Text.RegularExpressions
+
+@* A kind of document: what to call it, how the reader recognizes it, and which facts it carries. *@
+<Modal Title="@(Profile == null ? "New document type" : "Edit " + Profile.Name)" IconName="tag" OnClose="OnClose" Busy="busy">
+    <form class="form" @onsubmit="Save" @onsubmit:preventDefault>
+        <label for="type-name">Type name</label>
+        <input id="type-name" required maxlength="80" @bind="name" @bind:event="oninput" @bind:after="NameChanged" placeholder="Bank statement" autofocus />
+        <label for="type-key">Type identifier</label>
+        <input id="type-key" class="mono" maxlength="64" @bind="key" @bind:event="oninput" @bind:after="() => keyTouched = true" disabled="@(Profile != null)" spellcheck="false" />
+        <label for="type-facts">Facts to extract</label>
+        <input id="type-facts" class="mono" @bind="facts" placeholder="institution, account_suffix, statement_end" spellcheck="false" />
+        <p class="hint">Separate with commas. These become the fields on each filing slip.</p>
+        <label for="type-guidance">How to recognize this type</label>
+        <textarea id="type-guidance" rows="5" maxlength="2000" @bind="guidance" placeholder="What sets it apart, and which dates or numbers matter."></textarea>
+        @if (error != null) { <p class="form-error" role="alert">@error</p> }
+        <div class="form-actions"><button type="button" class="button" disabled="@busy" @onclick="OnClose">Cancel</button><button type="submit" class="button primary" disabled="@busy">@(busy ? "Saving…" : "Save type")</button></div>
+    </form>
+</Modal>
+@code {
+    [Parameter] public DocumentTypeProfile? Profile { get; set; }
+    [Parameter] public string? SuggestedKey { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<DocumentTypeProfile> OnSaved { get; set; }
+    private string name = "", key = "", facts = "", guidance = "";
+    private bool busy, keyTouched;
+    private string? error;
+    protected override void OnInitialized()
+    {
+        if (Profile != null) { name = Profile.Name; key = Profile.Key; guidance = Profile.Instructions; facts = string.Join(", ", JsonSerializer.Deserialize<string[]>(Profile.FactNamesJson) ?? []); }
+        else if (SuggestedKey is { Length: > 0 } suggested) { key = suggested; keyTouched = true; name = char.ToUpperInvariant(suggested[0]) + suggested[1..].Replace('_', ' '); }
+    }
+    private void NameChanged()
+    {
+        if (Profile != null || keyTouched) return;
+        var slug = Regex.Replace(name.Trim().ToLowerInvariant(), "[^a-z0-9]+", "_").Trim('_');
+        key = slug.Length > 0 && char.IsLetter(slug[0]) ? slug[..Math.Min(64, slug.Length)] : "";
+    }
+    private async Task Save()
+    {
+        if (busy) return; busy = true; error = null;
+        try
+        {
+            var list = facts.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(x => x.ToLowerInvariant().Replace(' ', '_')).ToArray();
+            var saved = await Library.SaveDocumentTypeAsync(new DocumentTypeProfile { Key = key, Name = name, Instructions = guidance, FactNamesJson = JsonSerializer.Serialize(list) }, Profile?.Revision ?? 0, await Workspace.ActorAsync());
+            await OnSaved.InvokeAsync(saved);
+        }
+        catch (Exception ex) { Logger.LogWarning("Type save failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The type could not be saved. Reload and try again."; }
+        finally { busy = false; }
+    }
+}

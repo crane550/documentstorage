@@ -1,0 +1,249 @@
+@page "/library"
+@page "/folders"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@implements IDisposable
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<LibraryPage> Logger
+
+<PageTitle>@(searching ? "Search" : current?.Name ?? "Library") · @Workspace.DisplayName</PageTitle>
+
+<header class="page-head library-head">
+    @if (searching)
+    {
+        <div><h1>Search</h1><p class="page-sub">@listing.Total @(listing.Total == 1 ? "match" : "matches") for “@Q” in every location</p></div>
+        <div class="head-actions"><a class="button" href="@(current != null ? $"/library?folder={current.Id}" : "/library")"><Icon Name="close" Size="15" />Clear search</a></div>
+    }
+    else if (current != null)
+    {
+        <div class="head-title">
+            <nav class="crumbs breadcrumbs" aria-label="Folder path">
+                @foreach (var crumb in Workspace.Ancestors(current.Id, includeSelf: false)) { <a href="@($"/library?folder={crumb.Id}")">@crumb.Name</a><Icon Name="arrow" Size="11" /> }
+            </nav>
+            <h1><Icon Name="@(current.ParentId == null ? "drive" : current.IsIntake ? "inbox" : "folder-open")" Size="24" Stroke="1.5" />@current.Name</h1>
+        </div>
+        <div class="head-actions">
+            <button class="button" disabled="@(!Writable)" @onclick='() => Open("new-folder", current)'><Icon Name="folder-plus" Size="16" />New folder</button>
+            <label class="button @(Writable && !busy ? "" : "disabled")"><Icon Name="upload" Size="16" />Upload<InputFile OnChange="Upload" disabled="@(!Writable || busy)" multiple aria-label="Upload documents" /></label>
+            @if (current.ParentId != null)
+            {
+                <Menu Label="Folder actions">
+                    <button role="menuitem" disabled="@(!Writable)" @onclick='() => Open("move", current)'><Icon Name="edit" Size="15" />Rename or move folder</button>
+                    <button role="menuitem" disabled="@(!Writable)" @onclick='() => Open("trash", current)'><Icon Name="trash" Size="15" />Move folder to trash</button>
+                </Menu>
+            }
+        </div>
+    }
+    else { <div><h1>Library</h1></div> }
+</header>
+
+@if (Workspace.Loaded && Workspace.Overview.Roots.Count == 0)
+{
+    <section class="caught-up">
+        <div class="tray-art" aria-hidden="true"><Icon Name="cabinet" Size="54" Stroke="1.2" /></div>
+        <h2>No storage connected yet</h2>
+        <p>Connect a folder on the server and its files appear here, organized the way they already are.</p>
+        <button class="button primary" @onclick="() => connecting = true"><Icon Name="drive" Size="16" />Connect storage</button>
+    </section>
+}
+else
+{
+<div class="library @(selected != null ? "with-doc" : "")">
+    <section class="sheet file-panel" aria-label="@(searching ? "Search results" : "Folder contents")">
+        <div class="table-scroll">
+            <table class="file-table">
+                <thead><tr><th>Name</th><th class="col-date">Modified</th><th class="col-size">Size</th></tr></thead>
+                <tbody>
+                @foreach (var entry in listing.Items)
+                {
+                    <tr class="@(selected?.Id == entry.Id ? "chosen" : "")" @key="entry.Id">
+                        <td>
+                            <button class="file-name" @onclick="() => Choose(entry)">
+                                <span class="file-badge @(entry.IsFolder ? "folder" : "")" data-ext="@(entry.IsFolder ? "" : WorkspaceState.Extension(entry.Name))"><Icon Name="@(entry.IsFolder ? (entry.IsIntake ? "inbox" : "folder") : DocumentPreview.Format(entry.Name).Kind == "image" ? "image" : "file")" Size="18" /></span>
+                                <span class="item-text"><strong>@entry.Name</strong>@if (searching) { <small>@Workspace.RootName(entry.RootId) / @entry.RelativePath</small> }</span>
+                                @if (entry.IsIntake) { <Stamp Text="Inbox" Tone="new" /> }
+                                else if (!entry.IsFolder && entry.TextStatus != "Indexed") { <Stamp Text="@(entry.TextStatus == "Needs OCR" ? "No text" : entry.TextStatus)" Tone="muted" Title="@entry.TextStatus" /> }
+                            </button>
+                        </td>
+                        <td class="col-date">@entry.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                        <td class="col-size">@(entry.IsFolder ? "" : WorkspaceState.FormatSize(entry.Size))</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (listing.Items.Count == 0 && loaded)
+        {
+            <div class="empty-state">
+                <Icon Name="@(searching ? "search" : "folder-open")" Size="38" Stroke="1.3" />
+                <h2>@(searching ? "Nothing matched" : "This folder is empty")</h2>
+                <p>@(searching ? "Try part of a name or a phrase from the document." : "Drop files here with Upload, or make a folder.")</p>
+            </div>
+        }
+        @if (listing.Total > 100) { <footer class="tray-pager"><button class="text-button" disabled="@(offset == 0 || busy)" @onclick="Previous">Previous</button><span>@(offset + 1)–@(offset + listing.Items.Count) of @listing.Total</span><button class="text-button" disabled="@(offset + 100 >= listing.Total || busy)" @onclick="Next">Next</button></footer> }
+    </section>
+
+    <aside class="sheet details" aria-label="Details">
+        @if (selected != null)
+        {
+            <DocumentPreviewPanel Entry="selected" @key="selected.Id" />
+            <div class="doc-meta">
+                <dl class="metadata"><div><dt>Where</dt><dd>@Workspace.FolderLabel(selected.ParentId ?? Guid.Empty)</dd></div><div><dt>Size</dt><dd>@WorkspaceState.FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div><div><dt>Text</dt><dd>@selected.TextStatus</dd></div></dl>
+                <div class="doc-actions">
+                    <button class="button" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("move", selected)'><Icon Name="edit" Size="15" />Rename or move</button>
+                    <button class="icon-button danger" title="Move to trash" aria-label="Move selected item to trash" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("trash", selected)'><Icon Name="trash" Size="17" /></button>
+                </div>
+                <details class="review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(20000, selected.ExtractedText.Length)] : "No text was found. A scanned PDF needs its OCR text layer.")</pre></details>
+            </div>
+        }
+        else if (current != null && !searching)
+        {
+            <div class="folder-panel">
+                <p class="folder-path mono">@Workspace.FolderLabel(current)</p>
+                @if (current.ParentId != null)
+                {
+                    <div class="inbox-toggle @(current.IsIntake ? "on" : "")">
+                        <Icon Name="inbox" Size="18" />
+                        <div><strong>@(current.IsIntake ? "This is an inbox" : "Inbox folder")</strong><small>@(current.IsIntake ? "Files that land here wait in the Inbox to be filed." : "Make this where new scans land.")</small></div>
+                        <button class="button small" disabled="@(busy || !Writable)" @onclick="ToggleInbox">@(current.IsIntake ? "Stop using as inbox" : "Use as inbox")</button>
+                    </div>
+                }
+                @if (FiledHere.Count > 0)
+                {
+                    <div class="filed-here"><h3 class="section-label"><Icon Name="signpost" Size="14" />Filed here by</h3>
+                        @foreach (var rule in FiledHere) { <a class="rule-chip @(rule.Enabled ? "" : "paused")" href="@($"/rules?rule={rule.Id}")">@(rule.Name)@if (!rule.Enabled) { <small>@(" paused")</small> }</a> }
+                    </div>
+                }
+                <GuidanceCard @key="current.Id" Target="@(new InstructionTarget("folder", current.Id.ToString()))" Title="Folder notes" Limit="20000"
+                              Placeholder="What belongs in this folder? The reader uses this when it identifies documents." />
+                @if (Workspace.InheritedNotes(current.Id) is { Length: > 0 } inherited) { <details class="inherited"><summary>Notes from parent folders</summary><pre>@inherited</pre></details> }
+                @if (!Workspace.IsOnline(current.RootId)) { <p class="form-error">This storage is offline. Reconnect it and rescan before making changes.</p> }
+                else if (Workspace.IsBlocked(current.RootId)) { <p class="form-error">Changes are paused on this storage. <a href="/recovery">Review the unfinished operation.</a></p> }
+            </div>
+        }
+        else { <div class="empty-state"><Icon Name="eye" Size="34" Stroke="1.3" /><p>Choose a document to preview it.</p></div> }
+    </aside>
+</div>
+}
+
+@if (dialog != null && dialogEntry != null) { <EntryDialog Mode="@dialog" Entry="dialogEntry" OnClose="() => dialog = null" OnDone="DialogDone" /> }
+@if (connecting) { <ConnectStorageDialog OnClose="() => connecting = false" OnConnected="Connected" /> }
+
+@code {
+    [SupplyParameterFromQuery(Name = "folder")] public string? FolderParameter { get; set; }
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "doc")] public string? DocParameter { get; set; }
+    private EntryPage listing = new([], 0);
+    private CatalogEntry? current, selected;
+    private List<FilingRuleDefinition> rules = [];
+    private string? dialog, loadedKey;
+    private CatalogEntry? dialogEntry;
+    private bool busy, loaded, connecting;
+    private int offset;
+    private bool searching => !string.IsNullOrWhiteSpace(Q);
+    private bool Writable => current != null && Workspace.IsWritable(current.RootId) && !busy;
+    private List<FilingRuleDefinition> FiledHere => current == null ? [] : rules.Where(x => x.DestinationFolderId == current.Id).OrderBy(x => x.Name).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Workspace.Changed += WorkspaceChanged;
+        await Workspace.EnsureLoadedAsync();
+        try { rules = await Library.RulesAsync(); } catch (Exception ex) { Logger.LogWarning("Rules failed to load: {Kind}", ex.GetType().Name); }
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = FolderParameter + "|" + Q;
+        if (key != loadedKey) { loadedKey = key; offset = 0; await Load(); }
+        await SelectFromQuery();
+    }
+    private async Task Load()
+    {
+        try
+        {
+            current = Guid.TryParse(FolderParameter, out var id) ? Workspace.Folder(id) : null;
+            current ??= Workspace.Overview.Folders.FirstOrDefault(x => x.ParentId == null);
+            listing = searching ? await Library.BrowseAsync(null, Q!.Trim(), offset) : current == null ? new([], 0) : await Library.BrowseAsync(current.Id, "", offset);
+            loaded = true;
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Library load failed"); Workspace.Notify(ex is StorageException ? ex.Message : "This folder could not load. Check storage and try again.", true); }
+    }
+    private async Task SelectFromQuery()
+    {
+        if (Guid.TryParse(DocParameter, out var doc))
+        {
+            if (selected?.Id != doc) selected = listing.Items.FirstOrDefault(x => x.Id == doc) ?? await Library.EntryAsync(doc);
+            if (selected?.IsFolder == true || selected?.TrashBatchId != null || selected?.IsMissing == true) selected = null;
+        }
+        else selected = null;
+    }
+    private void WorkspaceChanged() => InvokeAsync(async () =>
+    {
+        if (busy || dialog != null) return;
+        await Load();
+        if (selected != null) { selected = await Library.EntryAsync(selected.Id); if (selected?.TrashBatchId != null || selected?.IsMissing == true) selected = null; }
+        try { rules = await Library.RulesAsync(); } catch (Exception ex) { Logger.LogWarning("Rules failed to load: {Kind}", ex.GetType().Name); }
+        StateHasChanged();
+    });
+    private string Address(Guid? folder, Guid? doc = null)
+    {
+        var parts = new List<string>();
+        if (folder != null) parts.Add("folder=" + folder);
+        if (searching) parts.Add("q=" + Uri.EscapeDataString(Q!));
+        if (doc != null) parts.Add("doc=" + doc);
+        return "/library" + (parts.Count > 0 ? "?" + string.Join("&", parts) : "");
+    }
+    private void Choose(CatalogEntry entry)
+    {
+        if (entry.IsFolder) Navigation.NavigateTo($"/library?folder={entry.Id}");
+        else { selected = entry; Navigation.NavigateTo(Address(current?.Id, entry.Id), replace: true); }
+    }
+    private void Open(string kind, CatalogEntry entry) { dialog = kind; dialogEntry = entry; }
+    private async Task DialogDone(Guid id)
+    {
+        var kind = dialog; dialog = null;
+        if (kind == "new-folder") { Workspace.Notify("Folder created."); await Load(); return; }
+        if (kind == "trash")
+        {
+            Workspace.Notify("Moved to trash. Restore it from Trash if you need it back.");
+            if (dialogEntry?.IsFolder == true && dialogEntry.Id == current?.Id) { Navigation.NavigateTo($"/library?folder={dialogEntry.ParentId}"); return; }
+            selected = null; Navigation.NavigateTo(Address(current?.Id), replace: true);
+        }
+        else Workspace.Notify("Changes saved.");
+        await Load();
+        if (selected != null) selected = await Library.EntryAsync(selected.Id);
+        if (current != null) current = Workspace.Folder(current.Id) ?? current;
+    }
+    private async Task ToggleInbox() => await Run(async () =>
+    {
+        if (current == null) return;
+        var on = !current.IsIntake;
+        await Library.SetIntakeAsync(current.Id, on);
+        await Workspace.RefreshAsync(); current = Workspace.Folder(current.Id);
+        Workspace.Notify(on ? "This folder is now an inbox." : "No longer an inbox. Its files stay where they are.");
+    });
+    private async Task Upload(InputFileChangeEventArgs args) => await Run(async () =>
+    {
+        if (current == null) return;
+        if (args.FileCount > 20) throw new StorageException("Choose at most 20 files at a time.");
+        var count = 0;
+        foreach (var file in args.GetMultipleFiles(20))
+        {
+            await using var input = file.OpenReadStream(LibraryService.MaxUploadBytes);
+            await Library.UploadAsync(current.Id, file.Name, input); count++;
+        }
+        await Workspace.RefreshAsync(); await Load();
+        Workspace.Notify(count == 1 ? "Uploaded and indexed." : $"{count} documents uploaded and indexed.");
+    });
+    private async Task Connected(Guid rootId) { connecting = false; await Workspace.RefreshAsync(); Navigation.NavigateTo($"/library?folder={Workspace.RootFolder(rootId)?.Id}"); Workspace.Notify("Storage connected."); }
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true;
+        try { await action(); }
+        catch (Exception ex) { Logger.LogError(ex, "Library action failed"); Workspace.Notify(ex is StorageException ? ex.Message : "That could not finish. Check storage and try again.", true); }
+        finally { busy = false; }
+    }
+    private async Task Previous() { offset = Math.Max(0, offset - 100); await Load(); }
+    private async Task Next() { offset += 100; await Load(); }
+    public void Dispose() => Workspace.Changed -= WorkspaceChanged;
+}
