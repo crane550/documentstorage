@@ -1,0 +1,98 @@
+@inject LibraryService Library
+@inject IJSRuntime JS
+@inject ILogger<IntakeUpload> Logger
+@implements IAsyncDisposable
+
+<section class="paper-panel intake-upload" @ref="element" data-ready="@Ready.ToString().ToLowerInvariant()" aria-label="Copy files to intake" aria-busy="@uploading">
+    <div class="intake-upload-heading"><span class="stat-icon"><Icon Name="upload" /></span><div><h2>Drop files into intake.</h2><p>Drag files anywhere in this window to copy them to the selected intake folder. Originals stay on your computer.</p></div></div>
+    @if (Targets.Count == 0)
+    {
+        <p class="field-hint">Choose a folder in Documents and select “Use as intake” to enable uploads here.</p>
+    }
+    else
+    {
+        <div class="intake-upload-controls"><label for="intake-upload-target">Intake destination</label><select id="intake-upload-target" value="@destination" @onchange="Choose" disabled="@uploading"><option value="@Guid.Empty">Choose an intake folder</option>@foreach (var folder in Targets) { <option value="@folder.Id" disabled="@(!Online(folder))">@FolderName(folder)@(!Online(folder) ? " (offline)" : "")</option> }</select>
+            <label class="button subtle intake-file-picker @(Ready ? "" : "disabled")">Choose files<InputFile @ref="picker" OnChange="Upload" multiple disabled="@(!Ready)" aria-label="Copy files to intake" /></label></div>
+    }
+    <p class="field-hint">Up to 20 files per batch, 100 MB each. Existing filenames are never overwritten.</p>
+    <p class="drop-feedback" role="status" data-drop-feedback></p>
+    @if (uploading) { <p role="status">Copying file @position of @total… Keep this page open until the batch finishes.</p> }
+    @if (notice != null) { <p class="@(failed ? "error-text" : "field-hint")" role="status">@notice</p> }
+    @if (results.Count > 0) { <ul class="intake-upload-results" aria-label="Intake upload results">@foreach (var result in results) { <li class="@(result.Success ? "uploaded" : "error-text")"><strong>@result.Name</strong><span>@result.Message</span></li> }</ul> }
+    <div class="window-drop-hint" aria-hidden="true"><Icon Name="inbox" Size="38" /><strong>@(Ready ? "Drop to copy into intake" : "Choose an available intake destination first")</strong><span>@(Targets.FirstOrDefault(x => x.Id == destination) is { } target ? FolderName(target) : "Your original files stay on your computer.")</span></div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public LibraryOverview Overview { get; set; } = default!;
+    [Parameter] public Guid? PreferredFolderId { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    private ElementReference element;
+    private InputFile? picker;
+    private IJSObjectReference? module, registration;
+    private Guid destination;
+    private bool uploading, failed, manual, connected;
+    private int position, total;
+    private string? notice;
+    private List<UploadResult> results = [];
+    private List<CatalogEntry> Targets => Overview.Folders.Where(x => x.IsIntake && !x.IsMissing && x.TrashBatchId == null).ToList();
+    private bool Online(CatalogEntry folder) => Overview.Roots.Any(x => x.Id == folder.RootId && x.IsOnline);
+    private bool Ready => connected && !uploading && Targets.Any(x => x.Id == destination && Online(x));
+    private string FolderName(CatalogEntry folder) => (Overview.Roots.FirstOrDefault(x => x.Id == folder.RootId)?.Name ?? "Storage") + " / " + folder.RelativePath;
+    protected override void OnParametersSet()
+    {
+        if (destination != Guid.Empty && !Targets.Any(x => x.Id == destination)) { destination = Guid.Empty; manual = true; }
+        if (!manual && Targets.Any(x => x.Id == PreferredFolderId)) destination = PreferredFolderId!.Value;
+        if (!manual && destination == Guid.Empty && Targets.Count == 1) destination = Targets[0].Id;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./intake-drop.js");
+            registration = await module.InvokeAsync<IJSObjectReference>("attach", element);
+            connected = true; await InvokeAsync(StateHasChanged);
+        }
+    }
+    private void Choose(ChangeEventArgs e) { if (!uploading) { Guid.TryParse(e.Value?.ToString(), out destination); manual = true; notice = null; } }
+    private async Task Upload(InputFileChangeEventArgs args)
+    {
+        if (uploading) return;
+        var target = destination; uploading = true; failed = false; notice = null; results = []; position = 0; total = args.FileCount;
+        try
+        {
+            if (!Targets.Any(x => x.Id == target && Online(x))) throw new StorageException("Choose an available intake folder before copying files.");
+            if (args.FileCount > 20) throw new StorageException("Choose at most 20 files per batch. No files were copied.");
+            var files = args.GetMultipleFiles(20);
+            if (files.Any(x => x.Size > LibraryService.MaxUploadBytes)) throw new StorageException("Each file must be 100 MB or smaller. No files were copied.");
+            foreach (var file in files)
+            {
+                position++; await InvokeAsync(StateHasChanged);
+                try
+                {
+                    await using var stream = file.OpenReadStream(LibraryService.MaxUploadBytes);
+                    await Library.UploadToIntakeAsync(target, file.Name, stream);
+                    results.Add(new(file.Name, true, "Copied to intake"));
+                }
+                catch (Exception ex)
+                {
+                    failed = true; Logger.LogWarning("Intake copy failed: {Kind}", ex.GetType().Name);
+                    results.Add(new(file.Name, false, ex is StorageException ? ex.Message : "Copy failed. Check storage and retry this file."));
+                }
+            }
+            notice = $"{results.Count(x => x.Success)} of {files.Count} files copied to intake.";
+        }
+        catch (StorageException ex) { failed = true; notice = ex.Message; }
+        finally
+        {
+            uploading = false;
+            try { await Changed.InvokeAsync(); }
+            finally { if (registration != null) try { await registration.InvokeVoidAsync("complete"); } catch (JSDisconnectedException) { } }
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        try { if (registration != null) { await registration.InvokeVoidAsync("dispose"); await registration.DisposeAsync(); } if (module != null) await module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+    private sealed record UploadResult(string Name, bool Success, string Message);
+}

@@ -15,7 +15,7 @@ Working now:
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves before touching disk; recover unambiguous interrupted moves on rescan and pause ambiguous operations for review.
-- Intake folder designation, stable-file readiness, and a queue for reviewing document types/facts.
+- Intake folder designation, window-wide drag-and-drop copying with explicit destinations and per-file results, stable-file readiness, and a queue for reviewing document types/facts.
 - Persisted, versioned filing rules with draft simulations and exact filename/destination previews.
 - Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
 - Configurable local Ollama identification with durable jobs, cancellation/retries and document-type guidance.
@@ -67,6 +67,8 @@ dotnet run --project tests/DocumentStorage.McpChecks -c Release
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
 node tests/browser/intake.mjs
+# Drop checks require a fresh empty disposable catalog (default port 5241):
+node tests/browser/drop.mjs
 node tests/browser/ollama.mjs
 node tests/browser/instructions-mcp.mjs
 ```

@@ -178,6 +178,13 @@ internal static class IntakeChecks
         check((await library.PreviewFilingAsync(fifth.Id, "owner")).Reason.Contains("storage locations"), "cross-location filing is explicitly blocked until verified transfers are implemented");
         await library.SetIntakeAsync(incoming, false);
         check((await library.IntakeAsync()).Total == 0, "turning off intake removes the queue scope without moving any document");
+        await refuses(() => library.UploadToIntakeAsync(incoming, "blocked-drop.txt", new MemoryStream([1,2,3])), "intake upload rechecks a destination that was disabled after browser selection");
+        var dropFolder = await library.CreateFolderAsync(rootFolder.Id, "Browser copies");
+        await library.SetIntakeAsync(dropFolder, true);
+        await library.UploadToIntakeAsync(dropFolder, "copied.txt", new MemoryStream(Encoding.UTF8.GetBytes("Synthetic browser copy.")));
+        await refuses(() => library.UploadToIntakeAsync(dropFolder, "copied.txt", new MemoryStream([0])), "intake upload collisions preserve the first file");
+        check(await File.ReadAllTextAsync(Path.Combine(storage,"Browser copies/copied.txt")) == "Synthetic browser copy.", "intake upload writes unchanged bytes into the designated server folder");
+        await library.SetIntakeAsync(dropFolder, false);
     }
 
     private sealed class ManualClock : TimeProvider

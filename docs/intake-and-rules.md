@@ -10,6 +10,14 @@ A new or changed file needs two observations at least five seconds apart with un
 
 Offline storage keeps its queue entries and existing index. It cannot produce an executable filing preview. Intake remains a scope on existing files; marking/unmarking a folder does not move documents.
 
+## Copy files from the browser
+
+Drop individual files anywhere in the app window, or use **Choose files**, to copy them into the displayed **Intake destination**. The copy controls remain available across app views. A single intake folder is selected automatically; with several, choose a destination explicitly or open an intake folder in Documents. Offline destinations are unavailable. Removing a selected intake designation clears the selection rather than choosing somewhere else.
+
+Original files stay on your computer. Each batch accepts up to 20 files, at most 100 MB each. Folder drops and batches exceeding these limits are rejected before copying. Existing names are never overwritten; a collision fails that file while other files in the batch continue. Per-file results show what succeeded and what needs retrying. Keep the browser page open until copying finishes. Successful copies appear in the catalog and intake queue; the usual stable-file checks still apply before identification or filing.
+
+The server rechecks that the destination is still an available intake folder under the shared filesystem writer, then uses the existing staging and collision checks. There is no separate unauthenticated upload endpoint.
+
 ## Review a document
 
 Open **Intake**, select a document, and read its indexed text or download the original. Folder guidance from its ancestors is available alongside the review.

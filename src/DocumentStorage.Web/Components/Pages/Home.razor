@@ -60,6 +60,8 @@
             <div class="notice warning"><Icon Name="drive" Size="18" /><span><strong>@root.Name is offline.</strong> @root.LastError</span></div>
         }
 
+        <IntakeUpload Overview="overview" PreferredFolderId="folderId" Changed="IntakeUploaded" />
+
         @if (view == "documents")
         {
             <section class="stats-strip" aria-label="Library overview">
@@ -289,6 +291,7 @@
     private async Task Previous() => await Run(async () => { offset = Math.Max(0, offset - 100); await Reload(); });
     private async Task Next() => await Run(async () => { offset += 100; await Reload(); });
     private async Task Rescan() => await Run(async () => { await Library.ScanAsync(); await Reload(); if (view == "intake" && intakeWorkspace != null) await intakeWorkspace.RefreshAsync(); }, "Storage checked. Available documents and their text have been indexed.");
+    private async Task IntakeUploaded() { await Reload(); if (view == "intake" && intakeWorkspace != null) await intakeWorkspace.RefreshAsync(); }
     private async Task ToggleIntake() => await Run(async () => { if (selected != null) await Library.SetIntakeAsync(selected.Id, !selected.IsIntake); await Reload(); }, "Intake folder setting saved.");
     private async Task SaveInstructions() => await Run(async () => { if (selected != null) await Library.SaveInstructionsAsync(selected.Id, instructions, (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ""); await Reload(); }, "Folder instructions saved.");
     private async Task Upload(InputFileChangeEventArgs args) => await Run(async () =>

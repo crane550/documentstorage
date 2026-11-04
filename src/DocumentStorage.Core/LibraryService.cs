@@ -259,7 +259,10 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         finally { writer.Release(); }
     }
 
-    public async Task UploadAsync(Guid parentId, string name, Stream input)
+    public Task UploadAsync(Guid parentId, string name, Stream input) => UploadToFolderAsync(parentId, name, input, false);
+    public Task UploadToIntakeAsync(Guid parentId, string name, Stream input) => UploadToFolderAsync(parentId, name, input, true);
+
+    private async Task UploadToFolderAsync(Guid parentId, string name, Stream input, bool requireIntake)
     {
         name = StoragePaths.ValidateName(name);
         await writer.WaitAsync();
@@ -268,6 +271,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             await using var db = await factory.CreateDbContextAsync();
             var (parent, root) = await WritableEntryAsync(db, parentId);
             if (!parent.IsFolder || parent.TrashBatchId != null) throw new StorageException("Choose an available destination folder.");
+            if (requireIntake && !parent.IsIntake) throw new StorageException("This folder is no longer an intake destination. Choose an intake folder and try again.");
             var target = StoragePaths.Resolve(root.Location, StoragePaths.Join(parent.RelativePath, name));
             if (StoragePaths.Exists(target)) throw new StorageException("An item with that name already exists. Existing documents are never overwritten.");
             var staging = StoragePaths.Resolve(root.Location, StoragePaths.Staging);
