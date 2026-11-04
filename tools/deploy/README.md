@@ -12,6 +12,8 @@ These scripts are for the same Windows server as the accounting app. They do not
 
 Open an elevated PowerShell window on the Windows server.
 
+- The Blazor asset package is explicitly pinned in the project so SDK maintenance updates do not change the committed dependency lock. Keep locked restore enabled.
+
 - Git and .NET SDK **10.0.401 or later**. New SDK install if needed:
 
   ```powershell
