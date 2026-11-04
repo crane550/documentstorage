@@ -69,7 +69,7 @@ export function attach(root, options) {
                 pdfViewer = new web.PDFViewer({container:q('.pdf-scroll'),viewer:q('.pdfViewer'),eventBus:pdfEvents,linkService:links,findController:find,
                     abortSignal:signal,annotationMode:pdf.AnnotationMode.ENABLE,annotationEditorMode:pdf.AnnotationEditorType.DISABLE,enableAutoLinking:false,maxCanvasPixels:8_388_608});
                 links.setViewer(pdfViewer);
-                pdfEvents.on('pagesinit', () => { if (signal.aborted) return; ready(true); fit(); pdfNavigation(); });
+                pdfEvents.on('pagesinit', () => { if (signal.aborted) return; ready(true); fit(); pdfViewer.currentPageNumber=Math.max(1,Math.min(pdfDocument.numPages,Number(options.page)||1)); pdfNavigation(); });
                 pdfEvents.on('pagechanging', () => { if (!signal.aborted) pdfNavigation(); });
                 pdfEvents.on('scalechanging', () => { if (!signal.aborted) pdfNavigation(); });
                 pdfEvents.on('pagerendered', event => { if (!signal.aborted) { status(event.error ? 'A PDF page could not render. Try reloading or download the original.' : ''); root.dataset.rendered = String(event.pageNumber); } });

@@ -59,6 +59,7 @@ public sealed partial class LibraryService
             throw new StorageException("Use a timeout of 30–1800 seconds and OCR text limit of 2000–16000 characters.");
         if (input.Instructions.Length > 4000) throw new StorageException("Keep identification guidance under 4,000 characters.");
         var cancelled = new List<Guid>();
+        var cancelledConversations = new List<Guid>();
         await writer.WaitAsync();
         try
         {
@@ -73,11 +74,16 @@ public sealed partial class LibraryService
                 job.State = "Cancelled"; job.LastError = "Local AI settings changed. Queue again with the new settings.";
                 job.CompletedAt = time.GetUtcNow(); job.RunId = null; job.LeaseUntil = null; cancelled.Add(job.Id);
             }
+            foreach (var turn in await db.DeskTurns.Where(x => x.State == "Queued" || x.State == "Running").ToListAsync())
+            {
+                turn.State = "Cancelled"; turn.Error = "Local reader settings changed. Your message is saved; try again with the new settings.";
+                cancelledConversations.Add(turn.Id);
+            }
             await RecordInstructionAsync(db, new("global", "global"), settings.Instructions, actor);
             await db.SaveChangesAsync();
             return settings;
         }
-        finally { writer.Release(); foreach (var id in cancelled) CancelLiveIdentification(id); }
+        finally { writer.Release(); foreach (var id in cancelled) CancelLiveIdentification(id); foreach (var id in cancelledConversations) CancelLiveDeskMessage(id); }
     }
 
     public async Task<DocumentTypeProfile> SaveDocumentTypeAsync(DocumentTypeProfile input, int expectedRevision, string actor)
@@ -209,6 +215,12 @@ public sealed partial class LibraryService
     }
 
     public async Task<bool> ProcessNextIdentificationAsync(IOllamaClient client, CancellationToken stoppingToken = default)
+    {
+        if (!await modelWork.WaitAsync(0, stoppingToken)) return false;
+        try { return await ProcessIdentificationCoreAsync(client, stoppingToken); }
+        finally { modelWork.Release(); }
+    }
+    private async Task<bool> ProcessIdentificationCoreAsync(IOllamaClient client, CancellationToken stoppingToken)
     {
         IdentificationRequest? input = null;
         IdentificationJob? claimed = null;

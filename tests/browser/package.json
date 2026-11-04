@@ -10,6 +10,7 @@
     "test:recovery": "node recovery.mjs",
     "test:preview": "node preview.mjs",
     "test:updates": "node updates.mjs",
+    "test:desk": "node desk.mjs",
     "test:ollama": "node ollama.mjs",
     "test:organizing": "node organizing.mjs",
     "test:assistants": "node instructions-mcp.mjs"

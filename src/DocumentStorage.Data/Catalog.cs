@@ -34,6 +34,7 @@ public sealed class CatalogEntry
     public DateTimeOffset ObservedAt { get; set; }
     public string ContentHash { get; set; } = "";
     public string Readiness { get; set; } = "Not queued";
+    public string PassageRevision { get; set; } = "";
 }
 
 public sealed class DocumentReview
@@ -186,6 +187,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         ConfigureAssistants(model);
         ConfigureRecovery(model);
         ConfigureOrganization(model);
+        ConfigureDesk(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

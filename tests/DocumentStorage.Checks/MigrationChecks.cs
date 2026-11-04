@@ -13,7 +13,12 @@ internal static class MigrationChecks
         var folder = new CatalogEntry { RootId = root.Id, Name = "Legacy folder", IsFolder = true, Instructions = "Keep the original folder instructions." };
         var settings = new OllamaSettings { Instructions = "Keep the original global instructions." };
         var type = new DocumentTypeProfile { Key = "legacy_type", Name = "Legacy type", Instructions = "Keep the original type instructions." };
-        db.Roots.Add(root); db.Entries.Add(folder); db.OllamaConfigurations.Add(settings); db.DocumentTypes.Add(type); await db.SaveChangesAsync();
+        db.Roots.Add(root); db.OllamaConfigurations.Add(settings); db.DocumentTypes.Add(type); await db.SaveChangesAsync();
+        // Seed the old schema, before the additive passage-index column exists.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Entries" ("Id","RootId","RelativePath","Name","IsFolder","IsMissing","Size","ModifiedAt","Instructions","ExtractedText","TextStatus")
+            VALUES ({folder.Id},{root.Id},{""},{folder.Name},{true},{false},{0L},{DateTimeOffset.UtcNow},{folder.Instructions},{""},{"Pending"})
+            """);
         var legacyOperation = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "Operations" ("Id", "RootId", "EntryId", "Kind", "FromPath", "ToPath", "State", "CreatedAt")

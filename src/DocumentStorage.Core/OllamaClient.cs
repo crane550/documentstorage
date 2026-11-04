@@ -19,6 +19,8 @@ public sealed class OllamaException(string message, bool transient = false) : Ex
 }
 public interface IOllamaClient
 {
+    Task<DeskResult> ConverseAsync(DeskModelRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<DeskResult>(new OllamaException("This adapter does not support document conversations."));
     Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default);
     Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default);
     Task<GuidanceDraftResult> DraftGuidanceAsync(GuidanceDraftRequest request, CancellationToken cancellationToken = default)
@@ -236,7 +238,7 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
         var property = element.GetProperty(name);
         if (property.ValueKind != JsonValueKind.String) throw new OllamaException("The model returned a non-text fact.");
         var value = property.GetString()!.Trim();
-        if ((!allowEmpty && value.Length == 0) || value.Length > maximum) throw new OllamaException("The model returned an invalid fact length.");
+        if ((!allowEmpty && value.Length == 0) || value.Length > maximum || value.Contains('\0')) throw new OllamaException("The model returned an invalid text value or length.");
         return value;
     }
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response, CancellationToken token)

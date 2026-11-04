@@ -7,6 +7,7 @@ public sealed class IdentificationWorker(LibraryService library, IOllamaClient c
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await library.RecoverIdentificationAsync();
+        await library.RecoverDeskAsync();
         var offset = 0; var nextAutomatic = DateTimeOffset.MinValue;
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -17,7 +18,8 @@ public sealed class IdentificationWorker(LibraryService library, IOllamaClient c
                     offset = await library.QueueAutomaticIdentificationAsync(offset);
                     nextAutomatic = DateTimeOffset.UtcNow.AddSeconds(15);
                 }
-                var processed = await library.ProcessNextIdentificationAsync(client, stoppingToken);
+                var processed = await library.ProcessNextDeskAsync(client, stoppingToken);
+                if (!processed) processed = await library.ProcessNextIdentificationAsync(client, stoppingToken);
                 await Task.Delay(processed ? 100 : 2000, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

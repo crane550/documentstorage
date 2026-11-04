@@ -1,0 +1,10 @@
+@page "/ask"
+@page "/folder-planner"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@inject NavigationManager Navigation
+<DeskWorkspace @key="Mode" Mode="@Mode" ThreadId="ThreadId" InitialScope="ScopeId" />
+@code {
+    [SupplyParameterFromQuery(Name="thread")] public Guid? ThreadId {get;set;}
+    [SupplyParameterFromQuery(Name="scope")] public Guid? ScopeId {get;set;}
+    private string Mode=>new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/').Equals("/folder-planner",StringComparison.OrdinalIgnoreCase)?"folders":"ask";
+}

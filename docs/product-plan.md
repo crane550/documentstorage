@@ -56,6 +56,14 @@ The workspace is organized around the filing loop: **Inbox** (documents, assista
 
 The menu footer reports immutable version/build/revision metadata. Settings › Updates checks the fixed application main branch and requests an exact, expiring release approval through an administrator-cookie/antiforgery boundary. A separately installed Windows task uses the existing staged build, verified catalog backup, service restart, health verification and binary rollback. Durable requests/status prevent duplicate deployments; the browser reloads across restart. See [Updates](updating.md). Actual task/ACL and service behavior requires server verification.
 
+## Completed document conversation and folder-planning milestone
+
+Persistent actor-owned conversations now answer questions over a PostgreSQL passage index, validate quotes and link to original documents/PDF pages. Folder conversations propose scoped nested trees and filing notes, with editable review, source-linked canonical guidance and resumable per-step creation. A shared inference slot serializes identification, questions and drafting. See [Conversations](conversations.md). Real-model quality remains to be verified on the installed model.
+
+## Next feature work
+
+The user explicitly selected all four feature sets: document questions and folder planning first, followed by the **Inbox workbench** and **PDF editing tools**. See [Feature priorities](feature-roadmap.md) for the accepted scope. Prioritize those feature milestones over general maintenance work.
+
 ## Subsequent milestones
 
 1. **Catalog hardening and search:** robust external rename reconciliation using fingerprints, extraction retry/backoff and PostgreSQL full-text search. Add bounded bulk filing after the per-document workflow is exercised.

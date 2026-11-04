@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 
 #nullable disable
 
@@ -214,6 +215,10 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("PassageRevision")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Readiness")
                         .IsRequired()
                         .HasColumnType("text");
@@ -243,6 +248,148 @@ namespace DocumentStorage.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Entries");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DeskConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Archived")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Owner")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ScopeEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Owner", "UpdatedAt");
+
+                    b.ToTable("DeskConversations");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DeskTurn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContextHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContextJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reply")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("SettingsRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "RequestKey")
+                        .IsUnique();
+
+                    b.HasIndex("State", "CreatedAt");
+
+                    b.ToTable("DeskTurns");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentPassage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Page")
+                        .HasColumnType("integer");
+
+                    b.Property<NpgsqlTsVector>("Search")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasAnnotation("Npgsql:TsVectorConfig", "english")
+                        .HasAnnotation("Npgsql:TsVectorProperties", new[] { "Title", "Text" });
+
+                    b.Property<string>("SourceRevision")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Start")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Search");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Search"), "GIN");
+
+                    b.HasIndex("EntryId", "Ordinal")
+                        .IsUnique();
+
+                    b.ToTable("DocumentPassages");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.DocumentReview", b =>
@@ -568,6 +715,91 @@ namespace DocumentStorage.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("RuleRevisions");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FolderPlanApproval", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExpectedHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TurnId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TurnId");
+
+                    b.ToTable("FolderPlanApprovals");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FolderPlanStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApprovalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Create")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("FolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RootId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovalId", "Ordinal")
+                        .IsUnique();
+
+                    b.ToTable("FolderPlanSteps");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.IdentificationJob", b =>
@@ -1399,6 +1631,24 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.DeskTurn", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.DeskConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentPassage", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithMany()
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.DocumentReview", b =>
                 {
                     b.HasOne("DocumentStorage.Data.CatalogEntry", null)
@@ -1439,6 +1689,24 @@ namespace DocumentStorage.Data.Migrations
                     b.HasOne("DocumentStorage.Data.FilingRuleDefinition", null)
                         .WithMany()
                         .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FolderPlanApproval", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.DeskTurn", null)
+                        .WithMany()
+                        .HasForeignKey("TurnId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FolderPlanStep", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.FolderPlanApproval", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovalId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

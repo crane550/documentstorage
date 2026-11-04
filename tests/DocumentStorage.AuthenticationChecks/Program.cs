@@ -65,6 +65,8 @@ internal static partial class Runner
             Check((await client.GetAsync("/")).StatusCode == HttpStatusCode.Redirect, "anonymous workspace redirects to built-in login");
             Check((await client.GetAsync("/folders")).StatusCode == HttpStatusCode.Redirect, "anonymous folder management redirects to built-in login");
             Check((await client.GetAsync("/recovery")).StatusCode == HttpStatusCode.Redirect, "anonymous recovery workspace redirects to built-in login");
+            Check((await client.GetAsync("/ask")).StatusCode == HttpStatusCode.Redirect, "anonymous document conversations redirect to built-in login");
+            Check((await client.GetAsync("/folder-planner")).StatusCode == HttpStatusCode.Redirect, "anonymous folder planning redirects to built-in login");
             Check((await client.GetAsync("/app.css")).StatusCode == HttpStatusCode.OK, "login stylesheet is available without authentication");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/download")).StatusCode == HttpStatusCode.Unauthorized, "anonymous document downloads rejected");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous binary previews rejected");

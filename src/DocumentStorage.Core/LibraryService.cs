@@ -149,6 +149,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             if (await db.Operations.AnyAsync(x => x.RootId == root.Id && (x.State == "Prepared" || x.State == "Needs review"))) return;
             // Complete discovery before marking anything missing. A failed NAS traversal is not deletion.
             var found = new List<(string Relative, bool Folder, long Size, DateTimeOffset Modified)>();
+            var provisioning = await db.FolderPlanSteps.Where(x => x.RootId == root.Id && x.State == "Creating").Select(x => x.Path).ToListAsync();
             void Visit(string relative)
             {
                 foreach (var path in Directory.EnumerateFileSystemEntries(StoragePaths.Resolve(root.Location, relative)).Order(StringComparer.Ordinal))
@@ -158,6 +159,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                     var attrs = File.GetAttributes(path);
                     if ((attrs & FileAttributes.ReparsePoint) != 0) continue;
                     var child = StoragePaths.Join(relative, name);
+                    if (provisioning.Any(x => child == x || child.StartsWith(x + "/", StringComparison.Ordinal))) continue;
                     var directory = (attrs & FileAttributes.Directory) != 0;
                     found.Add((child, directory, directory ? 0 : new FileInfo(path).Length, FileTimestamp(File.GetLastWriteTimeUtc(path))));
                     if (directory) Visit(child);
@@ -206,6 +208,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { extracted = new("", "Text unavailable"); }
                     entry.ExtractedText = extracted.Text;
                     entry.TextStatus = extracted.Status;
+                    entry.PassageRevision = "";
                 }
                 entry.IsMissing = false;
             }
@@ -449,6 +452,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                 .SetProperty(x => x.TrashBatchId, trashBatch)
                 .SetProperty(x => x.ContentHash, x => invalidateText && !x.IsFolder ? "" : x.ContentHash)
                 .SetProperty(x => x.TextStatus, x => invalidateText && !x.IsFolder ? "Pending" : x.TextStatus)
+                .SetProperty(x => x.PassageRevision, "")
                 .SetProperty(x => x.ExtractedText, x => invalidateText && !x.IsFolder ? "" : x.ExtractedText)
                 .SetProperty(x => x.ObservedAt, x => invalidateText && !x.IsFolder ? now : x.ObservedAt)
                 .SetProperty(x => x.Readiness, x => invalidateText && !x.IsFolder ? "Not queued" : x.Readiness));

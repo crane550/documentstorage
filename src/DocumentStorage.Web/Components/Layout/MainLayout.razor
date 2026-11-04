@@ -17,6 +17,8 @@ else
         <a class="brand" href="/" @onclick="CloseMenu"><span class="brand-mark"><Icon Name="box" Size="22" Stroke="1.8" /></span><span class="brand-name">@Workspace.DisplayName</span></a>
 
         <nav class="main-nav" aria-label="Main">
+            <a href="/ask" class="@Active("ask")" aria-current="@Current("ask")" @onclick="CloseMenu"><Icon Name="spark" /><span>Ask documents</span></a>
+            <a href="/folder-planner" class="@Active("planning")" aria-current="@Current("planning")" @onclick="CloseMenu"><Icon Name="folder-plus" /><span>Plan folders</span></a>
             <a href="/" class="@Active("inbox")" aria-current="@Current("inbox")" @onclick="CloseMenu"><Icon Name="inbox" /><span>Inbox</span>@if (InboxCount > 0) { <span class="count" title="@($"{InboxCount} waiting")">@InboxCount</span> }</a>
             <a href="/library" class="@Active("library")" aria-current="@Current("library")" @onclick="CloseMenu"><Icon Name="cabinet" /><span>Library</span></a>
             <a href="/rules" class="@Active("rules")" aria-current="@Current("rules")" @onclick="CloseMenu"><Icon Name="signpost" /><span>Rules</span></a>
@@ -122,6 +124,8 @@ else
             "" or "/inbox" => "inbox",
             "/library" or "/folders" => "library",
             "/rules" => "rules",
+            "/ask" => "ask",
+            "/folder-planner" => "planning",
             "/recovery" => "recovery",
             "/history" => parameters.TryGetValue("tab", out var tab) && tab == "trash" ? "trash" : "history",
             "/settings" => "settings",

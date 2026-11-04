@@ -91,6 +91,7 @@ builder.Services.AddHostedService<LibraryScanner>();
 builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHostedService<IdentificationWorker>();
+builder.Services.AddHostedService<PassageIndexWorker>();
 builder.Services.AddScoped<WorkspaceState>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IUpdateHost, WindowsUpdateHost>();

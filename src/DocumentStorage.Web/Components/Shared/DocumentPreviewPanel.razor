@@ -36,6 +36,7 @@
 </section>
 @code {
     [Parameter, EditorRequired] public CatalogEntry Entry { get; set; } = default!;
+    [Parameter] public int? InitialPage { get; set; }
     private ElementReference element;
     private IJSObjectReference? module, viewer;
     private PreviewFormat format = new("unsupported", "", 0);
@@ -43,13 +44,14 @@
     protected override void OnParametersSet() { format = DocumentPreview.Format(Entry.Name); revision = DocumentPreview.Revision(Entry); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (loadedRevision == revision) return;
-        loadedRevision = revision;
+        var viewRevision = revision + "|" + InitialPage;
+        if (loadedRevision == viewRevision) return;
+        loadedRevision = viewRevision;
         try
         {
             if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); viewer = null; }
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./document-preview.js");
-            viewer = await module.InvokeAsync<IJSObjectReference>("attach", element, new { kind = format.Kind, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit });
+            viewer = await module.InvokeAsync<IJSObjectReference>("attach", element, new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit });
         }
         catch (JSDisconnectedException) { }
     }

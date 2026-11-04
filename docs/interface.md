@@ -39,6 +39,10 @@ Guidance is written on sticky notes where it applies: **Folder notes** on each f
 
 Settings › Assistants creates one OAuth connection per MCP client and shows the client secret once. Suggestions from assistants (guidance, paused rules, one exact filing) appear at the top of the Inbox and in Settings. They change nothing until you accept them in the browser.
 
+## Document conversations and folder plans
+
+**Ask documents** (`/ask`) holds saved conversations, a fixed document/folder/library scope, cited answers and a side-by-side source preview. PDF evidence opens at its page. **Ask about this document** in the Library starts a focused conversation. **Plan folders** (`/folder-planner`) accepts a parent scope and a conversational request, shows editable nested nodes and notes, then an exact review before creation. Folder receipts link directly to the real folders. Both pages retain work across navigation and support mobile layouts. See [Conversations](conversations.md).
+
 ## Updates and version
 
 The bottom of the menu shows the running version, build number and short commit. **Update** opens Settings › Updates, with available changes, a separate install confirmation and progress through backup/restart. A one-time Windows task installation enables the controls; future releases install from the browser. See [Updates](updating.md).

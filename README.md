@@ -26,7 +26,11 @@ Working now:
 - Evidence-backed facts, optional automatic reading, explicit **Approve & file**, and removable filing examples.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
+- Ask indexed documents in persistent conversations, with validated evidence quotes and original/PDF-page previews.
+- Conversational folder-tree planning with editable nested folders, reviewed creation and canonical filing instructions.
 - Version/build details in the menu and administrator browser updates through an installed Windows task, with staged builds, required catalog backup and binary rollback.
+
+See [Document questions and folder planning](docs/conversations.md), and [the agreed feature priorities](docs/feature-roadmap.md).
 
 See [Browser updates and release numbers](docs/updating.md) for one-time updater installation and versioning.
 

@@ -1,0 +1,100 @@
+@using System.Text.Json
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<DeskWorkspace> Logger
+@implements IAsyncDisposable
+
+<PageTitle>@Title · @Workspace.DisplayName</PageTitle>
+<header class="page-head"><div><h1><Icon Name="@(Planning ? "folder-plus" : "spark")" Size="25" />@Title</h1><p class="page-sub">@(Planning?"Describe the organization you want. Refine a folder tree and filing notes together.":"Ask a question, compare documents, and open the source behind an answer.")</p></div></header>
+<div class="desk-workspace @(sourceEntry!=null?"with-source":"")">
+    <aside class="sheet desk-history"><h2 class="section-label">Conversations</h2><a class="button small" href="@BaseAddress">New conversation</a>
+        @foreach(var item in conversations){<a class="desk-thread @(thread?.Conversation.Id==item.Id?"chosen":"")" href="@($"{BaseAddress}?thread={item.Id}")">@item.Title<small>@WorkspaceState.Ago(item.UpdatedAt)</small></a>}
+        @if(conversations.Count==0){<p class="hint">Your conversations will stay here, including after leaving this page.</p>}
+    </aside>
+    <section class="sheet desk-chat" aria-label="@Title">
+        @if(!Workspace.ReaderEnabled){<p class="desk-info">Connect and enable your local model in <a href="/settings?tab=reader">Settings › AI reader</a> to start a conversation.</p>}
+        <div class="desk-scope"><label for="desk-scope">@(Planning?"Plan inside":"Search within")</label>
+            <select id="desk-scope" @bind="scope" disabled="@(thread!=null||busy)">@if(!Planning){<option value="@Guid.Empty">All indexed documents</option>}else{<option value="@Guid.Empty">Choose a parent folder</option>}
+                @foreach(var folder in ScopeFolders){<option value="@folder.Id">@Workspace.FolderLabel(folder)</option>}
+                @if(scopeDocument!=null){<option value="@scopeDocument.Id">@scopeDocument.Name (one document)</option>}
+            </select>
+            @if(!Planning){<small>Library: @indexed.Ready documents searchable@(indexed.Pending>0?$" · preparing {indexed.Pending} more":""). Answers use the last indexed text.</small>}
+        </div>
+        @if(thread==null){<div class="desk-welcome"><Icon Name="@(Planning?"folder-open":"text")" Size="36" /><h2>@(Planning?"Make room for what’s coming":"What would you like to find out?")</h2>
+            <p>@(Planning?"Try: Create folders for church safety, training and incident reports. Give each one instructions for what belongs there.":"Try: What interest rate is listed on my home-equity agreement? Or: Compare the closing balances on my last two bank statements.")</p></div>}
+        <div class="desk-messages" aria-live="polite">
+            @if(thread!=null)foreach(var turn in thread.Turns)
+            {
+                <article class="desk-turn" @key="turn.Id"><div class="desk-question"><small>You</small><p>@turn.Question</p></div>
+                    @if(turn.State is "Queued" or "Running") {<div class="desk-response"><Stamp Text="@turn.State" Tone="working" /><p>@(turn.State=="Queued"?"Waiting for the local reader or search indexing…":"Reading and preparing a reply…")</p><button class="text-button" disabled="@busy" @onclick="()=>Cancel(turn.Id)">Cancel reading</button></div>}
+                    else if(turn.State is "Failed" or "Cancelled") {<div class="desk-response"><p>@turn.Error</p><button class="text-button" disabled="@(busy||Active)" @onclick="()=>Retry(turn)">Try this message again</button></div>}
+                    else
+                    {
+                        <div class="desk-response"><small>Local reader</small><p class="desk-answer">@turn.Reply</p>
+                            @if(!Planning&&Result(turn).Citations.Count>0)
+                            {
+                                <div class="desk-citations">@foreach(var citation in Result(turn).Citations){var source=TurnSources(turn).FirstOrDefault(x=>x.Id==citation.SourceId);if(source!=null){<div class="desk-citation"><button type="button" class="text-button" @onclick="()=>ShowSource(turn,citation.SourceId)">[@source.Id] @source.Name @(source.Page!=null?$"· page {source.Page}":"")</button><small>@source.Path @(source.Offline?"· storage was offline":"")</small><blockquote>@citation.Quote</blockquote></div>}}</div>
+                            }
+                            @if(Planning&&Result(turn).Folders.Count>0){<FolderPlanEditor Turn="turn" ScopeId="@(thread.Conversation.ScopeEntryId!.Value)" Approval="@LatestApproval(turn.Id)" Steps="@thread.Steps" IsLatest="@(thread.Turns.Last().Id==turn.Id)" Changed="PlanChanged" />}
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+        <form class="desk-composer" @onsubmit="Send" @onsubmit:preventDefault><label for="desk-question">@(Planning?"Describe or refine the folder plan":"Ask your documents")</label><textarea id="desk-question" rows="3" maxlength="4000" @bind="question" @bind:event="oninput" disabled="@(busy||Active)" placeholder="@(Planning?"Tell the reader what to create or change in the proposal…":"Ask a question or follow up on an earlier answer…")"></textarea>
+            <div class="form-actions"><button type="submit" class="button primary" disabled="@(busy||Active||!Workspace.ReaderEnabled||string.IsNullOrWhiteSpace(question)||(Planning&&scope==Guid.Empty))">@(busy?"Saving…":"Send")</button>@if(thread!=null){<button type="button" class="text-button" disabled="@(busy||Active)" @onclick="Archive">Archive conversation</button>}</div>
+            @if(error!=null){<p class="form-error" role="alert">@error</p>}
+        </form>
+    </section>
+    @if(sourceEntry!=null){<aside class="sheet desk-source"><div class="desk-source-head"><strong>@sourceLabel</strong><button class="icon-button" aria-label="Close source preview" @onclick="()=>sourceEntry=null"><Icon Name="close" /></button></div><DocumentPreviewPanel Entry="sourceEntry" InitialPage="sourcePage" @key="sourceKey" /><a class="button small" href="@($"/library?folder={sourceEntry.ParentId}&doc={sourceEntry.Id}")">Open in Library</a></aside>}
+</div>
+@code {
+    [Parameter]public string Mode{get;set;}="ask";
+    [Parameter]public Guid? ThreadId{get;set;}
+    [Parameter]public Guid? InitialScope{get;set;}
+    private bool Planning=>Mode=="folders";
+    private string Title=>Planning?"Plan folders":"Ask documents";
+    private string BaseAddress=>Planning?"/folder-planner":"/ask";
+    private List<DeskConversation> conversations=[];
+    private DeskThread? thread;
+    private Guid scope;
+    private string question="",requestKey=Guid.NewGuid().ToString("N");
+    private string? error,loaded;
+    private bool busy;
+    private (int Ready,int Pending) indexed;
+    private CatalogEntry? scopeDocument,sourceEntry;
+    private int? sourcePage;
+    private string sourceKey="",sourceLabel="";
+    private readonly CancellationTokenSource lifetime=new();
+    private Task? polling;
+    private bool Active=>thread?.Turns.Any(x=>x.State is "Queued" or "Running")==true;
+    private IEnumerable<CatalogEntry> ScopeFolders=>Workspace.Overview.Folders.Where(x=>!Planning||!Workspace.InInbox(x)).OrderBy(x=>Workspace.FolderLabel(x));
+    private static DeskResult Result(DeskTurn turn)=>JsonSerializer.Deserialize<DeskResult>(turn.ResultJson)??new("",true,[],[]);
+    private static List<DeskSource> TurnSources(DeskTurn turn)=>JsonSerializer.Deserialize<List<DeskSource>>(JsonDocument.Parse(turn.ContextJson).RootElement.GetProperty("sources").GetRawText())??[];
+    private FolderPlanApproval? LatestApproval(Guid turnId)=>thread?.Approvals.Where(x=>x.TurnId==turnId).OrderByDescending(x=>x.ExpiresAt).FirstOrDefault();
+    protected override async Task OnInitializedAsync(){await Workspace.EnsureLoadedAsync();polling=Poll();}
+    protected override async Task OnParametersSetAsync()
+    {
+        var key=$"{Mode}|{ThreadId}|{InitialScope}";if(loaded==key)return;loaded=key;error=null;thread=null;sourceEntry=null;scopeDocument=null;
+        try{if(ThreadId is Guid id){thread=await Library.DeskThreadAsync(id,await Workspace.ActorAsync());if(thread.Conversation.Mode!=Mode)throw new StorageException("Choose a conversation from this workspace.");scope=thread.Conversation.ScopeEntryId??Guid.Empty;}else scope=InitialScope??Guid.Empty;
+            if(scope!=Guid.Empty){var entry=await Library.EntryAsync(scope);if(entry?.IsFolder==false)scopeDocument=entry;}
+            conversations=await Library.DeskConversationsAsync(await Workspace.ActorAsync(),Mode);indexed=await Library.PassageStatusAsync();}
+        catch(StorageException ex){error=ex.Message;thread=null;}
+    }
+    private async Task Refresh(){if(thread!=null)thread=await Library.DeskThreadAsync(thread.Conversation.Id,await Workspace.ActorAsync());conversations=await Library.DeskConversationsAsync(await Workspace.ActorAsync(),Mode);indexed=await Library.PassageStatusAsync();}
+    private Task Send()=>Run(async()=>
+    {
+        var id=thread?.Conversation.Id??await Library.CreateDeskConversationAsync(Mode,scope==Guid.Empty?null:scope,await Workspace.ActorAsync());
+        await Library.SendDeskMessageAsync(id,question,requestKey,await Workspace.ActorAsync());question="";requestKey=Guid.NewGuid().ToString("N");
+        if(thread==null)Navigation.NavigateTo($"{BaseAddress}?thread={id}");else await Refresh();
+    });
+    private Task Retry(DeskTurn turn)=>Run(async()=>{await Library.SendDeskMessageAsync(turn.ConversationId,turn.Question,Guid.NewGuid().ToString("N"),await Workspace.ActorAsync());await Refresh();});
+    private Task Cancel(Guid id)=>Run(async()=>{await Library.CancelDeskMessageAsync(id,await Workspace.ActorAsync());await Refresh();});
+    private Task Archive()=>Run(async()=>{await Library.ArchiveDeskConversationAsync(thread!.Conversation.Id,await Workspace.ActorAsync());Navigation.NavigateTo(BaseAddress);});
+    private async Task PlanChanged(){await Workspace.RefreshAsync();await Refresh();}
+    private Task ShowSource(DeskTurn turn,string id)=>Run(async()=>{var source=TurnSources(turn).Single(x=>x.Id==id);sourceEntry=await Library.OpenDeskSourceAsync(turn.Id,id,await Workspace.ActorAsync());sourcePage=source.Page;sourceLabel=$"[{id}] {source.Name}"+(source.Page!=null?$" · page {source.Page}":"");sourceKey=turn.Id+id;});
+    private async Task Run(Func<Task> action){if(busy)return;busy=true;error=null;try{await action();}catch(Exception ex){error=ex is StorageException or OllamaException?ex.Message:"The conversation could not finish. Your saved messages remain available.";}finally{busy=false;}}
+    private async Task Poll(){using var timer=new PeriodicTimer(TimeSpan.FromSeconds(2));try{while(await timer.WaitForNextTickAsync(lifetime.Token)){await InvokeAsync(async()=>{if(!busy){try{await Refresh();StateHasChanged();}catch(Exception ex){Logger.LogWarning("Conversation refresh paused: {Kind}",ex.GetType().Name);}}});}}catch(OperationCanceledException)when(lifetime.IsCancellationRequested){}catch(ObjectDisposedException){}}
+    public async ValueTask DisposeAsync(){lifetime.Cancel();if(polling!=null)await polling;lifetime.Dispose();}
+}

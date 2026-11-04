@@ -25,6 +25,7 @@
         </div>
         <div class="head-actions">
             <button class="button" disabled="@(!Writable)" @onclick='() => Open("new-folder", current)'><Icon Name="folder-plus" Size="16" />New folder</button>
+            <a class="button" href="@($"/folder-planner?scope={current.Id}")"><Icon Name="spark" Size="16" />Plan folders</a>
             <label class="button @(Writable && !busy ? "" : "disabled")"><Icon Name="upload" Size="16" />Upload<InputFile OnChange="Upload" disabled="@(!Writable || busy)" multiple aria-label="Upload documents" /></label>
             @if (current.ParentId != null)
             {
@@ -91,6 +92,7 @@ else
             <div class="doc-meta">
                 <dl class="metadata"><div><dt>Where</dt><dd>@Workspace.FolderLabel(selected.ParentId ?? Guid.Empty)</dd></div><div><dt>Size</dt><dd>@WorkspaceState.FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div><div><dt>Text</dt><dd>@selected.TextStatus</dd></div></dl>
                 <div class="doc-actions">
+                    <a class="button" href="@($"/ask?scope={selected.Id}")"><Icon Name="spark" Size="15" />Ask about this document</a>
                     <button class="button" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("move", selected)'><Icon Name="edit" Size="15" />Rename or move</button>
                     <button class="icon-button danger" title="Move to trash" aria-label="Move selected item to trash" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("trash", selected)'><Icon Name="trash" Size="17" /></button>
                 </div>

@@ -28,8 +28,13 @@ public sealed partial class LibraryService
         GuidanceDraftResult result;
         try
         {
+            await modelWork.WaitAsync(cancellationToken);
+            try
+            {
             result = await client.DraftGuidanceAsync(new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, target.Kind, thread.Text,
             JsonSerializer.Serialize(messages.Select(x => new { x.Role, x.Text }))), cancellationToken);
+            }
+            finally { modelWork.Release(); }
         }
         finally { guidanceDrafts.Release(); }
         cancellationToken.ThrowIfCancellationRequested();

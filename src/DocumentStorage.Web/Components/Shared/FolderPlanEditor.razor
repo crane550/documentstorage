@@ -1,0 +1,62 @@
+@using System.Text.Json
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+<div class="folder-plan-editor">
+    @if(Approval?.State=="Applied") {<p class="plan-success">Folders and instructions saved.</p>}
+    else if(Approval?.State is "Paused" or "Applying")
+    {
+        <p>@Steps.Count(x=>x.ApprovalId==Approval.Id&&x.State=="Completed") folders completed. @Approval.Error</p>
+        @if(Approval.State=="Applying"){<p>Creating folders… If an interrupted request stopped reporting, check its remaining steps below.</p>}
+        <button class="button primary" disabled="@busy" @onclick="Resume">Resume remaining folders</button><button class="text-button" disabled="@busy" @onclick="Stop">Cancel remaining steps</button>
+    }
+    else if(!IsLatest){<p class="hint">This is an earlier plan. Review the latest reply below.</p>}
+    else
+    {
+        <p class="hint">Edit names, parents and filing notes. Existing folders keep their names and location; blank notes preserve their current instructions.</p>
+        <div @oninput="Edited" @onchange="Edited">
+            @foreach(var row in rows)
+            {
+                <section class="plan-node" @key="row.Key"><div class="plan-node-head"><strong>@row.Key · @(row.ExistingId.Length==0?"Create folder":"Use existing folder")</strong><button class="text-button" disabled="@busy" @onclick="()=>Remove(row)">Remove</button></div>
+                    <label for="@($"plan-name-{Turn.Id}-{row.Key}")">Folder name</label><input id="@($"plan-name-{Turn.Id}-{row.Key}")" @bind="row.Name" @bind:event="oninput" maxlength="180" disabled="@(busy||row.ExistingId.Length>0)" />
+                    <label for="@($"plan-parent-{Turn.Id}-{row.Key}")">Parent folder</label><select id="@($"plan-parent-{Turn.Id}-{row.Key}")" @bind="row.Parent" disabled="@(busy||row.ExistingId.Length>0)">@foreach(var folder in Parents){<option value="@folder.Id">@Workspace.FolderLabel(folder)</option>}@foreach(var earlier in rows.TakeWhile(x=>x!=row)){<option value="@earlier.Key">@earlier.Key · @earlier.Name (in this plan)</option>}</select>
+                    <label for="@($"plan-notes-{Turn.Id}-{row.Key}")">Filing instructions</label><textarea id="@($"plan-notes-{Turn.Id}-{row.Key}")" rows="3" maxlength="2000" @bind="row.Instructions" disabled="@busy"></textarea>
+                    @if(Guid.TryParse(row.ExistingId,out var existingId)&&Workspace.Folder(existingId) is {} existing){<details><summary>Current instructions for comparison</summary><pre class="plan-old-notes">@existing.Instructions</pre></details>}
+                </section>
+            }
+        </div>
+        <div class="form-actions"><button class="button small" disabled="@(busy||rows.Count>=24)" @onclick="Add">Add planned folder</button><button class="button" disabled="@(busy||rows.Count==0)" @onclick="Preview">Review exact folder changes</button></div>
+        @if(preview!=null)
+        {
+            <div class="plan-confirm"><h3>Exact changes to approve</h3><ul>@foreach(var step in previewSteps){<li><strong>@(step.Create?"Create":"Reuse") @Workspace.RootName(step.RootId) / @step.Path</strong><pre>@step.Instructions</pre></li>}</ul><p>No documents will be moved or deleted. Notes shown here will become this folder's filing guidance.</p><button class="button primary" disabled="@busy" @onclick="Apply">Create folders &amp; save instructions</button></div>
+        }
+    }
+    @if(Approval!=null){<div class="plan-progress">@foreach(var step in Steps.Where(x=>x.ApprovalId==Approval.Id)){<div><Stamp Text="@step.State" Tone="@(step.State=="Completed"?"ready":"muted")" />@if(step.State=="Completed"){<a href="@($"/library?folder={step.FolderId}")">@step.Path</a>}else{<span>@step.Path</span>}@if(step.Instructions.Length>0){<details class="plan-receipt-notes"><summary>Filing instructions</summary><pre class="plan-old-notes">@step.Instructions</pre></details>}</div>}</div>}
+    @if(error!=null){<p class="form-error" role="alert">@error</p>}
+</div>
+@code {
+    [Parameter,EditorRequired]public DeskTurn Turn{get;set;}=default!;
+    [Parameter]public Guid ScopeId{get;set;}
+    [Parameter]public bool IsLatest{get;set;}
+    [Parameter]public FolderPlanApproval? Approval{get;set;}
+    [Parameter]public List<FolderPlanStep> Steps{get;set;}=[];
+    [Parameter]public EventCallback Changed{get;set;}
+    private Guid loaded;
+    private List<Row> rows=[];
+    private FolderPlanApproval? preview;
+    private List<FolderPlanStep> previewSteps=[];
+    private bool busy;private string? error;
+    private IEnumerable<CatalogEntry> Parents
+    {
+        get{var scope=Workspace.Folder(ScopeId);if(scope==null)return [];var prefix=scope.RelativePath.Length==0?"":scope.RelativePath+"/";return Workspace.Overview.Folders.Where(x=>x.RootId==scope.RootId&&(x.Id==scope.Id||x.RelativePath.StartsWith(prefix,StringComparison.Ordinal))&&!Workspace.InInbox(x)).OrderBy(x=>x.RelativePath);}
+    }
+    protected override void OnParametersSet(){if(loaded==Turn.Id)return;loaded=Turn.Id;rows=(JsonSerializer.Deserialize<DeskResult>(Turn.ResultJson)?.Folders??[]).Select(x=>new Row{Key=x.Key,Parent=x.Parent,Name=x.Name,Instructions=x.Instructions,ExistingId=x.ExistingId}).ToList();}
+    private void Edited(){preview=null;error=null;}
+    private void Add(){Edited();var n=1;while(rows.Any(x=>x.Key=="F"+n))n++;rows.Add(new(){Key="F"+n,Parent=ScopeId.ToString(),Name="New folder"});}
+    private void Remove(Row row){Edited();rows.Remove(row);}
+    private async Task Run(Func<Task> action){if(busy)return;busy=true;error=null;try{await action();}catch(Exception ex){error=ex is StorageException?ex.Message:"Folder creation could not finish. Completed steps are preserved; reload this conversation to inspect its progress.";}finally{busy=false;}}
+    private Task Preview()=>Run(async()=>{preview=await Library.PreviewFolderPlanAsync(Turn.Id,rows.Select(x=>new FolderNode(x.Key,x.Parent,x.Name,x.Instructions,x.ExistingId)).ToList(),await Workspace.ActorAsync());previewSteps=(await Library.DeskThreadAsync(Turn.ConversationId,await Workspace.ActorAsync())).Steps.Where(x=>x.ApprovalId==preview.Id).ToList();});
+    private Task Apply()=>Run(async()=>{try{if(preview!=null)await Library.ApplyFolderPlanAsync(preview.Id,await Workspace.ActorAsync());}finally{await Changed.InvokeAsync();}});
+    private Task Resume()=>Run(async()=>{try{await Library.ApplyFolderPlanAsync(Approval!.Id,await Workspace.ActorAsync());}finally{await Changed.InvokeAsync();}});
+    private Task Stop()=>Run(async()=>{await Library.CancelFolderPlanAsync(Approval!.Id,await Workspace.ActorAsync());await Changed.InvokeAsync();});
+    private sealed class Row{public string Key{get;set;}="";public string Parent{get;set;}="";public string Name{get;set;}="";public string Instructions{get;set;}="";public string ExistingId{get;set;}="";}
+}
