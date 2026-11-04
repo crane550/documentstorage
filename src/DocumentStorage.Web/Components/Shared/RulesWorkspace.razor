@@ -1,0 +1,110 @@
+@inject LibraryService Library
+@inject AuthenticationStateProvider Authentication
+@inject ILogger<RulesWorkspace> Logger
+@using System.Security.Claims
+@using System.Text.Json
+
+<div class="notice"><Icon Name="info" Size="18" /><span>Rules turn reviewed facts into names and destinations. Test a draft, enable it, then apply a document preview in Intake. Unattended filing is not enabled.</span></div>
+@if (message != null) { <div class="notice @(error ? "error" : "success")" role="status">@message</div> }
+<div class="rules-layout">
+    <section class="paper-panel rule-list">
+        <div class="panel-title"><h2>Filing rules</h2><button class="text-button" @onclick="New"><Icon Name="plus" Size="14" />New rule</button></div>
+        @foreach (var rule in rules)
+        {
+            <button class="rule-list-item @(selectedId == rule.Id ? "selected" : "")" @onclick="() => Select(rule)" @key="rule.Id"><span><strong>@rule.Name</strong><small>@rule.DocumentType · version @rule.Revision</small></span><span class="index-badge @(rule.Enabled ? "indexed" : "")">@(rule.Enabled ? "Enabled" : "Paused")</span></button>
+        }
+        @if (rules.Count == 0) { <div class="empty-state"><Icon Name="folder" Size="35" /><h2>A repeatable place for things</h2><p>Create a rule for a document type, choose its destination, and describe the filename using facts.</p></div> }
+    </section>
+    <section class="paper-panel rule-editor">
+        <div class="eyebrow">@(selectedId == null ? "NEW FILING RULE" : "RULE DETAILS")</div><h2>@(selectedId == null ? "Set a filing pattern." : name)</h2>
+        <div class="workflow-form">
+            <label for="rule-name">Rule name</label><input id="rule-name" @bind="name" @bind:after="Edited" maxlength="100" placeholder="Monthly bank statements" />
+            <label for="rule-type">Document type</label><input id="rule-type" @bind="documentType" @bind:after="Edited" maxlength="64" placeholder="bank_statement" />
+            <label>Match conditions</label><p class="field-hint">Every condition must match, ignoring letter case. With no conditions, the rule matches every document of this type. Multiple matching rules require review.</p>
+            <FactEditor Rows="conditions" Label="Condition" Edited="Edited" />
+            <label for="rule-destination">Destination folder</label><select id="rule-destination" @bind="destination" @bind:after="Edited"><option value="@Guid.Empty">Choose a destination outside intake</option>@foreach (var folder in Destinations) { <option value="@folder.Id">@FolderName(folder.Id)</option> }</select>
+            <p class="field-hint">Intake and destination currently need to be in the same storage location. Folder targets keep their identity when renamed.</p>
+            <label for="rule-template">Filename pattern</label><input id="rule-template" @bind="template" @bind:after="Edited" maxlength="300" class="template-input" />
+            <div class="token-buttons"><button class="text-button" @onclick='() => Append("{statement_end:yyyy-MM-dd}")'>+ closing date</button><button class="text-button" @onclick='() => Append("{institution}")'>+ institution</button><button class="text-button" @onclick='() => Append("{account_suffix}")'>+ account ending</button><button class="text-button" @onclick='() => Append("{extension}")'>+ extension</button></div>
+            <p class="field-hint">Use {fact_name} for a value. Dates support :yyyy, :yyyy-MM, or :yyyy-MM-dd. Keep .{extension} to preserve the file type.</p>
+            <label for="rule-required">Required facts</label><input id="rule-required" @bind="required" @bind:after="Edited" placeholder="statement_end, institution, account_suffix" /><p class="field-hint">Comma-separated fact names. Missing facts stop filing; filename tokens are always required.</p>
+            <label class="workflow-checkbox"><input type="checkbox" @bind="enabled" @bind:after="Edited" />Enable this rule for document previews</label>
+            <div class="workflow-actions"><button class="button primary" disabled="@busy" @onclick="Save">@(selectedId == null ? "Save rule" : "Save new version")</button><button class="button subtle" disabled="@(busy || selectedId == null || dirty)" @onclick="Test">Test against intake</button></div>
+            @if (dirty && selectedId != null) { <p class="field-hint">Save this version before testing it.</p> }
+        </div>
+        @if (history.Count > 0)
+        {
+            <details class="rule-history"><summary>Version history · @history.Count</summary>@foreach (var version in history) { var snapshot = JsonSerializer.Deserialize<FilingRuleDefinition>(version.SnapshotJson)!; <div><strong>Version @version.Revision · @(snapshot.Enabled ? "Enabled" : "Paused")</strong><small>@version.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</small><p>@snapshot.Name · @snapshot.DocumentType</p><code>@snapshot.FilenameTemplate</code></div> }</details>
+        }
+    </section>
+</div>
+@if (simulation != null)
+{
+    <section class="paper-panel simulation-panel"><div class="panel-title"><h2>Rule test results</h2><span>First 25 intake documents · no files changed</span></div>
+        @foreach (var item in simulation)
+        { <div class="simulation-row"><span class="stat-icon"><Icon Name="@(item.Proposal.Ready ? "check" : "info")" Size="18" /></span><div><strong>@item.Name</strong><p>@(item.Proposal.Ready ? item.Proposal.DestinationPath : item.Proposal.Reason)</p></div><span class="index-badge @(item.Proposal.Ready ? "indexed" : "")">@(item.Proposal.Ready ? "Matches" : "Needs attention")</span></div> }
+        @if (simulation.Count == 0) { <div class="empty-state"><h2>No intake documents to test</h2><p>Add a document to intake and review its facts, then run this test again.</p></div> }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public LibraryOverview Overview { get; set; } = default!;
+    [Parameter] public EventCallback Changed { get; set; }
+    private List<FilingRuleDefinition> rules = [];
+    private List<FilingRuleRevision> history = [];
+    private List<RuleSimulation>? simulation;
+    private Guid? selectedId;
+    private int revision;
+    private Guid destination;
+    private string name = "", documentType = "bank_statement", template = "{statement_end:yyyy-MM-dd} - {institution} - {account_suffix}.{extension}", required = "statement_end, institution, account_suffix";
+    private List<FactField> conditions = [new() { Name = "institution" }];
+    private bool enabled, dirty, busy, error;
+    private string? message;
+    private IEnumerable<CatalogEntry> Destinations => Overview.Folders.Where(folder =>
+    {
+        var current = folder;
+        while (current != null) { if (current.IsIntake) return false; current = Overview.Folders.FirstOrDefault(x => x.Id == current.ParentId); }
+        return true;
+    });
+    private string FolderName(Guid id)
+    {
+        var folder = Overview.Folders.FirstOrDefault(x => x.Id == id);
+        if (folder == null) return "Unavailable folder";
+        return (Overview.Roots.FirstOrDefault(x => x.Id == folder.RootId)?.Name ?? "Storage") + " / " + folder.RelativePath;
+    }
+    protected override async Task OnInitializedAsync() => rules = await Library.RulesAsync();
+    private void Edited() { dirty = true; simulation = null; }
+    private void Append(string value) { template += value; Edited(); }
+    private void New()
+    {
+        selectedId = null; revision = 0; destination = Guid.Empty; name = ""; documentType = "bank_statement";
+        template = "{statement_end:yyyy-MM-dd} - {institution} - {account_suffix}.{extension}"; required = "statement_end, institution, account_suffix";
+        conditions = [new() { Name = "institution" }]; enabled = false; dirty = false; history = []; simulation = null; message = null;
+    }
+    private async Task Select(FilingRuleDefinition rule)
+    {
+        selectedId = rule.Id; revision = rule.Revision; name = rule.Name; documentType = rule.DocumentType;
+        destination = rule.DestinationFolderId; template = rule.FilenameTemplate;
+        required = string.Join(", ", JsonSerializer.Deserialize<string[]>(rule.RequiredFactsJson)!);
+        conditions = FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(rule.MatchJson)!);
+        enabled = rule.Enabled; dirty = false; simulation = null; message = null;
+        history = await Library.RuleHistoryAsync(rule.Id);
+    }
+    private async Task Save() => await Run(async () =>
+    {
+        var actor = (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var input = new RuleInput(selectedId, revision, name, documentType, destination, FactField.Read(conditions), template,
+            required.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), enabled);
+        var saved = await Library.SaveRuleAsync(input, actor);
+        rules = await Library.RulesAsync(); await Select(saved); await Changed.InvokeAsync();
+        message = "Rule version saved. Test it against intake before filing documents.";
+    });
+    private async Task Test() => await Run(async () => { if (selectedId != null) simulation = await Library.SimulateRuleAsync(selectedId.Value); });
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true; error = false;
+        try { await action(); }
+        catch (Exception ex) { Logger.LogError(ex, "Rule action failed"); error = true; message = ex is StorageException ? ex.Message : "The rule action could not finish. Reload the rule and try again."; }
+        finally { busy = false; }
+    }
+}

@@ -3,24 +3,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentStorage.Core;
 
-public sealed record LibraryOverview(List<StorageRoot> Roots, List<CatalogEntry> Folders, List<FileOperation> Activity, int Documents, int NeedsText);
+public sealed record LibraryOverview(List<StorageRoot> Roots, List<CatalogEntry> Folders, List<FileOperation> Activity, int Documents, int NeedsText, int IntakeDocuments = 0);
 public sealed record EntryPage(List<CatalogEntry> Items, int Total);
 
 // One writer owns filesystem changes and scans. UI and future MCP tools share this service.
 // Run one application instance per catalog; network files must not have independent writers.
-public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, DocumentTextReader textReader)
+public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory, DocumentTextReader textReader, TimeProvider? timeProvider = null)
 {
     private readonly SemaphoreSlim writer = new(1, 1);
+    private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
     public const long MaxUploadBytes = 100 * 1024 * 1024;
 
     public async Task<LibraryOverview> OverviewAsync()
     {
         await using var db = await factory.CreateDbContextAsync();
+        var intake = await IntakeQueryAsync(db);
         return new(await db.Roots.AsNoTracking().OrderBy(x => x.Name).ToListAsync(),
             await db.Entries.AsNoTracking().Where(x => x.IsFolder && !x.IsMissing && x.TrashBatchId == null).OrderBy(x => x.Name).ToListAsync(),
             await db.Operations.AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(50).ToListAsync(),
             await db.Entries.CountAsync(x => !x.IsFolder && !x.IsMissing && x.TrashBatchId == null),
-            await db.Entries.CountAsync(x => !x.IsFolder && !x.IsMissing && x.TrashBatchId == null && x.TextStatus != "Indexed"));
+            await db.Entries.CountAsync(x => !x.IsFolder && !x.IsMissing && x.TrashBatchId == null && x.TextStatus != "Indexed"),
+            await intake.CountAsync());
     }
 
     public async Task<EntryPage> BrowseAsync(Guid? folderId, string search = "", int offset = 0)
@@ -137,6 +140,8 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
 
     private async Task ScanRootAsync(CatalogDb db, StorageRoot root)
     {
+        // A previous offline root may have cleared the tracker to discard a partial scan.
+        if (db.Entry(root).State == EntityState.Detached) db.Attach(root);
         try
         {
             await RequireOnlineAsync(root);
@@ -153,13 +158,14 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
                     if ((attrs & FileAttributes.ReparsePoint) != 0) continue;
                     var child = StoragePaths.Join(relative, name);
                     var directory = (attrs & FileAttributes.Directory) != 0;
-                    found.Add((child, directory, directory ? 0 : new FileInfo(path).Length, File.GetLastWriteTimeUtc(path)));
+                    found.Add((child, directory, directory ? 0 : new FileInfo(path).Length, FileTimestamp(File.GetLastWriteTimeUtc(path))));
                     if (directory) Visit(child);
                 }
             }
             Visit("");
             var entries = await db.Entries.Where(x => x.RootId == root.Id && x.TrashBatchId == null).ToListAsync();
             var byPath = entries.ToDictionary(x => x.RelativePath, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+            var foldersById = entries.Where(x => x.IsFolder).ToDictionary(x => x.Id);
             var seen = new HashSet<string>(byPath.Comparer) { "" };
             foreach (var file in found)
             {
@@ -173,7 +179,26 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
                 var parentPath = file.Relative.Contains('/') ? file.Relative[..file.Relative.LastIndexOf('/')] : "";
                 entry.ParentId = byPath[parentPath].Id;
                 entry.IsFolder = file.Folder;
-                if (!file.Folder && (entry.ModifiedAt != file.Modified || entry.Size != file.Size || entry.TextStatus is "Pending" or "PDF text tool unavailable"))
+                if (file.Folder) foldersById[entry.Id] = entry; else foldersById.Remove(entry.Id);
+                var metadataChanged = entry.ModifiedAt != file.Modified || entry.Size != file.Size;
+                if (metadataChanged) { entry.ObservedAt = time.GetUtcNow(); entry.ContentHash = ""; }
+                var inIntake = !file.Folder && HasIntakeAncestor(entry, foldersById);
+                var previousHash = entry.ContentHash;
+                entry.Size = file.Size;
+                entry.ModifiedAt = file.Modified;
+                if (inIntake)
+                {
+                    if (file.Size == 0) entry.Readiness = "Empty file";
+                    else if (time.GetUtcNow() - entry.ObservedAt < StabilityDelay) entry.Readiness = "Finishing scan";
+                    else
+                    {
+                        try { entry.ContentHash = await FingerprintAsync(root, entry); entry.Readiness = "Ready"; }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or StorageException) { entry.Readiness = "Waiting for access"; }
+                    }
+                }
+                else entry.Readiness = "Not queued";
+                if (!file.Folder && (!inIntake || entry.Readiness == "Ready") &&
+                    (metadataChanged || previousHash != entry.ContentHash || entry.TextStatus is "Pending" or "PDF text tool unavailable"))
                 {
                     TextResult extracted;
                     try { extracted = await textReader.ReadAsync(StoragePaths.Resolve(root.Location, file.Relative)); }
@@ -181,14 +206,12 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
                     entry.ExtractedText = extracted.Text;
                     entry.TextStatus = extracted.Status;
                 }
-                entry.Size = file.Size;
-                entry.ModifiedAt = file.Modified;
                 entry.IsMissing = false;
             }
             foreach (var entry in entries) entry.IsMissing = !seen.Contains(entry.RelativePath);
             root.IsOnline = true;
             root.LastError = null;
-            root.LastScan = DateTimeOffset.UtcNow;
+            root.LastScan = time.GetUtcNow();
             await db.SaveChangesAsync();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or StorageException)
@@ -338,7 +361,7 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
         finally { writer.Release(); }
     }
 
-    private static async Task ExecuteMoveAsync(CatalogDb db, StorageRoot root, CatalogEntry entry, FileOperation op)
+    private async Task ExecuteMoveAsync(CatalogDb db, StorageRoot root, CatalogEntry entry, FileOperation op)
     {
         var source = StoragePaths.Resolve(root.Location, op.FromPath);
         var target = StoragePaths.Resolve(root.Location, op.ToPath);
@@ -377,7 +400,7 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
         await ApplyMoveAsync(db, op);
     }
 
-    private static async Task ApplyMoveAsync(CatalogDb db, FileOperation op)
+    private async Task ApplyMoveAsync(CatalogDb db, FileOperation op)
     {
         var all = await db.Entries.Where(x => x.RootId == op.RootId).ToListAsync();
         foreach (var entry in all.Where(x => x.Id == op.EntryId || x.RelativePath.StartsWith(op.FromPath + "/", StringComparison.Ordinal)))
@@ -392,10 +415,17 @@ public sealed class LibraryService(IDbContextFactory<CatalogDb> factory, Documen
         }
         op.State = "Completed";
         op.Error = null;
+        if (op.FilingPreviewId is Guid previewId)
+        {
+            var preview = await db.FilingPreviews.SingleAsync(x => x.Id == previewId);
+            preview.State = "Applied";
+            preview.OperationId = op.Id;
+            preview.AppliedAt = time.GetUtcNow();
+        }
         await db.SaveChangesAsync();
     }
 
-    private static async Task RecoverAsync(CatalogDb db)
+    private async Task RecoverAsync(CatalogDb db)
     {
         foreach (var op in await db.Operations.Where(x => x.State == "Prepared").ToListAsync())
         {

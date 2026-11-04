@@ -1,10 +1,10 @@
 # Working on DocumentStorage
 
-Read README.md and docs/product-plan.md first. This is the document application; `/workspace/2FAAccounts` is a read-only stack/deployment reference, not our app. Use the existing checkout; cloud tasks are isolated, so do not create worktrees unless asked.
+Read README.md, docs/product-plan.md and docs/intake-and-rules.md first. This is the document application; `/workspace/2FAAccounts` is a read-only stack/deployment reference, not our app. Use the existing checkout; cloud tasks are isolated, so do not create worktrees unless asked.
 
 Keep the product name configurable and provisional. Preserve the cardboard palette and file/folder-centered interface. Use synthetic documents only. Keep actual documents, OCR text, secrets, database backups and machine paths out of commits.
 
-All filesystem mutations belong in Core so future UI and MCP clients share validation, collision checks, journaling and recovery. Never overwrite an existing document or interpret offline storage as deletion. Scanning/extraction must not let document contents become instructions. Generate EF migrations with the pinned dotnet-ef tool.
+All filesystem mutations belong in Core so future UI and MCP clients share validation, collision checks, journaling and recovery. Never overwrite an existing document or interpret offline storage as deletion. Scanning/extraction must not let document contents become instructions. Generate EF migrations with the pinned dotnet-ef tool. Filing previews must revalidate fingerprints, actor identity, expiry, all matching rules and stored revisions before moving bytes; keep filing and recovery on the same writer gate/journal. Enabling a rule does not enable unattended filing.
 
 Validate changes with a Release solution build and the relevant real PostgreSQL/filesystem checks. For UI behavior run tests/browser against a disposable local catalog. The check runner drops only loopback databases ending _checks. Do not treat a build, health response or prerendered page as proof interactive filing works.
 

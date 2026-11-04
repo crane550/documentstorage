@@ -11,6 +11,8 @@
         <div class="workspace-label">YOUR WORKSPACE <span>LOCAL</span></div>
         <nav class="main-nav" aria-label="Workspace">
             <button class="@(view == "documents" ? "active" : "")" @onclick='() => SwitchView("documents")'><Icon Name="folder" />Documents <span class="nav-count">@overview.Documents</span></button>
+            <button class="@(view == "intake" ? "active" : "")" @onclick='() => SwitchView("intake")'><Icon Name="inbox" />Intake <span class="nav-count">@overview.IntakeDocuments</span></button>
+            <button class="@(view == "rules" ? "active" : "")" @onclick='() => SwitchView("rules")'><Icon Name="spark" />Filing rules</button>
             <button class="@(view == "activity" ? "active" : "")" @onclick='() => SwitchView("activity")'><Icon Name="clock" />Activity</button>
             <button class="@(view == "trash" ? "active" : "")" @onclick='() => SwitchView("trash")'><Icon Name="trash" />Trash</button>
         </nav>
@@ -104,10 +106,13 @@
                         }
                         @if (selected.IsFolder)
                         {
+                            <div class="intake-folder-setting">
+                                @if (selected.ParentId != null) { <button class="button subtle full-width" disabled="@busy" @onclick="ToggleIntake"><Icon Name="inbox" Size="16" />@(selected.IsIntake ? "Stop using as intake" : "Use as intake")</button><p class="help-text">@(selected.IsIntake ? "New documents in this folder appear in Intake for review and filing." : "Intake folders collect scans. Keep filed destinations outside this folder.")</p> }
+                            </div>
                             <div class="instructions-heading"><Icon Name="spark" Size="18" /><h3>Filing instructions</h3></div><p class="help-text">Describe what belongs here and how you want it named.</p>
                             <label class="sr-only" for="instructions">Folder filing instructions</label><textarea id="instructions" class="instructions-input" maxlength="20000" @bind="instructions" placeholder="For example: Keep monthly bank statements here. Name them using the statement closing date and bank name." rows="8"></textarea>
                             <button class="button primary full-width" disabled="@busy" @onclick="SaveInstructions">Save instructions</button>
-                            <div class="guidance-note"><Icon Name="info" Size="16" /><p>Saved as folder guidance. Automatic filing and conversational editing are coming in the AI milestone.</p></div>
+                            <div class="guidance-note"><Icon Name="info" Size="16" /><p>Saved as folder guidance. Use Filing rules for names and destinations. Ollama identification and conversational editing come next.</p></div>
                             @if (InheritedInstructions.Length > 0) { <details class="inherited"><summary>Guidance from parent folders</summary><pre>@InheritedInstructions</pre></details> }
                         }
                         else
@@ -124,6 +129,14 @@
                 </aside>
             </div>
             <div class="bottom-note"><Icon Name="info" Size="15" /><span>Built around your folders. Local storage today, room for a NAS tomorrow.</span><span class="milestone-label">FOUNDATION · 01</span></div>
+        }
+        else if (view == "intake")
+        {
+            <IntakeWorkspace @ref="intakeWorkspace" Overview="overview" Changed="Reload" OpenRules='() => SwitchView("rules")' />
+        }
+        else if (view == "rules")
+        {
+            <RulesWorkspace Overview="overview" Changed="Reload" />
         }
         else if (view == "storage")
         {
@@ -191,10 +204,11 @@
     private Guid formParent;
     private bool busy, error, formNetwork;
     private int offset;
+    private IntakeWorkspace? intakeWorkspace;
     private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
-    private string ViewLabel => view switch { "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
-    private string Heading => view switch { "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
-    private string Subtitle => view switch { "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
+    private string ViewLabel => view switch { "intake" => "Intake", "rules" => "Filing rules", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
+    private string Heading => view switch { "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
+    private string Subtitle => view switch { "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
     private string RootName(Guid id) => overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
     private IEnumerable<CatalogEntry> Breadcrumbs
     {
@@ -257,7 +271,8 @@
     private async Task ClearSearch() => await Run(async () => { search = searchInput = ""; offset = 0; await Reload(); });
     private async Task Previous() => await Run(async () => { offset = Math.Max(0, offset - 100); await Reload(); });
     private async Task Next() => await Run(async () => { offset += 100; await Reload(); });
-    private async Task Rescan() => await Run(async () => { await Library.ScanAsync(); await Reload(); }, "Storage checked. Available documents and their text have been indexed.");
+    private async Task Rescan() => await Run(async () => { await Library.ScanAsync(); await Reload(); if (view == "intake" && intakeWorkspace != null) await intakeWorkspace.RefreshAsync(); }, "Storage checked. Available documents and their text have been indexed.");
+    private async Task ToggleIntake() => await Run(async () => { if (selected != null) await Library.SetIntakeAsync(selected.Id, !selected.IsIntake); await Reload(); }, "Intake folder setting saved.");
     private async Task SaveInstructions() => await Run(async () => { if (selected != null) await Library.SaveInstructionsAsync(selected.Id, instructions); await Reload(); }, "Folder instructions saved.");
     private async Task Upload(InputFileChangeEventArgs args) => await Run(async () =>
     {

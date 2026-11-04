@@ -28,6 +28,10 @@ namespace DocumentStorage.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("ExtractedText")
                         .IsRequired()
                         .HasColumnType("text");
@@ -37,6 +41,9 @@ namespace DocumentStorage.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<bool>("IsFolder")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsIntake")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsMissing")
@@ -49,8 +56,15 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Readiness")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("RelativePath")
                         .IsRequired()
@@ -79,6 +93,42 @@ namespace DocumentStorage.Data.Migrations
                     b.ToTable("Entries");
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.DocumentReview", b =>
+                {
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FactsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Reviewed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("EntryId");
+
+                    b.ToTable("Reviews");
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.FileOperation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -93,6 +143,9 @@ namespace DocumentStorage.Data.Migrations
 
                     b.Property<string>("Error")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("FilingPreviewId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("FromPath")
                         .IsRequired()
@@ -121,9 +174,157 @@ namespace DocumentStorage.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FilingPreviewId")
+                        .IsUnique();
+
                     b.HasIndex("RootId", "State");
 
                     b.ToTable("Operations");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingPreview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("DestinationFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DestinationPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Filename")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReviewRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RuleRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntryId");
+
+                    b.ToTable("FilingPreviews");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingRuleDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DestinationFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FilenameTemplate")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("MatchJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequiredFactsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationFolderId");
+
+                    b.ToTable("FilingRules");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingRuleRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("RuleRevisions");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.LibraryUser", b =>
@@ -361,6 +562,33 @@ namespace DocumentStorage.Data.Migrations
                     b.HasOne("DocumentStorage.Data.StorageRoot", null)
                         .WithMany()
                         .HasForeignKey("RootId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentReview", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithOne()
+                        .HasForeignKey("DocumentStorage.Data.DocumentReview", "EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingRuleDefinition", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationFolderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingRuleRevision", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.FilingRuleDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

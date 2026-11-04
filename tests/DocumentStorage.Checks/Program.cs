@@ -123,6 +123,7 @@ try
     Check((await library.OverviewAsync()).Activity.Single(x => x.Id == ambiguous.Id).State == "Needs review", "ambiguous interrupted moves require review");
     await Refuses(() => library.MoveAsync(doc.Id, rootFolder.Id, "do-not-run.txt"), "ambiguous recovery pauses further writes");
     Check(File.Exists(Path.Combine(rootPath, "recovered.txt")) && File.Exists(Path.Combine(rootPath, "ambiguous.txt")), "ambiguous recovery preserves both disk files");
+    await IntakeChecks.RunAsync(factory, Path.Combine(scratch, "filing"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

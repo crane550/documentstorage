@@ -11,6 +11,14 @@ public sealed record FilingPlan(bool Ready, string Reason, Guid? FolderId = null
 
 public static partial class FilingRules
 {
+    public static void ValidateTemplate(string template)
+    {
+        if (string.IsNullOrWhiteSpace(template) || template.Length > 300) throw new StorageException("Enter a filename template of 300 characters or less.");
+        var sample = Token().Replace(template, "sample");
+        if (sample.Contains('{') || sample.Contains('}')) throw new StorageException("Use fact tokens such as {institution} or {statement_end:yyyy-MM-dd}.");
+        StoragePaths.ValidateName(sample);
+    }
+
     public static FilingPlan Preview(DocumentFacts facts, IEnumerable<FilingRule> rules)
     {
         if (facts.NeedsReview) return new(false, "Document identification needs review.");
@@ -38,6 +46,6 @@ public static partial class FilingRules
         catch (StorageException ex) { return new(false, ex.Message); }
     }
 
-    [GeneratedRegex(@"\{([a-z_]+)(?::(yyyy-MM-dd|yyyy-MM|yyyy))?\}", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\{([a-z][a-z0-9_]{0,63})(?::(yyyy-MM-dd|yyyy-MM|yyyy))?\}", RegexOptions.CultureInvariant)]
     private static partial Regex Token();
 }

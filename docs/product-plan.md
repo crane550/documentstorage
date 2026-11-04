@@ -24,9 +24,13 @@
 
 `tests/DocumentStorage.Checks` exercises real PostgreSQL and temporary filesystem operations. `tests/browser` drives the actual UI with synthetic files.
 
+## Completed intake milestone
+
+Folder-scoped intake, stable observations and fingerprints, manual reviewed facts, persisted/versioned rules, draft simulations, and explicit preview-bound filing are implemented. See [the workflow](intake-and-rules.md). Rule activation does not enable unattended filing.
+
 ## Subsequent milestones
 
-1. **Intake and rule workspace:** choose intake folders, track stable-file readiness, document facts and review states; persist/version rules; show a dry-run plan including affected filenames and collision checks before activation. Add file fingerprints, robust external rename reconciliation, text extraction retries and PostgreSQL full-text search. Add preview for PDFs/images.
+1. **Catalog and document previews:** robust external rename reconciliation using fingerprints, extraction retry/backoff, PostgreSQL full-text search, and PDF/image preview. Add bounded bulk filing after the per-document workflow is exercised.
 2. **Ollama and guidance conversation:** configurable local endpoint/model, queued work with backoff/cancellation, structured fact schema, uncertainty/review, document-type instructions, conversation history and source-to-rule change tracking. Do not make AI availability a prerequisite for browsing or manual filing.
 3. **MCP and permissions:** authenticated OAuth transport, scoped read vs propose vs approved execution, compact resource context, rule simulations, approval-bound operations, bounded bulk jobs and audit history. Authorization and action validation happen server-side. Document text cannot grant permissions or change rules.
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.

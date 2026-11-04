@@ -3,7 +3,7 @@
         <button class="tree-toggle" aria-label="@(expanded ? "Collapse " + Folder.Name : "Expand " + Folder.Name)" @onclick="() => expanded = !expanded" disabled="@(!Children.Any())" aria-expanded="@expanded">
             <span class="@(expanded ? "turn" : "")"><Icon Name="arrow" Size="12" /></span>
         </button>
-        <button class="tree-label" @onclick="() => OnSelect.InvokeAsync(Folder.Id)"><Icon Name="folder" Size="17" /><span>@Folder.Name</span></button>
+        <button class="tree-label" @onclick="() => OnSelect.InvokeAsync(Folder.Id)"><Icon Name="@(Folder.IsIntake ? "inbox" : "folder")" Size="17" /><span>@Folder.Name</span></button>
     </div>
     @if (expanded)
     {

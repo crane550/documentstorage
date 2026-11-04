@@ -4,7 +4,7 @@ A filesystem-first document workspace. Files stay in ordinary server folders; Po
 
 Built with .NET 10, Blazor Server, EF Core and PostgreSQL. The interface uses warm paper, kraft cardboard, brown, and sage. `crane550/2FAAccounts` is an infrastructure reference only; this project has its own code and database.
 
-## First milestone
+## Working features
 
 Working now:
 
@@ -15,9 +15,13 @@ Working now:
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves before touching disk; recover unambiguous interrupted moves on rescan and pause ambiguous operations for review.
-- A tested, data-only filing-rule preview contract. It never calls an AI or moves files on its own.
+- Intake folder designation, stable-file readiness, and a queue for reviewing document types/facts.
+- Persisted, versioned filing rules with draft simulations and exact filename/destination previews.
+- Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
 
-**Not implemented yet:** Ollama identification, automatic intake/filing, instruction chat, rule editing/activation, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
+See [Intake and deterministic filing](docs/intake-and-rules.md) for the complete workflow.
+
+**Not implemented yet:** Ollama identification, unattended filing, instruction chat, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 
@@ -53,6 +57,7 @@ dotnet run --project tests/DocumentStorage.AuthenticationChecks -c Release
 # With the app running against a disposable catalog, system Chromium available:
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
+node tests/browser/intake.mjs
 ```
 
 The filesystem .NET runner refuses non-loopback databases or names that do not end `_checks`. Override its connection using `DOCUMENTSTORAGE_CHECKS_DB`. Browser checks sign in using `DOCUMENTSTORAGE_TEST_USERNAME`/`DOCUMENTSTORAGE_TEST_PASSWORD`, or the cloud fixture in ignored `.local/browser-credentials.json`. They create synthetic files under `.local/browser-storage` and register that root in the running catalog. They can be rerun and leave those sample files for inspection; never target a real catalog. Set `DOCUMENTSTORAGE_CHROMIUM` for your Chromium executable, `DOCUMENTSTORAGE_TEST_URL` for another local port, and `DOCUMENTSTORAGE_SCREENSHOT` for the screenshot output.
