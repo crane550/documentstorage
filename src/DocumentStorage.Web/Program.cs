@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Npgsql;
 using Microsoft.AspNetCore.DataProtection;
 using System.Reflection;
+using DocumentStorage.Web.Updates;
 
 var builder = WebApplication.CreateBuilder(args);
 var instance = Environment.GetEnvironmentVariable("DOCUMENTSTORAGE_INSTANCE");
@@ -91,6 +92,9 @@ builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Tim
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHostedService<IdentificationWorker>();
 builder.Services.AddScoped<WorkspaceState>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IUpdateHost, WindowsUpdateHost>();
+builder.Services.AddSingleton<UpdateService>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment());
 
 var app = builder.Build();
@@ -140,6 +144,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 app.MapAccountEndpoints();
+app.MapUpdates();
 app.MapDocumentPreviews();
 app.MapAssistantOAuth(mcpAddress);
 app.MapMcp("/mcp").RequireAuthorization("catalog.read").RequireRateLimiting("mcp");
@@ -160,7 +165,9 @@ app.MapGet("/health", async (IDbContextFactory<CatalogDb> factory) =>
     return await db.Database.CanConnectAsync() ? Results.Ok(new
     {
         status = "ready",
-        revision = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "development"
+        revision = AppVersion.Commit ?? "development",
+        version = AppVersion.Display,
+        build = AppVersion.Build
     }) : Results.StatusCode(503);
 }).AllowAnonymous();
 app.MapStaticAssets().AllowAnonymous();

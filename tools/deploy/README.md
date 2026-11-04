@@ -86,7 +86,7 @@ Get-Service DocumentStorage
 Invoke-RestMethod http://127.0.0.1:5240/health
 ```
 
-`/health` is anonymous and exposes only readiness/revision. `/login` is the app's public sign-in page. Downloads and Blazor connections require a valid app cookie. Public cookies are HTTPS-only, so use the public hostname to sign in; plain loopback HTTP is for the health check. Logs are in the Windows Application event log under DocumentStorage.
+`/health` is anonymous and exposes readiness/revision/version/build. `/login` is the app's public sign-in page. Downloads and Blazor connections require a valid app cookie. Public cookies are HTTPS-only, so use the public hostname to sign in; plain loopback HTTP is for the health check. Logs are in the Windows Application event log under DocumentStorage.
 
 The scripts' syntax and application behavior are validated in cloud tests. Actual Windows service installation and ACL behavior still require validation on this server.
 
@@ -124,6 +124,8 @@ Before registering existing document directories, grant LocalService Modify righ
 
 ## Updating
 
+After the one-time [browser updater setup](../../docs/updating.md), use **Update** at the bottom of the menu or **Settings › Updates**. First deploy this version with the console commands below, then run `powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\install-updater.ps1` once in the same elevated window. It requests the Windows administrator password for Task Scheduler, not the app/database login. Re-run after that Windows password changes. The following console workflow remains available for initial setup and recovery.
+
 ```powershell
 Set-Location C:\Apps\DocumentStorage\repo
 git pull --ff-only origin main
@@ -132,7 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\deploy.ps1
 
 The connection-string/backup argument regression check runs with `powershell -NoProfile -ExecutionPolicy Bypass -File tests\deploy\backup-arguments.ps1` (or `pwsh` on Linux). It uses synthetic settings and does not contact a database or alter services.
 
-Updates build a staging release, make/check a custom-format PostgreSQL backup, stop only DocumentStorage, retain the old binaries, switch, and verify the new revision. Startup failure triggers an attempted binary rollback. Database snapshots are not document backups; binary rollback does not reverse migrations. An incompatible migration needs deliberate recovery from the retained backup. No in-app updater is implemented yet.
+Updates build a staging release, make/check a custom-format PostgreSQL backup, stop only DocumentStorage, retain the old binaries, switch, and verify the new revision. Startup failure triggers an attempted binary rollback. Database snapshots are not document backups; binary rollback does not reverse migrations. An incompatible migration needs deliberate recovery from the retained backup. The browser updater uses this same deployment script through its fixed scheduled task.
 
 | Symptom | Check |
 | --- | --- |

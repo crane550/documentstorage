@@ -2,11 +2,24 @@
 [CmdletBinding()]
 param(
     [string]$InstallRoot = 'C:\Apps\DocumentStorage',
-    [string]$PostgresBin = 'C:\Program Files\PostgreSQL\18\bin'
+    [string]$PostgresBin = 'C:\Program Files\PostgreSQL\18\bin',
+    [string]$UpdateStatusPath = ''
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 Assert-Administrator
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
+if ($UpdateStatusPath -and $UpdateStatusPath -ne (Join-Path $InstallRoot 'updater\status.json')) { throw 'Invalid updater status location.' }
+function Report-DeploymentStage {
+    param([string]$Message)
+    if ($UpdateStatusPath) {
+        try {
+            . (Join-Path $PSScriptRoot 'update-protocol.ps1')
+            $status = Get-Content -LiteralPath $UpdateStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $status.stage=$Message; $status.updatedAt=[DateTimeOffset]::UtcNow.ToString('o')
+            Write-UpdateJson $UpdateStatusPath $status
+        } catch { Write-Verbose 'Updater progress could not be saved; deployment/rollback continues.' }
+    }
+}
 $repository = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ($repository -ne (Join-Path $InstallRoot 'repo')) { throw 'Run the script from this instance repo directory.' }
 $config = Get-Content -LiteralPath (Join-Path $InstallRoot 'instance.json') -Raw | ConvertFrom-Json
@@ -19,12 +32,14 @@ $publish = Join-Path $InstallRoot 'publish'
 $service = Get-CimInstance Win32_Service -Filter "Name='DocumentStorage'"
 if ($null -eq $service -or $service.PathName -notlike ('*"' + (Join-Path $publish 'DocumentStorage.Web.dll') + '"*')) { throw 'The DocumentStorage service does not point to this instance. Nothing will be stopped.' }
 if (-not (Test-Path (Join-Path $PostgresBin 'pg_dump.exe')) -or -not (Test-Path (Join-Path $PostgresBin 'pg_restore.exe'))) { throw 'PostgreSQL backup and restore tools are required before an update.' }
+Report-DeploymentStage 'Building the new release while the app stays online'
 Publish-Release $repository $staging $revision
 
 Protect-Directory (Join-Path $InstallRoot 'backups')
 $dump = Join-Path $InstallRoot "backups\catalog-$release.dump"
 $backupArguments = Get-CatalogBackupArguments -ConnectionString $config.ConnectionStrings.Catalog -BackupPath $dump
 $oldPgPassword = $env:PGPASSWORD
+Report-DeploymentStage 'Backing up and verifying the catalog before restart'
 try {
     $env:PGPASSWORD = $config.DOCUMENTSTORAGE_DB_PASSWORD
     Invoke-Native (Join-Path $PostgresBin 'pg_dump.exe') $backupArguments
@@ -36,6 +51,7 @@ $swapped = $false
 $oldRevision = $null
 try { $oldRevision = (Invoke-RestMethod 'http://127.0.0.1:5240/health' -TimeoutSec 5).revision } catch { }
 try {
+    Report-DeploymentStage 'Restarting DocumentStorage with the new release'
     Stop-Service DocumentStorage
     (Get-Service DocumentStorage).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
     New-Item -ItemType Directory -Path (Split-Path $previous) -Force | Out-Null
@@ -44,10 +60,12 @@ try {
     catch { Move-Item -LiteralPath $previous -Destination $publish; throw }
     $swapped = $true
     Start-Service DocumentStorage
+    Report-DeploymentStage 'Verifying the new release and database'
     Wait-Healthy -Port 5240 -Revision $revision -ServiceName DocumentStorage
     Write-Host "Release $revision is healthy. Previous binaries retained at $previous. Catalog backup: $dump"
 } catch {
     $failure = $_
+    Report-DeploymentStage 'Deployment failed; restoring the previous binaries'
     Stop-Service DocumentStorage -ErrorAction SilentlyContinue
     if ($swapped) {
         (Get-Service DocumentStorage).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))

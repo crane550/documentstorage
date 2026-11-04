@@ -60,7 +60,7 @@ function Publish-Release {
     try {
         Invoke-Native dotnet @('tool', 'restore', '--tool-manifest', 'dotnet-tools.json')
         Invoke-Native dotnet @('restore', '--locked-mode')
-        Invoke-Native dotnet @('publish', 'src/DocumentStorage.Web', '-c', 'Release', '--no-restore', '--self-contained', 'false', '-o', $Output, "-p:InformationalVersion=$Revision", '-p:IncludeSourceRevisionInInformationalVersion=false')
+        Invoke-Native dotnet @('publish', 'src/DocumentStorage.Web', '-c', 'Release', '--no-restore', '--self-contained', 'false', '-o', $Output, "-p:SourceRevisionId=$Revision")
     } finally { Pop-Location }
 }
 

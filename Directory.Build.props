@@ -4,5 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <DocumentVersionSeries>0.3</DocumentVersionSeries>
   </PropertyGroup>
 </Project>

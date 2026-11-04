@@ -140,6 +140,8 @@ try
     Check(confidentialTokens.TryGetProperty("access_token",out _), "confidential OAuth clients complete the code flow using their secret");
     var tokens = await Tokens(full); var readerTokens = await Tokens(reader);
     using var authorized = Http(); authorized.DefaultRequestHeaders.Authorization = new("Bearer",tokens.GetProperty("access_token").GetString());
+    Check((await authorized.GetAsync("/updates/status")).StatusCode == HttpStatusCode.Redirect, "MCP bearer credentials cannot read browser updater status");
+    Check((await authorized.PostAsync("/updates/update",new FormUrlEncodedContent([]))).StatusCode == HttpStatusCode.Redirect, "MCP bearer credentials cannot start deployments");
     using var readHttp = Http(); readHttp.DefaultRequestHeaders.Authorization = new("Bearer",readerTokens.GetProperty("access_token").GetString());
     Check((await authorized.GetAsync("/")).StatusCode == HttpStatusCode.Redirect, "MCP bearer credentials cannot authenticate the browser workspace or approval controls");
     Check((await authorized.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview?v=fixture")).StatusCode == HttpStatusCode.Unauthorized, "MCP bearer credentials cannot authenticate binary browser previews");

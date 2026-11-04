@@ -39,6 +39,10 @@ Guidance is written on sticky notes where it applies: **Folder notes** on each f
 
 Settings › Assistants creates one OAuth connection per MCP client and shows the client secret once. Suggestions from assistants (guidance, paused rules, one exact filing) appear at the top of the Inbox and in Settings. They change nothing until you accept them in the browser.
 
+## Updates and version
+
+The bottom of the menu shows the running version, build number and short commit. **Update** opens Settings › Updates, with available changes, a separate install confirmation and progress through backup/restart. A one-time Windows task installation enables the controls; future releases install from the browser. See [Updates](updating.md).
+
 ## Design language
 
 The app is meant to feel like a well-kept desk. Cardboard is used for the frame: the sidebar, dropdown menus, dialog headers, the drop box and the sign-in page. Paper is used for the work. Other details:

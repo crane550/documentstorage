@@ -38,7 +38,9 @@ else
             <a href="/history?tab=trash" class="@Active("trash")" aria-current="@Current("trash")" @onclick="CloseMenu"><Icon Name="trash" Size="18" /><span>Trash</span></a>
             <a href="/settings" class="@Active("settings")" aria-current="@Current("settings")" @onclick="CloseMenu"><Icon Name="gear" Size="18" /><span>Settings</span></a>
             <a href="/account" class="account-link" data-enhance-nav="false"><span class="avatar">@Initial</span><span>@userName</span></a>
+            <a href="/settings?tab=updates" @onclick="CloseMenu"><Icon Name="download" Size="18" /><span>Update</span></a>
         </nav>
+        <div class="sidebar-version" title="Running application release">@("v" + AppVersion.Display)<span>Build @AppVersion.Build · @AppVersion.ShortCommit</span></div>
     </aside>
     <div class="menu-scrim" aria-hidden="true" @onclick="CloseMenu"></div>
 

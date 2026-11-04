@@ -26,6 +26,9 @@ Working now:
 - Evidence-backed facts, optional automatic reading, explicit **Approve & file**, and removable filing examples.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
+- Version/build details in the menu and administrator browser updates through an installed Windows task, with staged builds, required catalog backup and binary rollback.
+
+See [Browser updates and release numbers](docs/updating.md) for one-time updater installation and versioning.
 
 See [The interface](docs/interface.md) for how the screens fit together, the filing loop and the design language.
 
@@ -39,7 +42,7 @@ See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing w
 
 See [Instruction conversations and MCP](docs/assistants-and-mcp.md) for connection setup, permissions and protocol boundaries.
 
-**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 

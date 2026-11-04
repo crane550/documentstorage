@@ -1,0 +1,86 @@
+@using DocumentStorage.Web.Updates
+@inject UpdateService Updates
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="update-settings" @ref="surface" data-update-active="@(snapshot?.Status?.Active == true ? "true" : "false")">
+    <section class="sheet settings-card">
+        <h2>Application updates</h2>
+        <p class="update-version">@("v" + AppVersion.Display) <span>Build @AppVersion.Build · @AppVersion.ShortCommit</span></p>
+        <p>Check for changes on main, then install the release you approve. Your catalog is backed up before the app restarts.</p>
+        @if (!string.IsNullOrEmpty(Error)) { <p class="form-error" role="alert">@Error</p> }
+        @if (snapshot == null) { <p>Loading updater status…</p> }
+        else if (!snapshot.Installed)
+        {
+            <div class="update-setup"><h3>One-time server setup</h3><p>The Windows updater task needs to be installed once by a server administrator. After that, updates run here, even when you are away from the server.</p>
+                <pre>powershell -NoProfile -ExecutionPolicy Bypass -File C:\Apps\DocumentStorage\repo\tools\deploy\install-updater.ps1</pre>
+                <p class="hint">Run this in an elevated PowerShell on the Windows server after deploying this version. It asks for your Windows administrator password; Task Scheduler keeps it outside the app. Re-run after that Windows password changes. Development instances cannot install updates.</p></div>
+        }
+        else
+        {
+            <div class="update-actions">
+                <form method="post" action="/updates/check" data-enhance="false"><AntiforgeryToken /><button type="submit" class="button" disabled="@Active"><Icon Name="refresh" Size="16" />Check for updates</button></form>
+                @if (CanInstall) { <button type="button" class="button primary" @onclick="() => confirming = true">Install update…</button> }
+            </div>
+            @if (snapshot.Status is {} status)
+            {
+                <div class="update-progress" role="status"><Stamp Text="@status.State" Tone="@(status.State == "Failed" ? "danger" : status.Active ? "working" : "ready")" /><strong>@status.Stage</strong><small>@status.UpdatedAt.ToLocalTime().ToString("g")</small></div>
+                @if (status.Active && DateTimeOffset.UtcNow - status.UpdatedAt > TimeSpan.FromMinutes(2)) { <p class="hint">The updater has not reported recently. A build can take several minutes. If it remains stuck, inspect Task Scheduler or re-run the installer on the server; another deployment will not be started automatically.</p> }
+            }
+            @if (snapshot.Check is { State: "Succeeded" } check)
+            {
+                <div class="update-changes">
+                    <h3>@(check.Latest == AppVersion.Commit ? "You’re up to date" : "Available changes")</h3>
+                    @if (check.Latest != AppVersion.Commit)
+                    {
+                        <p>Release <code>@Short(check.Latest)</code>@(check.DatabaseChange ? " includes catalog migrations." : ".")</p>
+                        <ul>@foreach (var commit in check.Pending) { <li><code>@Short(commit.Commit)</code> @commit.Subject</li> }</ul>
+                        @if (check.MoreChanges) { <p class="hint">Showing the latest 50 changes.</p> }
+                        @if (!CanInstall && !Active) { <p class="hint">Check again to refresh this release before installing.</p> }
+                    }
+                </div>
+            }
+            <p class="hint" data-update-reconnect hidden>Waiting for the app to restart. This page will reload when it is ready.</p>
+        }
+    </section>
+    <section class="sheet settings-card"><h2>What happens during an update</h2><p>The new release builds while the app stays available. A verified catalog backup is required, then only DocumentStorage restarts. Previous binaries are retained and restored if the new release fails its health check.</p><p>Save work in other tabs before installing. Your document files stay in their folders. The catalog backup does not replace document backups, and binary rollback does not reverse database migrations.</p></section>
+</div>
+@if (confirming && snapshot?.Check is {} approved)
+{
+    <Modal Title="Install application update?" IconName="download" OnClose="() => confirming = false">
+        <p>Install release <code>@Short(approved.Latest)</code>? A catalog backup will be taken first. Save work in other tabs; the app will disconnect briefly during restart and this page will reload when ready.</p>
+        <form method="post" action="/updates/update" data-enhance="false"><AntiforgeryToken /><input type="hidden" name="target" value="@approved.Latest" /><input type="hidden" name="checkId" value="@approved.Id" /><div class="form-actions"><button type="submit" class="button primary" disabled="@(!CanInstall)">Back up &amp; install</button><button type="button" class="button" @onclick="() => confirming = false">Cancel</button></div></form>
+    </Modal>
+}
+@code {
+    [Parameter] public string? Error { get; set; }
+    private UpdateSnapshot? snapshot;
+    private bool confirming;
+    private ElementReference surface;
+    private IJSObjectReference? module, watcher;
+    private readonly CancellationTokenSource lifetime = new();
+    private Task? polling;
+    private bool Active => snapshot?.Status?.Active == true;
+    private bool CanInstall => snapshot?.Installed == true && !Active && snapshot.Check is { State: "Succeeded", Mode: "check" } check && check.Running == AppVersion.Commit && AppVersion.ValidCommit(check.Latest) && check.Latest != AppVersion.Commit && DateTimeOffset.UtcNow - check.UpdatedAt < TimeSpan.FromMinutes(30);
+    private static string Short(string value) => value[..Math.Min(8, value.Length)];
+    protected override async Task OnInitializedAsync() { snapshot = await Updates.SnapshotAsync(); polling = Poll(); }
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./updater.js");
+        watcher = await module.InvokeAsync<IJSObjectReference>("watch", surface, AppVersion.Commit);
+    }
+    private async Task Poll()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        try { while(await timer.WaitForNextTickAsync(lifetime.Token)) { var value = await Updates.SnapshotAsync(); await InvokeAsync(() => { snapshot = value; StateHasChanged(); }); } }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        lifetime.Cancel(); if(polling != null) await polling;
+        try { if(watcher != null) { await watcher.InvokeVoidAsync("dispose"); await watcher.DisposeAsync(); } if(module != null) await module.DisposeAsync(); }
+        catch(JSDisconnectedException) { }
+        lifetime.Dispose();
+    }
+}

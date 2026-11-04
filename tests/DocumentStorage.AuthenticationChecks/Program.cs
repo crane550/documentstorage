@@ -8,19 +8,23 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using DocumentStorage.Web.Updates;
 
 namespace DocumentStorage.AuthenticationChecks;
 
 internal static partial class Runner
 {
-    public static async Task Main()
+    public static async Task Main(string[] args)
     {
+        if (args is ["--updater-browser"]) { await UpdateBrowserFixture.RunAsync(); return; }
         const string connection = "Host=127.0.0.1;Port=55432;Database=documentstorage_authentication_checks;Username=postgres";
         const string username = "fixture-admin";
         const string password = "Start-42"; // Synthetic eight-character bootstrap password.
         const string newPassword = "Fresh-42"; // Exercise the new minimum through the real form.
         var keyDirectory = Path.Combine(Path.GetTempPath(), "documentstorage-auth-" + Guid.NewGuid());
         Directory.CreateDirectory(keyDirectory);
+        var updateDirectory = Path.Combine(keyDirectory, "updater"); Directory.CreateDirectory(Path.Combine(updateDirectory, "requests"));
+        var updateHost = new SyntheticUpdateHost(updateDirectory);
         var values = new Dictionary<string, string?>
         {
             ["Hosting__PublicOrigin"] = "https://documents.example.test",
@@ -52,6 +56,7 @@ internal static partial class Runner
                 while (root != null && !File.Exists(Path.Combine(root.FullName, "DocumentStorage.sln"))) root = root.Parent;
                 builder.UseContentRoot(Path.Combine(root?.FullName ?? throw new InvalidOperationException("Cannot find solution root."), "src", "DocumentStorage.Web"));
                 builder.UseEnvironment("Production");
+                builder.ConfigureServices(services => services.AddSingleton<IUpdateHost>(updateHost));
             });
             HttpClient NewClient(bool cookies = true) => factory.CreateClient(new WebApplicationFactoryClientOptions
             { AllowAutoRedirect = false, HandleCookies = cookies, BaseAddress = new Uri("https://documents.example.test") });
@@ -97,6 +102,7 @@ internal static partial class Runner
             Check(cookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && cookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) && cookie.Contains("samesite=lax", StringComparison.OrdinalIgnoreCase), "public login cookie is Secure HttpOnly and SameSite Lax");
             Check(cookie.StartsWith(".DocumentStorage.documentstorage_authentication_checks=", StringComparison.Ordinal), "cookie name is isolated from other apps and databases");
             await PreviewHttpChecks.RunAsync(factory.Services, client, keyDirectory, Check);
+            using (var anonymous = NewClient(false)) await UpdateHttpChecks.RunAsync(factory.Services, client, anonymous, updateHost, await Token(client, "/account"), Check);
             var oldCookie = cookie.Split(';')[0];
             Check((await client.GetAsync("/")).StatusCode == HttpStatusCode.OK, "signed-in workspace opens");
             Check((await client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null)).StatusCode == HttpStatusCode.OK, "signed-in user can negotiate Blazor connection");
