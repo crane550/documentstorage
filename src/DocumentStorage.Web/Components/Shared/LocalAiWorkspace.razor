@@ -22,7 +22,7 @@
             <label for="ai-guidance">General identification guidance</label><textarea id="ai-guidance" @bind="settings.Instructions" maxlength="4000" rows="5"></textarea>
             <div class="ai-limits"><div><label for="ai-timeout">Time limit (seconds)</label><input id="ai-timeout" type="number" min="30" max="1800" @bind="settings.TimeoutSeconds" /></div><div><label for="ai-budget">Document text limit (characters)</label><input id="ai-budget" type="number" min="2000" max="16000" @bind="settings.MaxInputCharacters" /></div></div>
             <p class="field-hint">Long documents use the beginning and end of their text. Shortened input is flagged for closer review. Jobs run one at a time.</p>
-            <label class="workflow-checkbox"><input type="checkbox" @bind="settings.Enabled" />Enable local document identification</label>
+            <label class="workflow-checkbox"><input type="checkbox" @bind="settings.Enabled" />Enable local document identification</label><p class="field-hint">This model also drafts instruction updates from saved conversations.</p>
             <label class="workflow-checkbox"><input type="checkbox" @bind="settings.AutoIdentify" disabled="@(!settings.Enabled)" />Automatically identify new intake documents</label>
             <p class="field-hint">Automatic identification only creates proposals. You still check the facts and approve filing. Saving connection settings cancels pending work.</p>
             <button class="button primary" disabled="@busy" @onclick="SaveSettings">Save local AI settings</button>

@@ -16,3 +16,7 @@
 .header-account { display:flex; align-items:center; gap:18px; }
 .header-account>a { font-size:10px; color:#8b7453; border-left:1px solid var(--line); padding-left:18px; }
 @media(max-width:500px) { .account-card { padding:28px 24px; } .header-account .version-label { display:none; } }
+.oauth-consent p,.oauth-consent li { font-size:12px; line-height:1.8; color:#887558; margin:13px 0; }
+.oauth-consent ul { list-style:disc; padding-left:18px; margin:20px 0; }
+.oauth-consent code { font-size:10px; overflow-wrap:anywhere; }
+.oauth-consent form { display:flex; gap:10px; flex-wrap:wrap; margin-top:24px; }

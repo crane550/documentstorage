@@ -8,6 +8,10 @@
     <!-- The SDK injects this package at its bundled runtime patch. Pin it so locked
          restores are identical on the supported 10.0.401 and later .NET 10 SDKs. -->
     <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.12" PrivateAssets="all" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.1" />
+    <PackageReference Include="OpenIddict.Server.AspNetCore" Version="7.8.0" />
+    <PackageReference Include="OpenIddict.Validation.ServerIntegration" Version="7.8.0" />
+    <PackageReference Include="OpenIddict.Validation.AspNetCore" Version="7.8.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
   </ItemGroup>
 

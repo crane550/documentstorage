@@ -20,10 +20,14 @@ Working now:
 - Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
 - Configurable local Ollama identification with durable jobs, cancellation/retries and document-type guidance.
 - Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
+- Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
+- OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
 
 See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing workflow, and [Local document identification](docs/local-ai.md) to connect Ollama.
 
-**Not implemented yet:** unattended filing, instruction chat, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
+See [Instruction conversations and MCP](docs/assistants-and-mcp.md) for connection setup, permissions and protocol boundaries.
+
+**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 
@@ -56,11 +60,15 @@ dotnet run --project tests/DocumentStorage.Checks -c Release
 # Real application pipeline with app login/cookies, password changes and lockout and its own *_checks database:
 dotnet run --project tests/DocumentStorage.AuthenticationChecks -c Release
 
+# Real OAuth consent/PKCE/rotation/revocation and official MCP client over HTTP:
+dotnet run --project tests/DocumentStorage.McpChecks -c Release
+
 # With the app running against a disposable catalog, system Chromium available:
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
 node tests/browser/intake.mjs
 node tests/browser/ollama.mjs
+node tests/browser/instructions-mcp.mjs
 ```
 
 The filesystem .NET runner refuses non-loopback databases or names that do not end `_checks`. Override its connection using `DOCUMENTSTORAGE_CHECKS_DB`. Browser checks sign in using `DOCUMENTSTORAGE_TEST_USERNAME`/`DOCUMENTSTORAGE_TEST_PASSWORD`, or the cloud fixture in ignored `.local/browser-credentials.json`. They create synthetic files under `.local/browser-storage` and register that root in the running catalog. They can be rerun and leave those sample files for inspection; never target a real catalog. Set `DOCUMENTSTORAGE_CHROMIUM` for your Chromium executable, `DOCUMENTSTORAGE_TEST_URL` for another local port, and `DOCUMENTSTORAGE_SCREENSHOT` for the screenshot output.

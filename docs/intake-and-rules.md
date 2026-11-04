@@ -51,12 +51,12 @@ Previews expire after 15 minutes and are bound to the requesting sign-in, source
 
 The existing move journal records a filing operation before touching disk and links it to the approved preview. Catalog movement and preview completion commit together. A restart finishes an unambiguous interrupted operation; ambiguous state pauses writes for manual recovery. Retrying an already completed preview returns its recorded operation and does not move the document again. File IDs and bytes are retained. Once a document leaves intake, it leaves the queue while remaining searchable in the library.
 
-The server services behind UI and future MCP callers are `SetIntakeAsync`, `SaveReviewAsync`, `SaveRuleAsync`, `SimulateRuleAsync`, `PreviewFilingAsync`, and `ApplyFilingAsync`. Authenticated callers must supply the actual actor identity; token approval is checked against it. There are no new unauthenticated filesystem endpoints.
+The server services behind UI and MCP callers are `SetIntakeAsync`, `SaveReviewAsync`, `SaveRuleAsync`, `SimulateRuleAsync`, `PreviewFilingAsync`, and `ApplyFilingAsync`. Authenticated callers must supply the actual actor identity; token approval is checked against it. There are no new unauthenticated filesystem endpoints.
 
 ## Boundaries
 
 - Enabling a rule makes it available to previews; **no unattended filing is enabled**.
-- Facts can be entered manually or accepted from a separate Ollama proposal; human review is still required. Conversational guidance editing remains future work.
+- Facts can be entered manually or accepted from a separate Ollama proposal; human review is still required. Source-linked [instruction conversations](assistants-and-mcp.md) are available.
 - Filing within one storage location uses the existing journaled move. Cross-location/NAS transfer needs staged copy, verification and recovery before it is enabled.
 - Fingerprints validate intake contents. External rename identity reconciliation remains future work; an external rename still appears as missing old/new catalog records.
 - Search remains the current text matching/index. Full-text ranking, PDF/image previews and bulk filing are separate milestones.

@@ -29,7 +29,7 @@ async Task Refuses(Func<Task> action, string description)
 }
 try
 {
-    await using (var db = await factory.CreateDbContextAsync()) { await db.Database.EnsureDeletedAsync(); await db.Database.MigrateAsync(); }
+    await MigrationChecks.RunAsync(factory, Check);
     Check(StoragePaths.ValidateName("Bank statements") == "Bank statements", "portable names accepted");
     foreach (var name in new[] { "../outside", "a/b", "a\\b", "CON.pdf", ".documentstorage-root", "trailing.", "" })
         await Refuses(() => Task.Run(() => StoragePaths.ValidateName(name)), "unsafe name refused: " + name);
@@ -125,6 +125,7 @@ try
     Check(File.Exists(Path.Combine(rootPath, "recovered.txt")) && File.Exists(Path.Combine(rootPath, "ambiguous.txt")), "ambiguous recovery preserves both disk files");
     await IntakeChecks.RunAsync(factory, Path.Combine(scratch, "filing"), Check, Refuses);
     await IdentificationChecks.RunAsync(factory, Path.Combine(scratch, "identification"), Check, Refuses);
+    await AssistantChecks.RunAsync(factory, Path.Combine(scratch, "assistants"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

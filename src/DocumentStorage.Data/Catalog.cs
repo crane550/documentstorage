@@ -163,7 +163,7 @@ public sealed class FileOperation
 
 public sealed class LibraryUser : IdentityUser;
 
-public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbContext<LibraryUser>(options)
+public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbContext<LibraryUser>(options)
 {
     public DbSet<StorageRoot> Roots => Set<StorageRoot>();
     public DbSet<CatalogEntry> Entries => Set<CatalogEntry>();
@@ -179,6 +179,7 @@ public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbC
     protected override void OnModelCreating(ModelBuilder model)
     {
         base.OnModelCreating(model);
+        ConfigureAssistants(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

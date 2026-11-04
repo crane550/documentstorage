@@ -296,7 +296,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         finally { writer.Release(); }
     }
 
-    public async Task SaveInstructionsAsync(Guid folderId, string instructions)
+    public async Task SaveInstructionsAsync(Guid folderId, string instructions, string actor = "workspace")
     {
         if (instructions.Length > 20000) throw new StorageException("Keep folder instructions under 20,000 characters.");
         await writer.WaitAsync();
@@ -306,6 +306,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             var entry = await db.Entries.SingleAsync(x => x.Id == folderId);
             if (!entry.IsFolder || entry.TrashBatchId != null || entry.IsMissing) throw new StorageException("Choose an available folder.");
             entry.Instructions = instructions.Trim();
+            await RecordInstructionAsync(db, new("folder", folderId.ToString()), entry.Instructions, actor);
             await db.SaveChangesAsync();
         }
         finally { writer.Release(); }
@@ -421,6 +422,13 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             preview.State = "Applied";
             preview.OperationId = op.Id;
             preview.AppliedAt = time.GetUtcNow();
+            var approval = await db.AssistantProposals.SingleOrDefaultAsync(x => x.FilingPreviewId == previewId);
+            if (approval != null)
+            {
+                approval.State = "Executed"; approval.CompletedAt = time.GetUtcNow(); approval.Revision++;
+                approval.ResultJson = System.Text.Json.JsonSerializer.Serialize(new { operation_id = op.Id });
+                Audit(db, new(approval.OwnerId, approval.ConnectionId), "filing.execute", "completed", approval.Id);
+            }
         }
         await db.SaveChangesAsync();
     }
@@ -435,7 +443,25 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                 await RequireOnlineAsync(root);
                 var source = StoragePaths.Exists(StoragePaths.Resolve(root.Location, op.FromPath));
                 var target = StoragePaths.Exists(StoragePaths.Resolve(root.Location, op.ToPath));
-                if (!source && target) await ApplyMoveAsync(db, op);
+                if (!source && target)
+                {
+                    if (op.FilingPreviewId is Guid previewId)
+                    {
+                        var preview = await db.FilingPreviews.SingleAsync(x => x.Id == previewId);
+                        var entry = await db.Entries.SingleAsync(x => x.Id == op.EntryId);
+                        var destination = new CatalogEntry { RootId = root.Id, RelativePath = op.ToPath, Name = op.ToPath.Split('/').Last(), Size = entry.Size, ModifiedAt = entry.ModifiedAt };
+                        try
+                        {
+                            if (await FingerprintAsync(root, destination) != preview.ContentHash) throw new StorageException("The recovery target fingerprint differs.");
+                        }
+                        catch (Exception ex) when (ex is StorageException or IOException or UnauthorizedAccessException)
+                        {
+                            op.State = "Needs review"; op.Error = "Interrupted filing target does not match the approved document or cannot be verified. Storage writes are paused; preserve both paths for review.";
+                            continue;
+                        }
+                    }
+                    await ApplyMoveAsync(db, op);
+                }
                 else if (source && !target) { op.State = "Cancelled"; op.Error = "Interrupted before moving. Original item preserved."; }
                 else { op.State = "Needs review"; op.Error = "Interrupted move has ambiguous disk state. Storage writes are paused; inspect both paths before repairing the operation record."; }
             }

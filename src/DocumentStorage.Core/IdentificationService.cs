@@ -73,6 +73,7 @@ public sealed partial class LibraryService
                 job.State = "Cancelled"; job.LastError = "Local AI settings changed. Queue again with the new settings.";
                 job.CompletedAt = time.GetUtcNow(); job.RunId = null; job.LeaseUntil = null; cancelled.Add(job.Id);
             }
+            await RecordInstructionAsync(db, new("global", "global"), settings.Instructions, actor);
             await db.SaveChangesAsync();
             return settings;
         }
@@ -98,6 +99,7 @@ public sealed partial class LibraryService
             if ((profile?.Revision ?? 0) != expectedRevision) throw new StorageException("This document type changed in another tab. Reload it before saving.");
             if (profile == null) { profile = new() { Key = key, Revision = 0 }; db.DocumentTypes.Add(profile); }
             profile.Name = name; profile.Instructions = input.Instructions.Trim(); profile.FactNamesJson = JsonSerializer.Serialize(fields); profile.Revision++;
+            await RecordInstructionAsync(db, new("document_type", profile.Key), profile.Instructions, actor);
             await db.SaveChangesAsync(); return profile;
         }
         finally { writer.Release(); }

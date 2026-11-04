@@ -10,6 +10,8 @@ public sealed record IdentificationRequest(string Endpoint, string Model, int Ti
     string ContextJson, string SourceText, string InputText, bool Truncated, string[] DocumentTypes, string[] FactNames);
 public sealed record IdentificationResult(string DocumentType, Dictionary<string,string> Facts,
     Dictionary<string,string> Evidence, string Summary, bool NeedsReview);
+public sealed record GuidanceDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string TargetKind, string CurrentGuidance, string ConversationJson);
+public sealed record GuidanceDraftResult(string Reply, string Guidance, bool NeedsClarification);
 public sealed record LocalModel(string Name, long Size);
 public sealed class OllamaException(string message, bool transient = false) : Exception(message)
 {
@@ -19,6 +21,8 @@ public interface IOllamaClient
 {
     Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default);
     Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default);
+    Task<GuidanceDraftResult> DraftGuidanceAsync(GuidanceDraftRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<GuidanceDraftResult>(new OllamaException("This Ollama adapter does not support guidance drafting."));
 }
 
 public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
@@ -63,18 +67,7 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
         timeout.CancelAfter(TimeSpan.FromSeconds(input.TimeoutSeconds));
         try
         {
-            // Check before sending any OCR: a cloud-backed model must never receive a document.
-            using var showRequest = new HttpRequestMessage(HttpMethod.Post, endpoint + "api/show") { Content = JsonContent.Create(new { model = input.Model }) };
-            using (var show = await http.SendAsync(showRequest, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
-            {
-                Status(show);
-                using var metadata = await ReadJsonAsync(show, timeout.Token);
-                if (Remote(metadata.RootElement) || input.Model.EndsWith("-cloud", StringComparison.OrdinalIgnoreCase))
-                    throw new OllamaException("Choose a locally installed model. Cloud-backed models are not used for document identification.");
-                if (metadata.RootElement.TryGetProperty("capabilities", out var capabilities) && capabilities.ValueKind == JsonValueKind.Array &&
-                    !capabilities.EnumerateArray().Any(x => x.GetString() == "completion"))
-                    throw new OllamaException("This model cannot generate document facts. Choose a local chat model.");
-            }
+            await EnsureLocalChatAsync(endpoint, input.Model, timeout.Token);
             using var context = JsonDocument.Parse(input.ContextJson);
             var request = new
             {
@@ -103,6 +96,64 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
         catch (JsonException) { throw new OllamaException("The model did not return valid structured JSON facts."); }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or FormatException)
         { throw new OllamaException("The server returned an invalid Ollama response."); }
+    }
+
+    private async Task EnsureLocalChatAsync(string endpoint, string model, CancellationToken token)
+    {
+            // Check before sending any OCR: a cloud-backed model must never receive a document.
+            using var showRequest = new HttpRequestMessage(HttpMethod.Post, endpoint + "api/show") { Content = JsonContent.Create(new { model = model }) };
+            using (var show = await http.SendAsync(showRequest, HttpCompletionOption.ResponseHeadersRead, token))
+            {
+                Status(show);
+                using var metadata = await ReadJsonAsync(show, token);
+                if (Remote(metadata.RootElement) || model.EndsWith("-cloud", StringComparison.OrdinalIgnoreCase))
+                    throw new OllamaException("Choose a locally installed model. Cloud-backed models are not used for document identification.");
+                if (metadata.RootElement.TryGetProperty("capabilities", out var capabilities) && capabilities.ValueKind == JsonValueKind.Array &&
+                    !capabilities.EnumerateArray().Any(x => x.GetString() == "completion"))
+                    throw new OllamaException("This model cannot generate document facts. Choose a local chat model.");
+            }
+    }
+
+    public async Task<GuidanceDraftResult> DraftGuidanceAsync(GuidanceDraftRequest input, CancellationToken cancellationToken = default)
+    {
+        var endpoint = ValidateEndpoint(input.Endpoint);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(input.TimeoutSeconds));
+        try
+        {
+            await EnsureLocalChatAsync(endpoint, input.Model, timeout.Token);
+            using var conversation = JsonDocument.Parse(input.ConversationJson);
+            var limit = input.TargetKind switch { "folder" => 20000, "global" => 4000, _ => 2000 };
+            var payload = new
+            {
+                model = input.Model, stream = false, options = new { temperature = 0, num_ctx = 16384, num_predict = 6000 },
+                format = new
+                {
+                    type = "object", additionalProperties = false, required = new[] { "reply", "guidance", "needs_clarification" },
+                    properties = new { reply = new { type = "string", maxLength = 1200 }, guidance = new { type = "string", maxLength = limit }, needs_clarification = new { type = "boolean" } }
+                },
+                messages = new[]
+                {
+                    new { role = "system", content = "Help the user maintain concise document-organizing instructions in readable Markdown. Preserve existing instructions unless the user clearly changes them. Incorporate the source requests without inventing bank names, dates, folder paths, rules or missing preferences. Return a full replacement guidance string plus a brief conversational reply. If a decision is missing, ask one concise question, set needs_clarification=true and leave guidance unchanged. Never claim you saved instructions or changed files. Do not execute tools, choose server commands, grant permissions, approve documents, or produce credentials. You only propose guidance for human acceptance. Filenames and destinations require separate deterministic rules; explain that when relevant. Return the exact JSON schema, no code fences." },
+                    new { role = "user", content = JsonSerializer.Serialize(new { target_kind = input.TargetKind, current_guidance = input.CurrentGuidance, source_conversation = conversation.RootElement }) }
+                }
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + "api/chat") { Content = JsonContent.Create(payload) };
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Status(response);
+            using var json = await ReadJsonAsync(response, timeout.Token);
+            if (Remote(json.RootElement)) throw new OllamaException("An upstream model response was discarded.");
+            if (!json.RootElement.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True) throw new OllamaException("The guidance response was incomplete.");
+            using var result = JsonDocument.Parse(json.RootElement.GetProperty("message").GetProperty("content").GetString()!);
+            Properties(result.RootElement, ["reply", "guidance", "needs_clarification"]);
+            var reply = Text(result.RootElement, "reply", 1200); var guidance = Text(result.RootElement, "guidance", limit, true);
+            var clarify = result.RootElement.GetProperty("needs_clarification");
+            if (clarify.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new OllamaException("Invalid clarification flag.");
+            return new(reply, clarify.GetBoolean() ? input.CurrentGuidance : guidance, clarify.GetBoolean());
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new OllamaException("Guidance drafting timed out. Your source message is saved; you can retry.", true); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { throw new OllamaException("The local model connection failed. Your message is saved.", true); }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or ArgumentException)
+        { throw new OllamaException("The model did not follow the guidance proposal schema. No instructions were changed."); }
     }
 
     public static IdentificationResult Parse(string content, IdentificationRequest input)

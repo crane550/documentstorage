@@ -20,7 +20,7 @@ Use fact names such as `institution`, `account_suffix` and `statement_end`. Date
 
 The prompt context is bounded to 16,000 serialized characters, up to 31 configured types plus `unknown` and 64 fact names. Longer guidance/rule sets are shortened and flagged for review. The OCR budget defaults to 12,000 characters and can be set to 2,000–16,000. Longer documents use beginning and ending excerpts with an explicit omission marker. The original indexed text is retained. Changes even to omitted guidance invalidate old work.
 
-This is a structured context foundation. Conversational guidance editing, instruction history and external MCP resources/tools are separate future work.
+Instruction conversations, immutable source-linked versions and external MCP resources/tools are now available. See [Instruction conversations and MCP](assistants-and-mcp.md). The same enabled local model can draft guidance; its response remains a proposal for review.
 
 ## Review a proposal
 
@@ -39,7 +39,7 @@ Jobs are stored in PostgreSQL with their source fingerprint/path, model, context
 
 Changing local-model settings cancels pending/running work. Cancellation also signals the active HTTP request; a late result cannot revive the job. Source changes, moves, manual-review edits or guidance changes discard stale responses. Loading a successful proposal into the editor checks its bindings and source bytes again. Reviewed facts and the filing journal remain separate from identification jobs.
 
-Only indexed text, the filename and bounded context are sent to the configured Ollama server. No document binary or absolute server path is included. Model output is parsed against a strict schema and displayed as escaped text. OCR is explicitly untrusted evidence and cannot authorize operations. The adapter never executes model tools, changes rules or chooses destination paths.
+For identification, only indexed text, the filename and bounded context are sent to the configured Ollama server. Guidance drafting instead sends canonical instructions and recent saved conversation messages. No document binary or absolute server path is included. Model output is parsed against a strict schema and displayed as escaped text. OCR is explicitly untrusted evidence and cannot authorize operations. The adapter never executes model tools, changes rules or chooses destination paths.
 
 The additive `AddLocalIdentification` migration creates settings, document-type and durable-job tables. Existing documents and filing rules are preserved. Production use still needs a real installed Ollama model and extraction-quality checks on your hardware. Automated verification uses synthetic documents with a protocol-compatible test fixture, not a real language model or a claim about model accuracy.
 

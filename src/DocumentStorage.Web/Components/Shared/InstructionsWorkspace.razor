@@ -1,0 +1,86 @@
+@inject LibraryService Library
+@inject IOllamaClient Ollama
+@inject AuthenticationStateProvider Authentication
+@inject ILogger<InstructionsWorkspace> Logger
+@implements IDisposable
+@using System.Security.Claims
+@using System.Text.Json
+
+<section class="intake-intro paper-panel"><span class="stat-icon sage"><Icon Name="spark" Size="25" /></span><div><h2>Tell your folders what belongs.</h2><p>Write plain-English requests, review a concise instruction draft, and keep the source conversation with each saved version. Naming patterns and destinations use Filing rules.</p></div></section>
+@if (message != null) { <div class="notice @(error ? "error" : "success")" role="status">@message</div> }
+@if (thread == null) { <div class="notice" role="status">Loading saved instructions…</div> }
+else
+{
+<div class="ai-layout">
+    <section class="paper-panel rule-editor">
+        <div class="workflow-form"><label for="instruction-target">Instructions for</label><select id="instruction-target" value="@selection" @onchange="Choose" disabled="@busy"><option value="global:global">General identification guidance</option>@foreach (var type in types) { <option value="@("document_type:" + type.Key)">Document type · @type.Name</option> }@foreach (var folder in Overview.Folders) { <option value="@("folder:" + folder.Id)">Folder · @FolderName(folder)</option> }</select></div>
+        <p class="field-hint">Recent conversation · latest 30 messages</p>
+        <div class="instruction-chat" aria-label="Instruction conversation" aria-live="polite">
+            @if (thread?.Messages.Count == 0) { <p class="field-hint">For example: These are monthly bank statements. Use the statement closing date, and keep only the last four account digits.</p> }
+            @foreach (var item in thread?.Messages ?? []) { <article class="instruction-message @item.Role"><small>@(item.Role == "user" ? "Source request" : "Assistant") · @item.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")</small><p>@item.Text</p></article> }
+        </div>
+        <div class="workflow-form"><label for="instruction-message">Your instruction</label><textarea id="instruction-message" @bind="input" @bind:event="oninput" disabled="@busy" maxlength="4000" rows="4" placeholder="Explain what these documents are and what details matter."></textarea><div class="workflow-actions"><button class="button primary" disabled="@(busy || string.IsNullOrWhiteSpace(input))" @onclick="Send">Send instruction</button><button class="button subtle" disabled="@(busy || thread?.Messages.Any(x => x.Role == "user") != true)" @onclick="Draft">Draft updated instructions</button>@if (busy) { <button class="text-button" @onclick="Cancel">Cancel drafting</button> }</div><p class="field-hint">The source request is saved immediately. Ollama can draft when enabled in Local AI. You can also edit a version yourself or use an external MCP assistant.</p></div>
+    </section>
+    <section class="paper-panel rule-editor">
+        <div class="eyebrow">CANONICAL INSTRUCTIONS · VERSION @(thread?.Revision ?? 0)</div><h2>A short guide to keep.</h2>
+        <pre class="instruction-canonical">@(thread?.Text.Length > 0 ? thread.Text : "No instructions saved yet.")</pre>
+        <details class="review-text"><summary>Edit a draft yourself</summary><div class="workflow-form instruction-manual"><label for="instruction-manual">Replacement instructions</label><textarea id="instruction-manual" @bind="manual" @bind:event="oninput" maxlength="20000" rows="7"></textarea><button class="button subtle" disabled="@busy" @onclick="Manual">Review this version</button></div></details>
+        @if (proposal != null && proposal.Kind == "Guidance")
+        {
+            var change = JsonSerializer.Deserialize<GuidanceChange>(proposal.PayloadJson)!;
+            <div class="ai-proposal"><div class="eyebrow">PROPOSED VERSION · @proposal.State</div><p>@change.Explanation</p><pre class="instruction-canonical">@change.Text</pre>
+                @if (proposal.State == "Pending") { <div class="workflow-actions"><button class="button primary" disabled="@busy" @onclick="Accept">Save this version</button><button class="text-button" disabled="@busy" @onclick="Reject">Reject draft</button></div> }
+            </div>
+        }
+        @if (thread?.History.Count > 0) { <details class="rule-history"><summary>Saved versions · latest @thread.History.Count</summary>@foreach (var version in thread.History) { <div><strong>Version @version.Revision</strong><small>@version.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt") · @(JsonSerializer.Deserialize<Guid[]>(version.SourceMessagesJson)!.Length) source messages</small><pre class="instruction-canonical">@version.Text</pre></div> }</details> }
+    </section>
+</div>
+}
+@code {
+    [Parameter, EditorRequired] public LibraryOverview Overview { get; set; } = default!;
+    [Parameter] public EventCallback Changed { get; set; }
+    private List<DocumentTypeProfile> types = [];
+    private string selection = "global:global", input = "", manual = "";
+    private InstructionThread? thread;
+    private AssistantProposal? proposal;
+    private string? message;
+    private bool busy, error;
+    private CancellationTokenSource request = new();
+    private InstructionTarget Target => new(selection[..selection.IndexOf(':')], selection[(selection.IndexOf(':') + 1)..]);
+    private string FolderName(CatalogEntry folder) => (Overview.Roots.FirstOrDefault(x => x.Id == folder.RootId)?.Name ?? "Storage") + " / " + folder.RelativePath;
+    private async Task<string> Actor() => (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    protected override async Task OnInitializedAsync() { types = (await Library.IdentificationOverviewAsync()).Types; await Load(); }
+    private async Task Load() { thread = await Library.InstructionThreadAsync(Target); manual = thread.Text; }
+    private async Task Choose(ChangeEventArgs e) => await Run(async () => { selection = e.Value?.ToString() ?? "global:global"; proposal = null; thread = null; await Load(); });
+    private async Task Send() => await Run(async () => { await Library.AddInstructionMessageAsync(Target, input, new(await Actor(), null)); input = ""; await Load(); await DraftCore(); });
+    private async Task Draft() => await Run(DraftCore);
+    private async Task DraftCore()
+    {
+        var result = await Library.DraftInstructionsAsync(Target, await Actor(), Ollama, request.Token);
+        proposal = result.Proposal; message = result.NeedsClarification ? result.Reply : "Draft ready. Compare it with the saved instructions before accepting."; await Load();
+    }
+    private async Task Manual() => await Run(async () =>
+    {
+        var context = await Library.AssistantContextAsync();
+        proposal = await Library.ProposeAssistantAsync("Guidance", JsonSerializer.Serialize(new GuidanceChange(Target, thread!.Hash, manual, "Manual edit for review.", thread.Messages.Select(x => x.Id).ToArray())), context.Hash, Guid.NewGuid().ToString(), new(await Actor(), null));
+    });
+    private async Task Accept() => await Decide(true);
+    private async Task Reject() => await Decide(false);
+    private async Task Decide(bool accept) => await Run(async () =>
+    {
+        if (proposal == null) return;
+        await Library.DecideAssistantProposalAsync(proposal.Id, proposal.Revision, accept, await Actor());
+        proposal = null; await Load(); await Changed.InvokeAsync(); message = accept ? "Instruction version saved with its source conversation." : "Draft rejected. Saved instructions are unchanged.";
+    });
+    private void Cancel() => request.Cancel();
+    private async Task Run(Func<Task> work)
+    {
+        if (busy) return; busy = true; error = false; message = null;
+        request.Dispose(); request = new();
+        try { await work(); }
+        catch (OperationCanceledException) { message = "Drafting cancelled. Saved source messages remain in the conversation."; }
+        catch (Exception ex) { Logger.LogWarning("Instruction action failed: {Kind}", ex.GetType().Name); error = true; message = ex is StorageException or OllamaException ? ex.Message : "The instruction action could not finish. Reload and try again."; }
+        finally { busy = false; }
+    }
+    public void Dispose() { request.Cancel(); request.Dispose(); }
+}

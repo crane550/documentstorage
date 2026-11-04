@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.Checks", "t
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.AuthenticationChecks", "tests\DocumentStorage.AuthenticationChecks\DocumentStorage.AuthenticationChecks.csproj", "{D71277FB-5589-475F-9CCB-1D349DE5B107}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.McpChecks", "tests\DocumentStorage.McpChecks\DocumentStorage.McpChecks.csproj", "{985365A6-7740-439F-B444-5A5CB734733B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +89,18 @@ Global
 		{D71277FB-5589-475F-9CCB-1D349DE5B107}.Release|x64.Build.0 = Release|Any CPU
 		{D71277FB-5589-475F-9CCB-1D349DE5B107}.Release|x86.ActiveCfg = Release|Any CPU
 		{D71277FB-5589-475F-9CCB-1D349DE5B107}.Release|x86.Build.0 = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|x64.Build.0 = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Debug|x86.Build.0 = Debug|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|x64.ActiveCfg = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|x64.Build.0 = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|x86.ActiveCfg = Release|Any CPU
+		{985365A6-7740-439F-B444-5A5CB734733B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +111,6 @@ Global
 		{C2B7FEEA-4C83-41A7-9030-4CDD29BB6CF2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{20F3045C-D7EA-4ED8-AFE5-EB070D90E3F3} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D71277FB-5589-475F-9CCB-1D349DE5B107} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{985365A6-7740-439F-B444-5A5CB734733B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

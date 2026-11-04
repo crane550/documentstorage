@@ -18,7 +18,7 @@
 
 `DocumentStorage.Data` owns the catalog, roots, stable entry IDs and operation journal. EF migrations version the PostgreSQL schema.
 
-`DocumentStorage.Core` owns path validation, discovery, extraction, operation recovery and deterministic rule evaluation. No UI types. A future MCP tool calls these services rather than executing shell commands.
+`DocumentStorage.Core` owns path validation, discovery, extraction, operation recovery and deterministic rule evaluation. No UI types. MCP tools call these services rather than executing shell commands.
 
 `DocumentStorage.Web` owns the Blazor workspace, guidance editor and composition. Loopback origins, with ASP.NET Identity users/passwords, isolated cookies and app-owned login for tunnel hosting. Windows install/update tooling is in tools/deploy; actual server validation remains necessary.
 
@@ -32,11 +32,15 @@ Folder-scoped intake, stable observations and fingerprints, manual reviewed fact
 
 Configurable Ollama connection/model, document-type guidance, bounded JSON context, durable queue/retry/cancellation/restart recovery, and evidence-backed proposals are implemented. Optional automatic identification never approves or files documents. See [Local document identification](local-ai.md). Automated protocol/UI checks use a synthetic fixture; real-model accuracy and the Windows server connection still need verification.
 
+## Completed instructions and MCP milestone
+
+Source conversations, strict local guidance drafts/clarification, immutable accepted versions and source links are implemented. OAuth code/PKCE with registered clients, scoped official-SDK Streamable HTTP tools/resources/prompts, idempotent proposals, browser acceptance, connection/account revocation and exact approval-bound filing share the Core services and journal. See [the complete contract](assistants-and-mcp.md). Client grants cover the full library; arbitrary filesystem/bulk tools and per-folder authorization remain future work. Real external-account connections and Windows behavior still need verification.
+
 ## Subsequent milestones
 
 1. **Catalog and document previews:** robust external rename reconciliation using fingerprints, extraction retry/backoff, PostgreSQL full-text search, and PDF/image preview. Add bounded bulk filing after the per-document workflow is exercised.
-2. **Guidance conversation:** conversational editing of global, folder and document-type instructions, conversation history, source-to-rule change tracking and model-quality evaluation against labeled synthetic examples. Do not make AI availability a prerequisite for browsing or manual filing.
-3. **MCP and permissions:** authenticated OAuth transport, scoped read vs propose vs approved execution, compact resource context, rule simulations, approval-bound operations, bounded bulk jobs and audit history. Authorization and action validation happen server-side. Document text cannot grant permissions or change rules.
+2. **Guidance improvements:** evaluate real-model summary quality against labeled synthetic requests, add richer conversation navigation/comparison and guided source-to-rule compilation. Keep browsing/manual filing available without AI.
+3. **MCP expansion and permissions:** per-folder/client grants and application user roles; bounded, approval-bound filesystem/bulk jobs with durable recovery and audit. Expand tools only after their idempotency and crash behavior is tested. Document text cannot grant permissions or change rules.
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.
 5. **Server release:** Built-in Identity login and Windows install/update scripts are prepared; validate their behavior on the actual server. Remaining work: server installation/rollback validation, application-level user roles, service-account NAS access, document backup/restore tooling and an in-app updater. Never borrow accounting database names, passwords, ports or deployment targets.
 

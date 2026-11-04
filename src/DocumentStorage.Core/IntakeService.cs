@@ -145,6 +145,17 @@ public sealed partial class LibraryService
 
     public async Task<FilingRuleDefinition> SaveRuleAsync(RuleInput input, string actor)
     {
+        await writer.WaitAsync();
+        try
+        {
+            await using var db = await factory.CreateDbContextAsync();
+            return await SaveRuleLockedAsync(db, input, actor);
+        }
+        finally { writer.Release(); }
+    }
+
+    private async Task<FilingRuleDefinition> SaveRuleLockedAsync(CatalogDb db, RuleInput input, string actor)
+    {
         Actor(actor);
         var name = input.Name.Trim();
         if (name.Length is 0 or > 100) throw new StorageException("Enter a rule name of 100 characters or less.");
@@ -153,38 +164,32 @@ public sealed partial class LibraryService
         var required = input.RequiredFacts.Select(FactKey).Distinct(StringComparer.Ordinal).ToArray();
         if (required.Length > 32) throw new StorageException("A rule can require up to 32 facts.");
         FilingRules.ValidateTemplate(input.FilenameTemplate);
-        await writer.WaitAsync();
-        try
+        var destination = await db.Entries.SingleOrDefaultAsync(x => x.Id == input.DestinationFolderId);
+        if (destination == null || !destination.IsFolder || destination.IsMissing || destination.TrashBatchId != null)
+            throw new StorageException("Choose an available destination folder.");
+        var folders = await db.Entries.AsNoTracking().Where(x => x.IsFolder && x.RootId == destination.RootId).ToListAsync();
+        if (HasIntakeAncestor(destination, folders)) throw new StorageException("The destination must be outside intake so filed documents leave the queue.");
+        var rule = input.Id == null ? null : await db.FilingRules.SingleOrDefaultAsync(x => x.Id == input.Id);
+        if (input.Id != null && rule == null) throw new StorageException("That rule no longer exists. Refresh the rules list.");
+        if ((rule?.Revision ?? 0) != input.ExpectedRevision) throw new StorageException("This rule changed in another tab. Reload it before saving.");
+        if (rule == null) { rule = new FilingRuleDefinition(); db.FilingRules.Add(rule); }
+        rule.Name = name;
+        rule.DocumentType = type;
+        rule.DestinationFolderId = destination.Id;
+        rule.MatchJson = JsonSerializer.Serialize(match);
+        rule.FilenameTemplate = input.FilenameTemplate.Trim();
+        rule.RequiredFactsJson = JsonSerializer.Serialize(required);
+        rule.Enabled = input.Enabled;
+        rule.Revision++;
+        rule.UpdatedAt = time.GetUtcNow();
+        rule.UpdatedBy = actor;
+        db.RuleRevisions.Add(new FilingRuleRevision
         {
-            await using var db = await factory.CreateDbContextAsync();
-            var destination = await db.Entries.SingleOrDefaultAsync(x => x.Id == input.DestinationFolderId);
-            if (destination == null || !destination.IsFolder || destination.IsMissing || destination.TrashBatchId != null)
-                throw new StorageException("Choose an available destination folder.");
-            var folders = await db.Entries.AsNoTracking().Where(x => x.IsFolder && x.RootId == destination.RootId).ToListAsync();
-            if (HasIntakeAncestor(destination, folders)) throw new StorageException("The destination must be outside intake so filed documents leave the queue.");
-            var rule = input.Id == null ? null : await db.FilingRules.SingleOrDefaultAsync(x => x.Id == input.Id);
-            if (input.Id != null && rule == null) throw new StorageException("That rule no longer exists. Refresh the rules list.");
-            if ((rule?.Revision ?? 0) != input.ExpectedRevision) throw new StorageException("This rule changed in another tab. Reload it before saving.");
-            if (rule == null) { rule = new FilingRuleDefinition(); db.FilingRules.Add(rule); }
-            rule.Name = name;
-            rule.DocumentType = type;
-            rule.DestinationFolderId = destination.Id;
-            rule.MatchJson = JsonSerializer.Serialize(match);
-            rule.FilenameTemplate = input.FilenameTemplate.Trim();
-            rule.RequiredFactsJson = JsonSerializer.Serialize(required);
-            rule.Enabled = input.Enabled;
-            rule.Revision++;
-            rule.UpdatedAt = time.GetUtcNow();
-            rule.UpdatedBy = actor;
-            db.RuleRevisions.Add(new FilingRuleRevision
-            {
-                RuleId = rule.Id, Revision = rule.Revision, SnapshotJson = JsonSerializer.Serialize(rule),
-                CreatedAt = rule.UpdatedAt, CreatedBy = actor
-            });
-            await db.SaveChangesAsync();
-            return rule;
-        }
-        finally { writer.Release(); }
+            RuleId = rule.Id, Revision = rule.Revision, SnapshotJson = JsonSerializer.Serialize(rule),
+            CreatedAt = rule.UpdatedAt, CreatedBy = actor
+        });
+        await db.SaveChangesAsync();
+        return rule;
     }
 
     public async Task<FilingProposal> PreviewFilingAsync(Guid entryId, string actor)
@@ -237,7 +242,7 @@ public sealed partial class LibraryService
         finally { writer.Release(); }
     }
 
-    public async Task<Guid> ApplyFilingAsync(Guid previewId, string actor)
+    public async Task<Guid> ApplyFilingAsync(Guid previewId, string actor, Guid? connectionId = null, Guid? assistantProposalId = null)
     {
         Actor(actor);
         await writer.WaitAsync();
@@ -245,6 +250,8 @@ public sealed partial class LibraryService
         {
             await using var db = await factory.CreateDbContextAsync();
             var preview = await db.FilingPreviews.SingleOrDefaultAsync(x => x.Id == previewId) ?? throw new StorageException("Create a filing preview first.");
+            if (assistantProposalId != null) await CheckAssistantFilingAsync(db, previewId, assistantProposalId.Value, new(actor, connectionId));
+            else if (connectionId != null) throw new StorageException("An approved assistant proposal is required.");
             if (preview.CreatedBy != actor) throw new StorageException("This preview belongs to another sign-in. Create your own preview.");
             if (preview.State == "Applied" && preview.OperationId is Guid completed) return completed;
             if (preview.OperationId != null) throw new StorageException("The previous attempt needs recovery or a new preview. Rescan storage and check Activity.");
