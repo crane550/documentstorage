@@ -130,6 +130,8 @@ git pull --ff-only origin main
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\deploy.ps1
 ```
 
+The connection-string/backup argument regression check runs with `powershell -NoProfile -ExecutionPolicy Bypass -File tests\deploy\backup-arguments.ps1` (or `pwsh` on Linux). It uses synthetic settings and does not contact a database or alter services.
+
 Updates build a staging release, make/check a custom-format PostgreSQL backup, stop only DocumentStorage, retain the old binaries, switch, and verify the new revision. Startup failure triggers an attempted binary rollback. Database snapshots are not document backups; binary rollback does not reverse migrations. An incompatible migration needs deliberate recovery from the retained backup. No in-app updater is implemented yet.
 
 | Symptom | Check |

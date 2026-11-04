@@ -23,12 +23,11 @@ Publish-Release $repository $staging $revision
 
 Protect-Directory (Join-Path $InstallRoot 'backups')
 $dump = Join-Path $InstallRoot "backups\catalog-$release.dump"
-$connection = New-Object System.Data.Common.DbConnectionStringBuilder
-$connection.ConnectionString = $config.ConnectionStrings.Catalog
+$backupArguments = Get-CatalogBackupArguments -ConnectionString $config.ConnectionStrings.Catalog -BackupPath $dump
 $oldPgPassword = $env:PGPASSWORD
 try {
     $env:PGPASSWORD = $config.DOCUMENTSTORAGE_DB_PASSWORD
-    Invoke-Native (Join-Path $PostgresBin 'pg_dump.exe') @('--host', [string]$connection['Host'], '--port', [string]$connection['Port'], '--username', [string]$connection['Username'], '--dbname', [string]$connection['Database'], '--no-password', '--format=custom', '--file', $dump)
+    Invoke-Native (Join-Path $PostgresBin 'pg_dump.exe') $backupArguments
     Invoke-Native (Join-Path $PostgresBin 'pg_restore.exe') @('--list', $dump)
     if ((Get-Item -LiteralPath $dump).Length -eq 0) { throw 'The catalog backup is empty.' }
 } finally { $env:PGPASSWORD = $oldPgPassword }

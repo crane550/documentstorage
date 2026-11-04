@@ -63,3 +63,17 @@ function Publish-Release {
         Invoke-Native dotnet @('publish', 'src/DocumentStorage.Web', '-c', 'Release', '--no-restore', '--self-contained', 'false', '-o', $Output, "-p:InformationalVersion=$Revision", '-p:IncludeSourceRevisionInInformationalVersion=false')
     } finally { Pop-Location }
 }
+
+function Get-CatalogBackupArguments {
+    param([string]$ConnectionString, [string]$BackupPath)
+    $connection = New-Object System.Data.Common.DbConnectionStringBuilder
+    # PowerShell's dictionary adapter turns .ConnectionString = ... into an entry
+    # named ConnectionString. Call the CLR setter to actually parse the settings.
+    $connection.set_ConnectionString($ConnectionString)
+    foreach ($key in @('Host', 'Port', 'Username', 'Database')) {
+        if (-not $connection.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$connection[$key])) {
+            throw "Catalog connection settings must include $key before a backup can run."
+        }
+    }
+    return @('--host', [string]$connection['Host'], '--port', [string]$connection['Port'], '--username', [string]$connection['Username'], '--dbname', [string]$connection['Database'], '--no-password', '--format=custom', '--file', $BackupPath)
+}
