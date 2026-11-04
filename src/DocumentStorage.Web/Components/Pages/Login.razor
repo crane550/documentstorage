@@ -1,0 +1,27 @@
+@page "/login"
+@layout AccountLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@inject IConfiguration Configuration
+
+<PageTitle>Sign in · @DisplayName</PageTitle>
+<section class="account-card">
+    <a class="account-brand" href="/"><span class="brand-mark"><Icon Name="box" Size="30" /></span><span>@DisplayName</span></a>
+    <div class="eyebrow">YOUR DOCUMENTS. YOUR SPACE.</div>
+    <h1>Welcome back.</h1>
+    <p class="account-intro">Sign in to your document workspace.</p>
+    @if (Failed == true) { <p class="account-message error" role="alert">Sign-in failed. Check your username and password. After five failed attempts, wait 15 minutes before trying again.</p> }
+    <form method="post" action="/account/login" data-enhance="false">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@AccountEndpoints.LocalTarget(ReturnUrl)" />
+        <label for="username">Username</label><input id="username" name="username" autocomplete="username" maxlength="256" required autofocus />
+        <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required />
+        <button class="button primary full-width" type="submit">Sign in</button>
+    </form>
+    <p class="account-footnote">Your account belongs to this document workspace.</p>
+</section>
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] public bool? Failed { get; set; }
+    private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
+}

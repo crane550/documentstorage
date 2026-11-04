@@ -10,6 +10,7 @@
 - Plain-English conversation creates/updates folder and document-type guidance and proposes structured rules. Keep readable source guidance alongside the compiled rule representation.
 - External Claude/ChatGPT assistants use a robust authenticated MCP backend. All UI and MCP mutations use the same application services.
 - Compact context should include global policy, relevant inherited guidance, schemas and matching rules. Retrieved document text is data, never instructions or authority to perform operations.
+- Login follows the other applications: app-owned ASP.NET Identity users/passwords and cookies. Cloudflare Tunnel provides the route; Access/Audience is not required.
 - Infrastructure blueprint: .NET/Blazor/PostgreSQL, per-instance configuration, server installation and recoverable updates from 2FA Accounts. No accounting code or production resources are shared.
 - Theme: ivory `#F5F1E8`, paper `#FFFCF5`, kraft `#D8BE96`, brown `#654A32`, charcoal `#302B25`, sage `#DEE5D5`, forest `#446348`, amber `#A56316`, brick `#A23E35`. Folder tabs/paper labels, restrained texture, accessible focus and contrast.
 
@@ -19,7 +20,7 @@
 
 `DocumentStorage.Core` owns path validation, discovery, extraction, operation recovery and deterministic rule evaluation. No UI types. A future MCP tool calls these services rather than executing shell commands.
 
-`DocumentStorage.Web` owns the Blazor workspace, guidance editor and composition. Loopback origins, with Cloudflare Access token authentication for production tunnel hosting. Windows install/update tooling is in tools/deploy; actual server validation remains necessary.
+`DocumentStorage.Web` owns the Blazor workspace, guidance editor and composition. Loopback origins, with ASP.NET Identity users/passwords, isolated cookies and app-owned login for tunnel hosting. Windows install/update tooling is in tools/deploy; actual server validation remains necessary.
 
 `tests/DocumentStorage.Checks` exercises real PostgreSQL and temporary filesystem operations. `tests/browser` drives the actual UI with synthetic files.
 
@@ -29,6 +30,6 @@
 2. **Ollama and guidance conversation:** configurable local endpoint/model, queued work with backoff/cancellation, structured fact schema, uncertainty/review, document-type instructions, conversation history and source-to-rule change tracking. Do not make AI availability a prerequisite for browsing or manual filing.
 3. **MCP and permissions:** authenticated OAuth transport, scoped read vs propose vs approved execution, compact resource context, rule simulations, approval-bound operations, bounded bulk jobs and audit history. Authorization and action validation happen server-side. Document text cannot grant permissions or change rules.
 4. **Storage migration:** cross-root copy to staging, hash verification, durable journal, explicit commit/recovery, removal of source only after verified destination and catalog commit. Stable root/folder IDs survive an explicit root relocation. Offline shares pause affected work. Test partial copies, disk-full errors, restarts and source changes.
-5. **Server release:** Cloudflare Access verification and Windows install/update scripts are prepared; validate their behavior on the actual server. Remaining work: server installation/rollback validation, application-level user roles, service-account NAS access, document backup/restore tooling and an in-app updater. Never borrow accounting database names, passwords, ports or deployment targets.
+5. **Server release:** Built-in Identity login and Windows install/update scripts are prepared; validate their behavior on the actual server. Remaining work: server installation/rollback validation, application-level user roles, service-account NAS access, document backup/restore tooling and an in-app updater. Never borrow accounting database names, passwords, ports or deployment targets.
 
 A root with a `Needs review` journal entry is write-blocked in this build. A maintenance recovery UI is required before release: inspect both paths and byte identity, record an explicit resolution, and then allow reconciliation. Do not auto-clear ambiguity or overwrite destination documents.

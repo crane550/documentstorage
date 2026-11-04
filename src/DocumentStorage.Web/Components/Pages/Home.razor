@@ -1,4 +1,5 @@
 @page "/"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
 @inject LibraryService Library
 @inject IConfiguration Configuration
 @inject ILogger<Home> Logger
@@ -34,7 +35,7 @@
     <div class="main-area">
         <header class="topbar">
             <div class="topbar-label">THE DOCUMENT WORKSPACE <span>/</span> @ViewLabel</div>
-            <span class="version-label">EARLY BUILD <span class="small-dot"></span> 0.1</span>
+            <div class="header-account"><span class="version-label">EARLY BUILD <span class="small-dot"></span> 0.1</span><a href="/account" data-enhance-nav="false">Account</a></div>
         </header>
         <div class="page-heading">
             <div><div class="eyebrow">LESS SHUFFLING. MORE FINDING.</div><h1>@Heading</h1><p>@Subtitle</p></div>

@@ -1,16 +1,20 @@
 {
-  "Application": { "DisplayName": "Document Manager" },
+  "Application": {
+    "DisplayName": "Document Manager"
+  },
   "Urls": "http://127.0.0.1:5240",
   "Hosting": {
     "ServiceName": "DocumentStorage",
-    "PublicOrigin": "https://REPLACE_WITH_YOUR_HOSTNAME"
-  },
-  "CloudflareAccess": {
-    "TeamDomain": "REPLACE_WITH_YOUR_TEAM.cloudflareaccess.com",
-    "Audience": "REPLACE_WITH_APPLICATION_AUD_TAG"
+    "PublicOrigin": "https://stash.instrumentsofliberty.com"
   },
   "ConnectionStrings": {
     "Catalog": "Host=127.0.0.1;Port=5432;Database=documentstorage;Username=documentstorage"
   },
-  "Documents": { "PdfTextCommand": "C:\\Tools\\poppler\\Library\\bin\\pdftotext.exe" }
+  "Documents": {
+    "PdfTextCommand": "C:\\Tools\\poppler\\Library\\bin\\pdftotext.exe"
+  },
+  "BootstrapAdmin": {
+    "Username": "admin",
+    "Password": "SUPPLY_SECURELY_DURING_FIRST_INSTALL"
+  }
 }

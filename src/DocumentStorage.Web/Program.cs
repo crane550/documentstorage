@@ -18,9 +18,8 @@ if (OperatingSystem.IsWindows()) builder.Logging.AddEventLog(options =>
 {
     if (OperatingSystem.IsWindows()) options.SourceName = "DocumentStorage";
 });
-var hosting = AccessHosting.Read(builder.Configuration, builder.Environment.IsDevelopment());
+var hosting = PublicHosting.Read(builder.Configuration, builder.Environment.IsDevelopment());
 builder.Configuration["AllowedHosts"] = "localhost;127.0.0.1;[::1]" + (hosting.Enabled ? ";" + hosting.PublicOrigin!.Host : "");
-hosting.AddAuthentication(builder.Services);
 var keyDirectory = builder.Configuration["Hosting:DataProtectionDirectory"];
 if (!string.IsNullOrWhiteSpace(keyDirectory))
 {
@@ -48,6 +47,9 @@ builder.WebHost.UseUrls(urls);
 var connection = builder.Configuration.GetConnectionString("Catalog") ?? throw new InvalidOperationException("Set ConnectionStrings__Catalog to this instance's PostgreSQL database.");
 var password = builder.Configuration["DOCUMENTSTORAGE_DB_PASSWORD"];
 if (!string.IsNullOrEmpty(password)) connection = new NpgsqlConnectionStringBuilder(connection) { Password = password }.ConnectionString;
+var database = new NpgsqlConnectionStringBuilder(connection).Database ?? throw new InvalidOperationException("The catalog connection must name a database.");
+builder.Services.AddDataProtection().SetApplicationName("DocumentStorage:" + database);
+builder.Services.AddLibraryIdentity(hosting, database);
 builder.Services.AddDbContextFactory<CatalogDb>(options => options.UseNpgsql(connection));
 builder.Services.AddSingleton(new DocumentTextReader(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext"));
 builder.Services.AddSingleton<LibraryService>();
@@ -57,6 +59,8 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents(options => 
 var app = builder.Build();
 await using (var db = await app.Services.GetRequiredService<IDbContextFactory<CatalogDb>>().CreateDbContextAsync())
     await db.Database.MigrateAsync();
+await using (var scope = app.Services.CreateAsyncScope())
+    await IdentitySetup.SeedAdministratorAsync(scope.ServiceProvider, builder.Configuration);
 if (!app.Environment.IsDevelopment()) app.UseExceptionHandler("/Error", createScopeForErrors: true);
 if (hosting.Enabled) app.UseForwardedHeaders();
 app.Use(async (context, next) =>
@@ -68,12 +72,10 @@ app.Use(async (context, next) =>
     context.Response.Headers.CacheControl = "no-store";
     await next();
 });
-if (hosting.Enabled)
-{
-    app.UseAuthentication();
-    app.UseAuthorization();
-}
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
+app.MapAccountEndpoints();
 app.MapGet("/documents/{id:guid}/download", async Task<IResult> (Guid id, LibraryService library) =>
 {
     try
@@ -94,7 +96,7 @@ app.MapGet("/health", async (IDbContextFactory<CatalogDb> factory) =>
         revision = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "development"
     }) : Results.StatusCode(503);
 }).AllowAnonymous();
-app.MapStaticAssets();
+app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();
 

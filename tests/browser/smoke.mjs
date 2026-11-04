@@ -18,6 +18,16 @@ let count = 0;
 async function check(condition, description) { assert(await condition, description); count++; console.log('PASS '+description); }
 try {
     await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', {name:'Sign in', exact:true}).waitFor();
+    let credentials;
+    if (process.env.DOCUMENTSTORAGE_TEST_USERNAME && process.env.DOCUMENTSTORAGE_TEST_PASSWORD) credentials = { username:process.env.DOCUMENTSTORAGE_TEST_USERNAME, password:process.env.DOCUMENTSTORAGE_TEST_PASSWORD };
+    else credentials = JSON.parse(await readFile('.local/browser-credentials.json', 'utf8'));
+    await page.getByLabel('Username', {exact:true}).fill(credentials.username);
+    await page.getByLabel('Password', {exact:true}).fill(credentials.password);
+    await page.getByRole('button', {name:'Sign in', exact:true}).click();
+    await page.waitForURL(url => url.pathname === '/');
+    await page.locator('.workspace').waitFor();
+    await check(page.locator('.workspace').count().then(n=>n===1), 'built-in login opens the document workspace');
     await page.waitForFunction(() => window.Blazor !== undefined);
     await page.waitForFunction(() => { const button = document.querySelector('.heading-actions .primary'); return button && !button.disabled; });
     // A click handler working confirms the server circuit is interactive, beyond prerendering.
@@ -77,6 +87,11 @@ try {
     await page.screenshot({path:process.env.DOCUMENTSTORAGE_SCREENSHOT || '.local/workspace.png',fullPage:true});
     await page.setViewportSize({width:390,height:844});
     await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth), 'mobile layout does not overflow horizontally');
+    await page.getByRole('link', {name:'Account',exact:true}).click();
+    await page.getByRole('button', {name:'Sign out',exact:true}).click();
+    await page.waitForURL(url => url.pathname === '/login');
+    await page.goto(base);
+    await check(Promise.resolve(new URL(page.url()).pathname === '/login'), 'sign-out returns to login and protects the workspace');
     await check(failures.length===0, 'no browser JavaScript errors');
     console.log(`All ${count} browser checks passed.`);
 } finally { await browser.close(); }

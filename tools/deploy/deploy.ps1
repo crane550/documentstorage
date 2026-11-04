@@ -10,7 +10,7 @@ $InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
 $repository = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ($repository -ne (Join-Path $InstallRoot 'repo')) { throw 'Run the script from this instance repo directory.' }
 $config = Get-Content -LiteralPath (Join-Path $InstallRoot 'instance.json') -Raw | ConvertFrom-Json
-if ($config.Hosting.PublicOrigin -notmatch '^https://' -or -not $config.CloudflareAccess.Audience) { throw 'Authenticated public hosting must be configured before updating the server instance.' }
+if ($config.Hosting.PublicOrigin -notmatch '^https://') { throw 'Set this instance HTTPS hostname before updating.' }
 $revision = Get-Revision $repository
 $release = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $staging = Join-Path $InstallRoot "staging\$release"

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace DocumentStorage.Data;
 
@@ -46,7 +48,9 @@ public sealed class FileOperation
     public string? Error { get; set; }
 }
 
-public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : DbContext(options)
+public sealed class LibraryUser : IdentityUser;
+
+public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbContext<LibraryUser>(options)
 {
     public DbSet<StorageRoot> Roots => Set<StorageRoot>();
     public DbSet<CatalogEntry> Entries => Set<CatalogEntry>();
@@ -54,6 +58,7 @@ public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : DbContext(o
 
     protected override void OnModelCreating(ModelBuilder model)
     {
+        base.OnModelCreating(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);
