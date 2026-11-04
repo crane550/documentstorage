@@ -403,15 +403,18 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         if (!original.Exists || original.Kind != (entry.IsFolder ? "Folder" : "File")) throw new StorageException(original.Error ?? "The source changed or is unavailable. Rescan before moving it.");
         if (op.FilingPreviewId is Guid filingId && original.Hash != (await db.FilingPreviews.SingleAsync(x => x.Id == filingId)).ContentHash)
             throw new StorageException("The source contents changed after filing approval. Review the document again.");
+        if (op.OrganizationFilingId is Guid organizationId && original.Hash != (await db.OrganizationFilings.SingleAsync(x => x.Id == organizationId)).ContentHash)
+            throw new StorageException("The source contents changed after filing approval. Read the document again.");
         op.SourceSnapshotJson = System.Text.Json.JsonSerializer.Serialize(original);
         await RequireOnlineAsync(root);
         db.Operations.Add(op);
         await db.SaveChangesAsync();
         try
         {
+            await EnsureOrganizationFolderAsync(db, root, op);
             if (entry.IsFolder) Directory.Move(source, target); else File.Move(source, target, false);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or StorageException)
         {
             op.State = "Needs review";
             op.Error = "The filesystem refused or could not confirm the move. Storage writes are paused; inspect it in Recovery.";
@@ -452,6 +455,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         await db.Entries.Where(x => x.Id == op.EntryId).ExecuteUpdateAsync(set => set
             .SetProperty(x => x.IsMissing, false).SetProperty(x => x.Name, op.ToPath.Split('/').Last())
             .SetProperty(x => x.ParentId, op.TargetParentId));
+        await CompleteOrganizationAsync(db, op);
         op.State = "Completed";
         op.Error = null;
         if (op.FilingPreviewId is Guid previewId)

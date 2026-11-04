@@ -1,6 +1,6 @@
 # The interface
 
-The app is built around one loop: **documents arrive in an inbox, you say what each one is, and a rule says where that kind of document goes.** Once a rule exists, the next document like it already shows its destination and only needs your confirmation. Everything on screen serves that loop or gets out of its way.
+The app is built around one loop: **documents arrive in an inbox, the reader suggests a name and folder, and you approve the filing.** You can correct its choice and remember that example for later documents. Deterministic rules remain available for predictable repeat work.
 
 ## Where things are
 
@@ -17,13 +17,13 @@ The sidebar also holds the folder tree for every connected storage location. **R
 ## Filing a document
 
 1. **Arrive.** A scanner writes into an inbox folder, or you drop files on the page. A file shows **Arriving** until it has stayed unchanged for a few seconds.
-2. **Say what it is.** The filing slip next to the preview asks for a **document type** (one tap on a known type lays out its facts) and the **facts** that name it: dates as `yyyy-mm-dd`, plus things like the institution or the last four digits. If the AI reader is on, **Read with AI** suggests both, with quoted evidence. Nothing is copied in until you choose **Use suggestion**.
-3. **See where it goes.** As you type, the manila folder on the slip shows the destination and the exact new filename from the enabled rules. If no rule takes it, the slip says so and offers **Make a rule from this**, which opens the rule editor already filled in from this document. Saving it brings you back to the same document.
-4. **Confirm & file.** This marks the facts as checked by you, asks the server for a fingerprint-bound preview, and files only if that preview is what the slip showed. If anything differs (another tab, a new rule), the slip shows the server's version for a second look instead of moving the file. The next document opens automatically.
+2. **Read it.** The filing slip reports server text readiness. With the reader enabled, **Read with AI** queues one document at a time and returns a summary, filename, folder and reason. An unfamiliar category does not require setup.
+3. **Check the suggestion.** Edit the filename or folder, inspect evidence under **Document category and suggested facts**, and optionally add a filing preference. A proposed new subfolder is explicit. **Remember this approved filing as an example** is checked by default; remembered choices can be forgotten in Settings › AI reader.
+4. **Approve & file.** Approval binds the exact move to this sign-in and source fingerprint. Changed inputs, settings or guidance block stale plans; a destination resolved differently by the server needs another confirmation. No file is overwritten. The next inbox document opens automatically. Declining leaves the file in intake.
 
-**Save draft** keeps unconfirmed facts. **Confirm facts** marks them checked without filing, for example while you write the rule. **Move by hand…** (in the slip's ⋯ menu) moves a one-off document without a rule.
+**Use rules or enter facts manually** retains the original slip: known types/facts, **Read facts only with AI**, **Use suggestion**, **Save draft**, **Confirm facts**, **Make a rule from this** and deterministic **Confirm & file**. Approval of an AI filename/folder does not falsely mark every model fact human-verified. **Move by hand…** remains in the slip's menu.
 
-Status stamps in the inbox list: **New**, **Suggested** (the reader finished), **Draft**, **Reading**, **Arriving**, **Changed** (the file changed after its facts were saved), **No rule** (facts confirmed, nothing matches yet) and **Ready**.
+Status stamps include **New**, **Queued**, **Reading**, **Suggested**, **Needs a choice**, **Text unavailable**, **Draft**, **Arriving**, **Changed**, **No rule** and **Ready**. The scan refresh does not itself mean a document has text ready for AI.
 
 ## Rules and types
 

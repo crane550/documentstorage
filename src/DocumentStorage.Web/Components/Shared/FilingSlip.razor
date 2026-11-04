@@ -17,7 +17,7 @@
             <Menu Label="More actions" ButtonClass="icon-button small" IconSize="16">
                 <button role="menuitem" type="button" @onclick="() => RequestMove.InvokeAsync(Item.Entry)"><Icon Name="move" Size="15" />Move by hand…</button>
                 <a role="menuitem" href="@($"/library?folder={Item.Entry.ParentId}&doc={Item.Entry.Id}")"><Icon Name="cabinet" Size="15" />Show in library</a>
-                @if (Workspace.ReaderEnabled && !ReaderActive) { <button role="menuitem" type="button" disabled="@(!Ready)" @onclick="Identify"><Icon Name="spark" Size="15" />Read again with AI</button> }
+                @if (Workspace.ReaderEnabled && !ReaderActive) { <button role="menuitem" type="button" disabled="@(!Ready || !HasText)" @onclick="Identify"><Icon Name="spark" Size="15" />Read again with AI</button> }
             </Menu>
         </div>
     </header>
@@ -25,13 +25,18 @@
     @if (!Ready) { <p class="slip-alert"><Icon Name="clock" Size="15" />@ReadinessText</p> }
     else if (Item.Status == "Document changed") { <p class="slip-alert"><Icon Name="alert" Size="15" />The file changed after its facts were saved. Check them again.</p> }
 
+    <p class="extraction-status hint" role="status">@(HasText ? "Text ready for AI reading" : "Text extraction: " + Item.Entry.TextStatus + ". Rescan after restoring the PDF text tool or adding OCR.")</p>
     @* The reader's suggestion stays separate until you choose to use it. *@
     @if (Identification is { } job)
     {
         @if (ReaderActive)
         {
-            <div class="reader working"><span class="spin"><Icon Name="refresh" Size="15" /></span><span>Reading with @job.Model…@(job.State == "Retry" ? " waiting to retry" : "")</span><button type="button" class="text-button" disabled="@busy" @onclick="CancelIdentification">Cancel</button></div>
+            <div class="reader working"><span class="spin"><Icon Name="refresh" Size="15" /></span><span>@(job.State == "Queued" ? "Queued — waiting for the reader" : job.State == "Retry" ? "Waiting to retry with " + job.Model : "Reading with " + job.Model + "…")</span><button type="button" class="text-button" disabled="@busy" @onclick="CancelIdentification">Cancel</button></div>
             @if (job.LastError != null) { <p class="hint">@job.LastError</p> }
+        }
+        else if (job.Organizing && job.State == "Succeeded" && SuggestionCurrent)
+        {
+            <OrganizingSuggestion @key="job.Id" Job="job" Entry="Item.Entry" Filed="Filed" Changed="IdentificationChanged" />
         }
         else if (job.State == "Succeeded" && SuggestionCurrent && !suggestionUsed)
         {
@@ -44,13 +49,15 @@
             </div>
         }
         else if (job.State == "Succeeded" && !SuggestionCurrent && !suggestionUsed) { <p class="hint reader-note">The reader's suggestion is out of date. <button type="button" class="text-button" disabled="@busy" @onclick="Identify">Read again</button></p> }
-        else if (job.State is "Failed" or "Cancelled" or "Superseded") { <p class="hint reader-note">@(job.LastError ?? "Reading stopped.") <button type="button" class="text-button" disabled="@(busy || !Ready)" @onclick="Identify">Try again</button></p> }
+        else if (job.State is "Failed" or "Cancelled" or "Superseded" or "Rejected") { <p class="hint reader-note">@(job.LastError ?? "Reading stopped.") <button type="button" class="text-button" disabled="@(busy || !Ready || !HasText)" @onclick="Identify">Try again</button></p> }
     }
-    else if (Workspace.ReaderEnabled && Ready && documentType.Length == 0)
+    else if (Workspace.ReaderEnabled && Ready && HasText && (documentType.Length == 0 || Identification?.Organizing == true))
     {
-        <button type="button" class="reader-start" disabled="@busy" @onclick="Identify"><Icon Name="spark" Size="16" /><span><strong>Read with AI</strong><small>Suggest the type and facts</small></span></button>
+        <button type="button" class="reader-start" disabled="@busy" @onclick="Identify"><Icon Name="spark" Size="16" /><span><strong>Read with AI</strong><small>Suggest a name and destination</small></span></button>
     }
 
+    <details class="manual-filing" open="@(Identification?.Organizing != true)"><summary>Use rules or enter facts manually</summary>
+    @if (Workspace.ReaderEnabled) { <button type="button" class="text-button" disabled="@(busy || !Ready || !HasText || ReaderActive)" @onclick="IdentifyFacts">Read facts only with AI</button> }
     <div class="slip-card">
         <label class="slip-label" for="slip-type">Document type</label>
         <input id="slip-type" class="slip-field" list="slip-types" value="@documentType" @oninput="TypeChanged" @onchange="TypeCommitted" placeholder="bank_statement" maxlength="64" autocomplete="off" />
@@ -105,8 +112,8 @@
             <button type="button" class="button @(reviewedNow ? "" : "primary")" disabled="@(busy || !Ready || documentType.Trim().Length == 0 || reviewedNow)" @onclick="ConfirmOnly" title="Mark these facts as checked against the document">@(reviewedNow ? "Facts confirmed" : "Confirm facts")</button>
         }
     </footer>
+    </details>
     @if (error != null) { <p class="form-error" role="alert">@error</p> }
-
     @if (Item.Entry.ExtractedText.Length > 0)
     {
         <details class="slip-text review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre>@Item.Entry.ExtractedText</pre></details>
@@ -140,6 +147,7 @@
         "Waiting for access" => "Another program is holding the file. Rescan once it lets go.",
         _ => "Waiting for the next scan."
     };
+    private bool HasText => Item.Entry.TextStatus == "Indexed" && !string.IsNullOrWhiteSpace(Item.Entry.ExtractedText);
     private bool SuggestionCurrent => Identification != null && (Item.Review?.Revision ?? 0) == Identification.ReviewRevision && Item.Entry.ContentHash == Identification.ContentHash && Item.Entry.RelativePath == Identification.SourcePath;
     private Dictionary<string,string> SuggestedFacts => Identification == null ? [] : JsonSerializer.Deserialize<Dictionary<string,string>>(Identification.FactsJson) ?? [];
     private Dictionary<string,string> Evidence => Identification == null ? [] : JsonSerializer.Deserialize<Dictionary<string,string>>(Identification.EvidenceJson) ?? [];
@@ -229,6 +237,11 @@
         Navigation.NavigateTo($"/rules?from={Item.Entry.Id}");
     });
     private async Task Identify() => await Run(async () =>
+    {
+        await Library.QueueOrganizationAsync(Item.Entry.Id, await Workspace.ActorAsync(), true);
+        suggestionUsed = false; await IdentificationChanged.InvokeAsync();
+    });
+    private async Task IdentifyFacts() => await Run(async () =>
     {
         await Library.QueueIdentificationAsync(Item.Entry.Id, await Workspace.ActorAsync(), true);
         suggestionUsed = false; await IdentificationChanged.InvokeAsync();

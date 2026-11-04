@@ -117,6 +117,8 @@ public sealed class DocumentTypeProfile
 
 public sealed class IdentificationJob
 {
+    public bool Organizing { get; set; }
+    public string OrganizationJson { get; set; } = "";
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid EntryId { get; set; }
     public string ContentHash { get; set; } = "";
@@ -160,6 +162,7 @@ public sealed class FileOperation
     public string? Error { get; set; }
     public Guid? FilingPreviewId { get; set; }
     public string SourceSnapshotJson { get; set; } = "";
+    public Guid? OrganizationFilingId { get; set; }
 }
 
 public sealed class LibraryUser : IdentityUser;
@@ -182,6 +185,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         base.OnModelCreating(model);
         ConfigureAssistants(model);
         ConfigureRecovery(model);
+        ConfigureOrganization(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

@@ -22,7 +22,8 @@ Working now:
 - Persisted, versioned filing rules (grouped by document type, made from a real document in one step) with trial runs and a live filename/destination on every slip.
 - Explicit, fingerprint-checked **Confirm & file** through the existing recovery journal.
 - Configurable local Ollama identification with durable jobs, cancellation/retries and document-type guidance.
-- Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
+- AI filing suggestions for unfamiliar categories: existing-folder selection, filenames, one new subfolder when needed, editable approval, and remembered corrections. No rule is required.
+- Evidence-backed facts, optional automatic reading, explicit **Approve & file**, and removable filing examples.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
 

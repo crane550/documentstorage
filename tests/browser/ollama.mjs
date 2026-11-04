@@ -76,7 +76,7 @@ try {
     await settleAndRescan(page); // Actual production scanner stability window.
     await inbox(page);
     await openInboxItem(page,source);
-    await page.locator('.reader-start').click();
+    await page.getByRole('button',{name:'Read facts only with AI',exact:true}).click();
     await page.getByRole('button',{name:'Use suggestion',exact:true}).waitFor({timeout:20000});
     await check(chatRequests===1 && receivedContext && !requestFailure,'background worker sends synthetic OCR with saved document type guidance through the real Ollama protocol');
     await check(page.locator('.ai-facts blockquote').allTextContents().then(t=>t.some(v=>v.includes('Statement ends 2026-10-31'))),'the suggestion shows supporting evidence from actual indexed OCR');

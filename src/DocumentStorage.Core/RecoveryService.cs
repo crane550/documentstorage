@@ -111,6 +111,7 @@ public sealed partial class LibraryService
 
     private async Task CancelRecoveredOperationAsync(CatalogDb db, FileOperation op, string explanation, bool sourceMissing = false)
     {
+        await CancelOrganizationAsync(db, op);
         op.State = "Cancelled"; op.Error = explanation;
         await using var transaction = db.Database.CurrentTransaction == null ? await db.Database.BeginTransactionAsync() : null;
         var prefix = op.FromPath + "/"; var now = time.GetUtcNow();
@@ -138,7 +139,8 @@ public sealed partial class LibraryService
         var entries = await PathMetadata(db, root.Id).OrderBy(x => x.Id).ToListAsync(token);
         var entry = entries.SingleOrDefault(x => x.Id == op.EntryId);
         var preview = op.FilingPreviewId is Guid previewId ? await db.FilingPreviews.AsNoTracking().SingleOrDefaultAsync(x => x.Id == previewId, token) : null;
-        var catalogHash = Digest(new { RootId = root.Id, root.Location, OperationId = op.Id, op.EntryId, op.Kind, op.State, op.FromPath, op.ToPath, op.TargetParentId, op.TrashBatchId, op.FilingPreviewId, op.SourceSnapshotJson,
+        var organization = op.OrganizationFilingId is Guid organizationId ? await db.OrganizationFilings.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==organizationId,token) : null;
+        var catalogHash = Digest(new { organization, RootId = root.Id, root.Location, OperationId = op.Id, op.EntryId, op.Kind, op.State, op.FromPath, op.ToPath, op.TargetParentId, op.TrashBatchId, op.FilingPreviewId, op.SourceSnapshotJson,
             Preview = preview, Entries = entries.Select(x => new { x.Id, x.RootId, x.ParentId, x.RelativePath, x.IsFolder, x.IsMissing, x.IsIntake, x.TrashBatchId, x.Size, x.ModifiedAt, x.Instructions, x.ContentHash, x.TextStatus }) });
         var unknown = new StorageSnapshot("Unavailable", "", 0, 0, 0, "Reconnect the original storage and inspect again.");
         try { await RequireOnlineAsync(root); }
@@ -149,7 +151,7 @@ public sealed partial class LibraryService
         catch (StorageException) { return new(unknown, unknown, OriginalSnapshot(op), entry?.IsFolder ?? false, false, false, false, "Storage became unavailable during inspection. No resolution is available.", catalogHash); }
         var original = OriginalSnapshot(op);
         var valid = entry != null && entry.RelativePath == op.FromPath && entry.RelativePath.Length > 0 && op.FromPath != op.ToPath &&
-            op.Kind is "Move" or "Trash" or "Restore" or "File" && (op.Kind != "File" || preview != null) &&
+            op.Kind is "Move" or "Trash" or "Restore" or "File" or "Organize" && (op.Kind != "File" || preview != null) && (op.Kind != "Organize" || organization?.State == "Applying") &&
             !op.ToPath.StartsWith(op.FromPath + "/", StringComparison.Ordinal) && !op.FromPath.StartsWith(op.ToPath + "/", StringComparison.Ordinal);
         var readable = source.Readable && target.Readable;
         var kindMatches = entry != null && target.Kind == (entry.IsFolder ? "Folder" : "File");

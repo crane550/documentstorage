@@ -10,6 +10,7 @@
     "test:recovery": "node recovery.mjs",
     "test:preview": "node preview.mjs",
     "test:ollama": "node ollama.mjs",
+    "test:organizing": "node organizing.mjs",
     "test:assistants": "node instructions-mcp.mjs"
   },
   "devDependencies": {

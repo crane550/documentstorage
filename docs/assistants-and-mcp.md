@@ -1,6 +1,6 @@
 # Instruction conversations and MCP
 
-The application now provides two ways to maintain organizing instructions: an in-app source conversation with local Ollama drafts, and an authenticated remote MCP service for external assistants. Both create reviewable proposals. The existing rule engine and recovery journal remain responsible for filing.
+The application now provides two ways to maintain organizing instructions: an in-app source conversation with local Ollama drafts, and an authenticated remote MCP service for external assistants. Both create reviewable proposals. The existing rule engine and recovery journal remain responsible for MCP filing. The local reader also supports [AI organizing approvals](local-ai.md) without a rule; this does not widen MCP tool permissions or let assistants approve themselves.
 
 ## Instruction conversations
 

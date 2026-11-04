@@ -1,6 +1,6 @@
 # Intake and deterministic filing
 
-This milestone makes a complete **review → rule → preview → file** workflow available without an AI connection. The screens are described in [The interface](interface.md); the UI calls intake folders **inboxes**. Optional [local Ollama identification](local-ai.md) now proposes types and facts into this same workflow, with explicit acceptance and human review. Human review and the filing engine are distinct; no document content is treated as instructions or executable code.
+This milestone makes a complete **review → rule → preview → file** workflow available without an AI connection. The screens are described in [The interface](interface.md); the UI calls intake folders **inboxes**. Optional [local Ollama organizing](local-ai.md) can instead suggest a name and destination without requiring a rule. **Approve & file** applies that exact plan; this page describes the retained manual/deterministic workflow. Human review and the filing engine are distinct; no document content is treated as instructions or executable code.
 
 ## Set up folders
 
@@ -67,7 +67,7 @@ The server services behind UI and MCP callers are `SetIntakeAsync`, `SaveReviewA
 - Facts can be entered manually or accepted from a separate Ollama proposal; human review is still required. Source-linked [instruction conversations](assistants-and-mcp.md) are available.
 - Filing within one storage location uses the existing journaled move. Cross-location/NAS transfer needs staged copy, verification and recovery before it is enabled.
 - Fingerprints validate intake contents. External rename identity reconciliation remains future work; an external rename still appears as missing old/new catalog records.
-- Search remains the current text matching/index. Full-text ranking, PDF/image previews and bulk filing are separate milestones.
+- Search remains the current text matching/index. PDF/image previews are available. Full-text ranking and bulk filing remain future work.
 
 ## Validation
 

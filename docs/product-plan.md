@@ -6,7 +6,7 @@
 - Purpose: organize ordinary files on local server disks, later a NAS, with both supported together. The database is a catalog, not the sole container for document bytes.
 - The folder tree is central. Users manage real files and folders and select folders as filing destinations.
 - ScanSnap drops OCR PDFs into an intake folder. Read the existing text before adding OCR machinery.
-- Ollama handles slow document identification. It supplies facts; deterministic validated rules choose names and destinations.
+- Ollama handles slow document understanding and proposes names/destinations from real folder context without requiring a rule for every new category. Humans approve exact filing; deterministic rules remain optional for predictable repetitive work.
 - Plain-English conversation creates/updates folder and document-type guidance and proposes structured rules. Keep readable source guidance alongside the compiled rule representation.
 - External Claude/ChatGPT assistants use a robust authenticated MCP backend. All UI and MCP mutations use the same application services.
 - Compact context should include global policy, relevant inherited guidance, schemas and matching rules. Retrieved document text is data, never instructions or authority to perform operations.
@@ -32,6 +32,10 @@ Folder-scoped intake, stable observations and fingerprints, manual reviewed fact
 
 Configurable Ollama connection/model, document-type guidance, bounded JSON context, durable queue/retry/cancellation/restart recovery, and evidence-backed proposals are implemented. Optional automatic identification never approves or files documents. See [Local document identification](local-ai.md). Automated protocol/UI checks use a synthetic fixture; real-model accuracy and the Windows server connection still need verification.
 
+## Completed AI organizing milestone
+
+The reader proposes a category, evidence-backed facts, filename and an existing destination, or one new subfolder. Corrections can be remembered as retrievable examples and forgotten in Settings. Exact actor-bound approvals, fingerprint/context checks, no-overwrite moves and transactional examples use the shared journal/recovery. Automatic reading queues suggestions only, one document at a time; unattended filing is not enabled. See [Local AI](local-ai.md). MCP retains its existing reviewed-facts/rule approval contract; external organizing proposals and learned-example tools remain future work.
+
 ## Completed instructions and MCP milestone
 
 Source conversations, strict local guidance drafts/clarification, immutable accepted versions and source links are implemented. OAuth code/PKCE with registered clients, scoped official-SDK Streamable HTTP tools/resources/prompts, idempotent proposals, browser acceptance, connection/account revocation and exact approval-bound filing share the Core services and journal. See [the complete contract](assistants-and-mcp.md). Client grants cover the full library; arbitrary filesystem/bulk tools and per-folder authorization remain future work. Real external-account connections and Windows behavior still need verification.
@@ -46,7 +50,7 @@ Documents and Intake share a locally bundled PDF.js viewer with multipage scroll
 
 ## Completed interface milestone
 
-The workspace is organized around the filing loop: **Inbox** (documents, assistant suggestions and first-run setup), **Library** (folders, files and folder notes), **Rules** (document types and their rules), **History** (activity, trash, recovery) and **Settings** (storage, AI reader, assistants). A filing slip beside each inbox preview shows the destination live from the enabled rules; **Make a rule from this** drafts a rule from the document in front of you, which is how the app learns. Kraft cardboard frames the app and paper carries the work. See [The interface](interface.md).
+The workspace is organized around the filing loop: **Inbox** (documents, assistant suggestions and first-run setup), **Library** (folders, files and folder notes), **Rules** (document types and their rules), **History** (activity, trash, recovery) and **Settings** (storage, AI reader, assistants). A filing slip beside each inbox preview shows the destination live from the enabled rules; **Make a rule from this** drafts a rule from the document in front of you, for repeatable deterministic filing. AI approvals can separately retain corrected examples. Kraft cardboard frames the app and paper carries the work. See [The interface](interface.md).
 
 ## Subsequent milestones
 

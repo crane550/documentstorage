@@ -63,7 +63,7 @@ else if (!SetUp)
             </li>
             <li class="todo">
                 <span class="step-mark"><span>3</span></span>
-                <div><h3>File the first one</h3><p>Fill in a few facts and say where it goes. That becomes a rule, and the next one like it files itself.</p></div>
+                <div><h3>File the first one</h3><p>Let the AI suggest a name and destination, approve or correct it, and remember the choice for next time. Rules are optional.</p></div>
             </li>
         </ol>
     </section>
@@ -74,7 +74,7 @@ else if (queue.Total == 0)
         <div class="tray-art" aria-hidden="true"><Icon Name="inbox" Size="54" Stroke="1.2" /></div>
         <h2>All caught up</h2>
         <p>New scans in @string.Join(", ", Workspace.InboxFolders.Select(x => Workspace.FolderLabel(x))) show up here. You can also drop files anywhere on this page.</p>
-        @if (!Workspace.ReaderEnabled) { <p class="hint"><Icon Name="spark" Size="14" /><a href="/settings?tab=reader">Connect an AI reader</a> to have types and facts suggested for you.</p> }
+        @if (!Workspace.ReaderEnabled) { <p class="hint"><Icon Name="spark" Size="14" /><a href="/settings?tab=reader">Connect an AI reader</a> to get filing suggestions without configuring a document type or rule.</p> }
     </section>
 }
 else
@@ -178,7 +178,10 @@ else
         if (item.Status == "Storage offline") return ("Offline", "muted");
         if (item.Entry.Readiness != "Ready") return ("Arriving", "muted");
         var job = jobs.GetValueOrDefault(item.Entry.Id);
-        if (job?.State is "Queued" or "Running" or "Retry") return ("Reading", "working");
+        if (job?.State is "Queued" or "Retry") return ("Queued", "muted");
+        if (job?.State == "Running") return ("Reading", "working");
+        if (item.Entry.TextStatus != "Indexed" || string.IsNullOrWhiteSpace(item.Entry.ExtractedText)) return ("Text unavailable", "attention");
+        if (job?.State == "Rejected") return ("Needs a choice", "attention");
         if (item.Status == "Document changed") return ("Changed", "attention");
         if (item.Status == "Reviewed" && item.Review != null)
         {

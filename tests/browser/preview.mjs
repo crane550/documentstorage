@@ -36,7 +36,7 @@ try{
  await check(page.evaluate(()=>getComputedStyle(document.querySelector('.sidebar')).backgroundColor==='rgb(196, 161, 115)'),'PDF styles preserve the cardboard application sidebar');
  await page.screenshot({path:'.local/preview-documents.png',fullPage:true});
  // The same renderer stays beside the inbox filing slip.
- await openFolder(page,'Preview test archive');await newFolder(page,'Incoming previews');await enterFolder(page,'Incoming previews');await useAsInbox(page);
+ const incoming='Incoming previews '+Date.now();await openFolder(page,'Preview test archive');await newFolder(page,incoming);await enterFolder(page,incoming);await useAsInbox(page);
  await page.locator('input[aria-label="Copy files to inbox"]').setInputFiles(fixture.directory+'/statement.pdf');await toast(page,'1 of 1 files added to the inbox.');await inbox(page);await openInboxItem(page,'statement.pdf');await loaded();await rendered();
  await check(page.getByLabel('Document type',{exact:true}).isVisible()&&await root.isVisible(),'the inbox keeps the actual PDF visible beside its filing slip');await page.screenshot({path:'.local/preview-intake.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'PDF preview and filing slip fit a mobile viewport');await root.getByRole('button',{name:'Expand preview',exact:true}).click();await check(root.locator('.preview-surface').evaluate(x=>x.clientHeight>250),'expanded mobile preview uses the available screen');await page.keyboard.press('Escape');

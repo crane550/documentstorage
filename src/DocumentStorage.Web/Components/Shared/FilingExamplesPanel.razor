@@ -1,0 +1,17 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+<details class="sheet filing-examples"><summary>Remembered filing examples · @examples.Count shown</summary><p class="hint">Approved choices help the reader suggest destinations for similar documents. Forgetting an example stops using it in future proposals; it does not move its document.</p>
+@foreach(var example in examples) { <div class="filing-example"><div><strong>@example.Filename</strong><small>@Workspace.FolderLabel(example.FolderId) · @example.DocumentType</small></div><button class="text-button" disabled="@busy" @onclick="()=>Forget(example.Id)">Forget example</button></div> }
+@if(examples.Count==0) {<p class="hint">No approved examples yet. Leave “Remember” checked when approving a filing suggestion.</p>}
+</details>
+@code {
+    private List<FilingExample> examples=[];private bool busy;
+    protected override async Task OnInitializedAsync()=>examples=await Library.FilingExamplesAsync();
+    private async Task Forget(Guid id)
+    {
+        if(busy)return;busy=true;
+        try {await Library.ForgetFilingExampleAsync(id,await Workspace.ActorAsync());examples=await Library.FilingExamplesAsync();Workspace.Notify("Example forgotten. Existing filing history is retained.");}
+        catch(StorageException ex) {Workspace.Notify(ex.Message,true);}
+        finally {busy=false;}
+    }
+}

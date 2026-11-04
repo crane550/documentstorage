@@ -4,7 +4,7 @@
 @inject ILogger<ReaderSettings> Logger
 @implements IDisposable
 
-@* The AI reader: your own Ollama model reads inbox documents and suggests a type and facts. It never files anything. *@
+@* Reading proposes a filename and folder. Only an explicit filing approval moves bytes. *@
 <div class="settings-grid">
     <section class="sheet settings-card" aria-labelledby="reader-connection">
         <h2 id="reader-connection">Connection</h2>
@@ -52,6 +52,7 @@
     </div>
 </div>
 
+<FilingExamplesPanel />
 @code {
     private OllamaSettings settings = new();
     private List<IdentificationJob> jobs = [];
@@ -88,7 +89,7 @@
         settingsRevision = latest.Revision; settings.Instructions = latest.Instructions;
     }
     private async Task Cancel(Guid id) => await Run(async () => { await Library.CancelIdentificationAsync(id, await Workspace.ActorAsync()); jobs = (await Library.IdentificationOverviewAsync()).Jobs; });
-    private async Task Retry(Guid id) => await Run(async () => { await Library.QueueIdentificationAsync(id, await Workspace.ActorAsync(), true); jobs = (await Library.IdentificationOverviewAsync()).Jobs; Workspace.Notify("Queued. The suggestion appears on the document in the Inbox."); });
+    private async Task Retry(Guid id) => await Run(async () => { await Library.QueueOrganizationAsync(id, await Workspace.ActorAsync(), true); jobs = (await Library.IdentificationOverviewAsync()).Jobs; Workspace.Notify("Queued. The suggestion appears on the document in the Inbox."); });
     private async Task Run(Func<Task> action)
     {
         if (busy) return; busy = true;

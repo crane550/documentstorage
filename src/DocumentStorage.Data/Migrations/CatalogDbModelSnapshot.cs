@@ -333,6 +333,9 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("OrganizationFilingId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("RootId")
                         .HasColumnType("uuid");
 
@@ -359,9 +362,67 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("FilingPreviewId")
                         .IsUnique();
 
+                    b.HasIndex("OrganizationFilingId")
+                        .IsUnique();
+
                     b.HasIndex("RootId", "State");
 
                     b.ToTable("Operations");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingExample", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Filename")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("FolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RemovedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RootId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RootId", "CreatedAt");
+
+                    b.ToTable("FilingExamples");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.FilingPreview", b =>
@@ -577,6 +638,13 @@ namespace DocumentStorage.Data.Migrations
 
                     b.Property<DateTimeOffset>("NotBefore")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OrganizationJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Organizing")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("ReviewRevision")
                         .HasColumnType("integer");
@@ -847,6 +915,105 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("OperationId", "CreatedAt");
 
                     b.ToTable("OperationRecoveries");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.OrganizationFiling", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContextHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DestinationPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FactsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Filename")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NewFolderName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("OperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParentFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ParentPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Remember")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ReviewRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SettingsRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TargetFolderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("EntryId", "CreatedAt");
+
+                    b.ToTable("OrganizationFilings");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.StorageRoot", b =>
@@ -1241,6 +1408,23 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.FileOperation", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.OrganizationFiling", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationFilingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.FilingExample", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.OrganizationFiling", null)
+                        .WithOne()
+                        .HasForeignKey("DocumentStorage.Data.FilingExample", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.FilingRuleDefinition", b =>
                 {
                     b.HasOne("DocumentStorage.Data.CatalogEntry", null)
@@ -1273,6 +1457,15 @@ namespace DocumentStorage.Data.Migrations
                     b.HasOne("DocumentStorage.Data.FileOperation", null)
                         .WithMany()
                         .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.OrganizationFiling", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.IdentificationJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
