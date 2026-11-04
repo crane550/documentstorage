@@ -54,6 +54,9 @@ builder.Services.AddDbContextFactory<CatalogDb>(options => options.UseNpgsql(con
 builder.Services.AddSingleton(new DocumentTextReader(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext"));
 builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddHostedService<LibraryScanner>();
+builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHostedService<IdentificationWorker>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents(options => options.DetailedErrors = builder.Environment.IsDevelopment());
 
 var app = builder.Build();

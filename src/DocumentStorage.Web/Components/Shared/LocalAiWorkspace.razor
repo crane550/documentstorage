@@ -1,0 +1,111 @@
+@inject LibraryService Library
+@inject IOllamaClient Ollama
+@inject AuthenticationStateProvider Authentication
+@inject ILogger<LocalAiWorkspace> Logger
+@implements IDisposable
+@using System.Security.Claims
+@using System.Text.Json
+
+<section class="intake-intro paper-panel"><span class="stat-icon sage"><Icon Name="spark" Size="25" /></span><div><h2>A local reader for incoming documents.</h2><p>Ollama proposes a document type and facts from indexed text. Folder guidance and document types give it context. Review each proposal in Intake before filing.</p></div><button class="button subtle" disabled="@busy" @onclick="RefreshJobs">Refresh jobs</button></section>
+@if (message != null) { <div class="notice @(error ? "error" : "success")" role="status">@message</div> }
+<div class="ai-layout">
+    <section class="paper-panel rule-editor">
+        <div class="eyebrow">LOCAL CONNECTION</div><h2>Choose your reader.</h2>
+        <div class="workflow-form">
+            <label for="ai-endpoint">Ollama server address</label><input id="ai-endpoint" @bind="settings.Endpoint" @bind:after="ConnectionChanged" placeholder="http://127.0.0.1:11434" />
+            <p class="field-hint">This address is reached from the app server. Use your own Ollama installation on this computer or your local network.</p>
+            <button class="button subtle" disabled="@busy" @onclick="TestConnection">Check connection &amp; list models</button>
+            <label for="ai-model">Installed model</label><input id="ai-model" @bind="settings.Model" list="ai-models" maxlength="128" placeholder="Select an installed chat model" />
+            <datalist id="ai-models">@foreach (var model in models) { <option value="@model.Name" /> }</datalist>
+            @if (models.Count > 0) { <div class="token-buttons">@foreach (var model in models) { <button class="text-button" @onclick="() => settings.Model = model.Name">@model.Name</button> }</div> }
+            <p class="field-hint">Models must already be installed. Cloud-backed models are excluded. Checking the connection sends no document text.</p>
+            <label for="ai-guidance">General identification guidance</label><textarea id="ai-guidance" @bind="settings.Instructions" maxlength="4000" rows="5"></textarea>
+            <div class="ai-limits"><div><label for="ai-timeout">Time limit (seconds)</label><input id="ai-timeout" type="number" min="30" max="1800" @bind="settings.TimeoutSeconds" /></div><div><label for="ai-budget">Document text limit (characters)</label><input id="ai-budget" type="number" min="2000" max="16000" @bind="settings.MaxInputCharacters" /></div></div>
+            <p class="field-hint">Long documents use the beginning and end of their text. Shortened input is flagged for closer review. Jobs run one at a time.</p>
+            <label class="workflow-checkbox"><input type="checkbox" @bind="settings.Enabled" />Enable local document identification</label>
+            <label class="workflow-checkbox"><input type="checkbox" @bind="settings.AutoIdentify" disabled="@(!settings.Enabled)" />Automatically identify new intake documents</label>
+            <p class="field-hint">Automatic identification only creates proposals. You still check the facts and approve filing. Saving connection settings cancels pending work.</p>
+            <button class="button primary" disabled="@busy" @onclick="SaveSettings">Save local AI settings</button>
+        </div>
+    </section>
+    <section class="paper-panel rule-editor">
+        <div class="eyebrow">DOCUMENT GUIDANCE</div><h2>Explain what to look for.</h2>
+        <div class="workflow-form">
+            <label for="ai-type-select">Document type to edit</label><select id="ai-type-select" value="@selectedKey" @onchange="ChooseType"><option value="">New document type</option>@foreach (var profile in profiles) { <option value="@profile.Key">@profile.Name</option> }</select>
+            <label for="ai-type-key">Type identifier</label><input id="ai-type-key" @bind="type.Key" disabled="@(selectedKey.Length > 0)" maxlength="64" placeholder="bank_statement" />
+            <label for="ai-type-name">Type display name</label><input id="ai-type-name" @bind="type.Name" maxlength="80" placeholder="Bank statement" />
+            <label for="ai-type-guidance">How to recognize this type</label><textarea id="ai-type-guidance" @bind="type.Instructions" rows="7" maxlength="2000" placeholder="Describe the features that distinguish this document. Explain which dates and identifiers matter."></textarea>
+            <label for="ai-type-facts">Facts to extract</label><input id="ai-type-facts" @bind="typeFacts" placeholder="institution, account_suffix, statement_end" />
+            <p class="field-hint">Comma-separated identifiers, such as statement_end. Explain any special meanings in the guidance. Missing facts stay empty.</p>
+            <button class="button primary" disabled="@busy" @onclick="SaveType">Save document guidance</button>
+        </div>
+    </section>
+</div>
+<section class="paper-panel ai-jobs"><div class="panel-title"><h2>Identification jobs</h2><span>Latest 50 · proposals stay separate from your review</span></div>
+    @foreach (var job in jobs)
+    {
+        <div class="ai-job" @key="job.Id"><div><strong>@job.SourcePath</strong><small>@job.Model · @job.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt") · attempt @job.Attempts of 3</small>@if (job.LastError != null) { <p>@job.LastError</p> }@if (job.State == "Succeeded") { <p>@job.DocumentType · review in Intake</p> }</div><span class="index-badge @(job.State == "Succeeded" ? "indexed" : "")">@JobLabel(job.State)</span>@if (Active(job)) { <button class="text-button" disabled="@busy" @onclick="() => Cancel(job.Id)">Cancel</button> } else { <button class="text-button" disabled="@busy" @onclick="() => Retry(job.EntryId)">Identify again</button> }</div>
+    }
+    @if (jobs.Count == 0) { <div class="empty-state"><Icon Name="inbox" Size="35" /><h2>No identification jobs yet</h2><p>Save a local model, then open an intake document and choose Identify with Ollama.</p></div> }
+</section>
+
+@code {
+    private OllamaSettings settings = new();
+    private List<DocumentTypeProfile> profiles = [];
+    private List<IdentificationJob> jobs = [];
+    private List<LocalModel> models = [];
+    private DocumentTypeProfile type = new();
+    private string selectedKey = "", typeFacts = "";
+    private string? message;
+    private int settingsRevision, typeRevision;
+    private bool busy, error;
+    private readonly CancellationTokenSource lifetime = new();
+    private static bool Active(IdentificationJob job) => job.State is "Queued" or "Running" or "Retry";
+    private static string JobLabel(string state) => state switch { "Succeeded" => "Proposed", "Retry" => "Waiting to retry", _ => state };
+    protected override async Task OnInitializedAsync()
+    {
+        var overview = await Library.IdentificationOverviewAsync();
+        settings = overview.Settings; settingsRevision = settings.Revision; profiles = overview.Types; jobs = overview.Jobs;
+        if (profiles.Count > 0) Select(profiles[0].Key);
+    }
+    private void ConnectionChanged() => models = [];
+    private async Task<string> Actor() => (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    private async Task RefreshJobs() => await Run(async () => jobs = (await Library.IdentificationOverviewAsync()).Jobs);
+    private async Task TestConnection() => await Run(async () =>
+    {
+        models = await Ollama.ModelsAsync(settings.Endpoint, lifetime.Token);
+        message = models.Count == 0 ? "Connected. No local chat models are listed; install one in Ollama first." : $"Connected. {models.Count} local model(s) available. Choose one and save your settings.";
+    });
+    private async Task SaveSettings() => await Run(async () =>
+    {
+        settings = await Library.SaveOllamaSettingsAsync(settings, settingsRevision, await Actor()); settingsRevision = settings.Revision;
+        jobs = (await Library.IdentificationOverviewAsync()).Jobs;
+        message = settings.Enabled ? "Local identification enabled. Review proposals in Intake." : "Local identification is off. Manual review and filing remain available.";
+    });
+    private void ChooseType(ChangeEventArgs e) => Select(e.Value?.ToString() ?? "");
+    private void Select(string key)
+    {
+        selectedKey = key;
+        var profile = profiles.FirstOrDefault(x => x.Key == key);
+        type = profile == null ? new() : new() { Key = profile.Key, Name = profile.Name, Instructions = profile.Instructions, FactNamesJson = profile.FactNamesJson, Revision = profile.Revision };
+        typeRevision = profile?.Revision ?? 0; typeFacts = string.Join(", ", JsonSerializer.Deserialize<string[]>(type.FactNamesJson)!);
+    }
+    private async Task SaveType() => await Run(async () =>
+    {
+        type.FactNamesJson = JsonSerializer.Serialize(typeFacts.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        var saved = await Library.SaveDocumentTypeAsync(type, typeRevision, await Actor());
+        profiles = (await Library.IdentificationOverviewAsync()).Types; Select(saved.Key);
+        message = "Document guidance saved. New identification jobs will use this version.";
+    });
+    private async Task Cancel(Guid id) => await Run(async () => { await Library.CancelIdentificationAsync(id, await Actor()); jobs = (await Library.IdentificationOverviewAsync()).Jobs; });
+    private async Task Retry(Guid id) => await Run(async () => { await Library.QueueIdentificationAsync(id, await Actor(), true); jobs = (await Library.IdentificationOverviewAsync()).Jobs; message = "Identification queued. Open Intake to review the proposal when it finishes."; });
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true; error = false; message = null;
+        try { await action(); }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning("Local AI action failed: {Kind}", ex.GetType().Name); error = true; message = ex is StorageException or OllamaException ? ex.Message : "The local AI action could not finish. Refresh jobs and try again."; }
+        finally { busy = false; }
+    }
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}

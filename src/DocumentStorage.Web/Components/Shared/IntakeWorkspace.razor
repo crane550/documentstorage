@@ -1,3 +1,4 @@
+@implements IAsyncDisposable
 @inject LibraryService Library
 @inject AuthenticationStateProvider Authentication
 @inject ILogger<IntakeWorkspace> Logger
@@ -15,7 +16,7 @@
         <div class="panel-title"><h2>Incoming documents <span class="queue-total">@queue.Total</span></h2><span>Reviewed facts first. Filing second.</span></div>
         @foreach (var item in queue.Items)
         {
-            <button class="intake-item @(selected?.Entry.Id == item.Entry.Id ? "selected" : "")" @onclick="() => Select(item)" @key="item.Entry.Id">
+            <button class="intake-item @(selected?.Entry.Id == item.Entry.Id ? "selected" : "")" disabled="@busy" @onclick="() => Select(item)" @key="item.Entry.Id">
                 <span class="file-type"><Icon Name="file" Size="22" /></span><span><strong>@item.Entry.Name</strong><small>@RootName(item.Entry.RootId) / @ParentPath(item.Entry.RelativePath)</small><span class="index-badge @(item.Status == "Reviewed" ? "indexed" : "")">@item.Status</span></span><Icon Name="arrow" Size="14" />
             </button>
         }
@@ -25,7 +26,7 @@
     <section class="paper-panel review-panel">
         @if (selected == null)
         {
-            <div class="empty-state"><Icon Name="file" Size="38" /><h2>Take a closer look</h2><p>Select a document to identify it, check its facts, and preview its filing rule. This milestone uses your review; Ollama identification comes next.</p></div>
+            <div class="empty-state"><Icon Name="file" Size="38" /><h2>Take a closer look</h2><p>Select a document to identify it, check its facts, and preview its filing rule. Use your own review or ask Ollama to propose the document type and facts.</p></div>
         }
         else
         {
@@ -33,6 +34,24 @@
             @if (selected.Entry.Readiness != "Ready") { <div class="notice warning">@selected.Status. Wait for the scan to finish, then use Rescan storage.</div> }
             <details class="review-text" open><summary>Indexed document text</summary><pre>@(selected.Entry.ExtractedText.Length > 0 ? selected.Entry.ExtractedText : "No text yet. PDFs need an OCR text layer; use the original document to review it.")</pre></details>
             @if (Guidance.Length > 0) { <details class="review-text"><summary>Folder filing guidance</summary><pre>@Guidance</pre></details> }
+            <section class="ai-proposal">
+                <div class="eyebrow">LOCAL IDENTIFICATION</div>
+                <div class="workflow-actions"><button class="button subtle" disabled="@(busy || selected.Entry.Readiness != "Ready" || ActiveIdentification)" @onclick="Identify">Identify with Ollama</button><button class="text-button" @onclick="() => OpenLocalAi.InvokeAsync()">Local AI settings</button></div>
+                @if (identification != null)
+                {
+                    <div class="ai-proposal-state"><span class="index-badge @(identification.State == "Succeeded" ? "indexed" : "")">@(identification.State == "Succeeded" ? "Proposed" : identification.State == "Retry" ? "Waiting to retry" : identification.State)</span><small>@identification.Model · attempt @identification.Attempts of 3</small>@if (ActiveIdentification) { <button class="text-button" disabled="@busy" @onclick="CancelIdentification">Cancel</button> }</div>
+                    @if (identification.LastError != null) { <p class="field-hint">@identification.LastError</p> }
+                    @if (identification.State == "Succeeded")
+                    {
+                        <h3>@identification.DocumentType</h3><p>@identification.Summary</p>
+                        @if (identification.NeedsReview) { <p class="ai-caution">The model flagged uncertainty or shortened input. Check the original document closely.</p> }
+                        <dl class="ai-facts">@foreach (var fact in JsonSerializer.Deserialize<Dictionary<string,string>>(identification.FactsJson)!) { <div><dt>@fact.Key</dt><dd>@fact.Value<blockquote>@(JsonSerializer.Deserialize<Dictionary<string,string>>(identification.EvidenceJson)!.GetValueOrDefault(fact.Key))</blockquote></dd></div> }</dl>
+                        @if (ProposalReviewCurrent) { <button class="button subtle" disabled="@busy" @onclick="UseIdentification">Use proposed facts</button><p class="field-hint">This replaces the fields below. Check them, then confirm your review before previewing a filing rule.</p> }
+                        else { <p class="field-hint">The document or saved review has changed since this proposal. Identify again for fresh facts.</p> }
+                    }
+                    else if (ActiveIdentification) { <p class="field-hint">Working in the background. You can browse other folders while the model reads.</p> }
+                }
+            </section>
             <div class="workflow-form">
                 <label for="review-type">Document type</label><input id="review-type" value="@documentType" @oninput="TypeChanged" placeholder="bank_statement" maxlength="64" />
                 <label>Document facts</label><p class="field-hint">Use names such as institution, account_suffix, and statement_end. Dates use yyyy-MM-dd. The file supplies extension and original_stem automatically.</p>
@@ -60,6 +79,7 @@
     [Parameter, EditorRequired] public LibraryOverview Overview { get; set; } = default!;
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public EventCallback OpenRules { get; set; }
+    [Parameter] public EventCallback OpenLocalAi { get; set; }
     private IntakePage queue = new([], 0);
     private IntakeItem? selected;
     private List<FactField> fields = [];
@@ -68,6 +88,11 @@
     private int offset, revision;
     private string? message;
     private FilingProposal? proposal;
+    private IdentificationJob? identification;
+    private readonly CancellationTokenSource lifetime = new();
+    private Task? polling;
+    private bool ActiveIdentification => identification?.State is "Queued" or "Running" or "Retry";
+    private bool ProposalReviewCurrent => selected != null && identification != null && (selected.Review?.Revision ?? 0) == identification.ReviewRevision && selected.Entry.ContentHash == identification.ContentHash && selected.Entry.RelativePath == identification.SourcePath;
     private string RootName(Guid id) => Overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
     private static string ParentPath(string path) => path.Contains('/') ? path[..path.LastIndexOf('/')] : "";
     private string Guidance
@@ -80,33 +105,79 @@
             return string.Join("\n\n", notes);
         }
     }
-    protected override async Task OnInitializedAsync() => await RefreshAsync();
+    protected override async Task OnInitializedAsync() { await RefreshAsync(); polling = PollAsync(); }
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (selected == null || busy) return;
+                    var id = selected.Entry.Id;
+                    var latest = await Library.LatestIdentificationAsync(id);
+                    if (selected?.Entry.Id != id) return;
+                    identification = latest; StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { Logger.LogWarning("Identification status refresh stopped: {Kind}", ex.GetType().Name); }
+    }
+    public async ValueTask DisposeAsync() { lifetime.Cancel(); if (polling != null) await polling; lifetime.Dispose(); }
     public async Task RefreshAsync()
     {
         queue = await Library.IntakeAsync(offset);
         if (selected != null)
         {
             var current = queue.Items.FirstOrDefault(x => x.Entry.Id == selected.Entry.Id);
-            if (current == null) { selected = null; proposal = null; }
+            if (current == null) { selected = null; proposal = null; identification = null; }
             else
             {
                 if (current.Entry.ContentHash != selected.Entry.ContentHash || current.Review?.Revision != selected.Review?.Revision) { proposal = null; confirmed = false; }
+                identification = await Library.LatestIdentificationAsync(current.Entry.Id);
                 selected = current; // Keep typed facts; stale revisions are rejected rather than silently overwriting them.
             }
         }
     }
-    private void Select(IntakeItem item)
+    private async Task Select(IntakeItem item)
     {
-        selected = item; proposal = null; message = null;
+        selected = item; proposal = null; message = null; identification = null;
         var review = item.Review;
         documentType = review?.DocumentType ?? ""; revision = review?.Revision ?? 0;
         confirmed = review?.Reviewed == true && review.ContentHash == item.Entry.ContentHash;
         fields = review == null ? [new() { Name = "institution" }, new() { Name = "account_suffix" }, new() { Name = "statement_end" }] : FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(review.FactsJson)!);
+        var latest = await Library.LatestIdentificationAsync(item.Entry.Id);
+        if (selected?.Entry.Id == item.Entry.Id) identification = latest;
     }
     private void Edited() { confirmed = false; proposal = null; }
     private void TypeChanged(ChangeEventArgs e) { documentType = e.Value?.ToString() ?? ""; Edited(); }
     private void ConfirmChanged(ChangeEventArgs e) { confirmed = e.Value is true; proposal = null; }
     private async Task<string> Actor() => (await Authentication.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    private async Task Identify() => await Run(async () =>
+    {
+        if (selected == null) return;
+        await Library.QueueIdentificationAsync(selected.Entry.Id, await Actor(), true);
+        identification = await Library.LatestIdentificationAsync(selected.Entry.Id);
+        message = "Identification queued. Your current review stays unchanged.";
+    });
+    private async Task CancelIdentification() => await Run(async () =>
+    {
+        if (identification == null) return;
+        await Library.CancelIdentificationAsync(identification.Id, await Actor());
+        if (selected != null) identification = await Library.LatestIdentificationAsync(selected.Entry.Id);
+    });
+    private async Task UseIdentification() => await Run(async () =>
+    {
+        if (identification == null || selected == null) return;
+        var usable = await Library.UsableIdentificationAsync(identification.Id);
+        if (usable.EntryId != selected.Entry.Id) return;
+        documentType = usable.DocumentType; fields = FactField.From(JsonSerializer.Deserialize<Dictionary<string,string>>(usable.FactsJson)!);
+        confirmed = false; proposal = null;
+        message = "Proposed facts copied into your draft. Check them against the document and confirm your review.";
+    });
     private async Task Save(bool preview) => await Run(async () =>
     {
         if (selected == null) return;
@@ -122,7 +193,7 @@
     {
         if (proposal?.PreviewId is not Guid id) return;
         await Library.ApplyFilingAsync(id, await Actor());
-        selected = null; proposal = null;
+        selected = null; proposal = null; identification = null;
         await Changed.InvokeAsync(); await RefreshAsync();
         message = "Document renamed and filed. Its contents are unchanged.";
     });

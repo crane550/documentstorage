@@ -93,6 +93,57 @@ public sealed class FilingPreview
     public DateTimeOffset? AppliedAt { get; set; }
 }
 
+public sealed class OllamaSettings
+{
+    public int Id { get; set; } = 1;
+    public string Endpoint { get; set; } = "http://127.0.0.1:11434/";
+    public string Model { get; set; } = "";
+    public bool Enabled { get; set; }
+    public bool AutoIdentify { get; set; }
+    public int TimeoutSeconds { get; set; } = 600;
+    public int MaxInputCharacters { get; set; } = 12000;
+    public string Instructions { get; set; } = "Identify documents from their OCR text. Extract only facts supported by the document. Leave missing facts out.";
+    public int Revision { get; set; } = 1;
+}
+
+public sealed class DocumentTypeProfile
+{
+    public string Key { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Instructions { get; set; } = "";
+    public string FactNamesJson { get; set; } = "[]";
+    public int Revision { get; set; } = 1;
+}
+
+public sealed class IdentificationJob
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EntryId { get; set; }
+    public string ContentHash { get; set; } = "";
+    public string SourcePath { get; set; } = "";
+    public int ReviewRevision { get; set; }
+    public int SettingsRevision { get; set; }
+    public string ContextHash { get; set; } = "";
+    public string ContextJson { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+    public string Model { get; set; } = "";
+    public bool InputTruncated { get; set; }
+    public string State { get; set; } = "Queued";
+    public int Attempts { get; set; }
+    public Guid? RunId { get; set; }
+    public DateTimeOffset? LeaseUntil { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset NotBefore { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? LastError { get; set; }
+    public string DocumentType { get; set; } = "";
+    public string FactsJson { get; set; } = "{}";
+    public string EvidenceJson { get; set; } = "{}";
+    public string Summary { get; set; } = "";
+    public bool NeedsReview { get; set; }
+}
+
 // Written before a disk move. A restart reconciles a prepared operation before scanning.
 public sealed class FileOperation
 {
@@ -121,6 +172,9 @@ public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbC
     public DbSet<FilingRuleDefinition> FilingRules => Set<FilingRuleDefinition>();
     public DbSet<FilingRuleRevision> RuleRevisions => Set<FilingRuleRevision>();
     public DbSet<FilingPreview> FilingPreviews => Set<FilingPreview>();
+    public DbSet<OllamaSettings> OllamaConfigurations => Set<OllamaSettings>();
+    public DbSet<DocumentTypeProfile> DocumentTypes => Set<DocumentTypeProfile>();
+    public DbSet<IdentificationJob> IdentificationJobs => Set<IdentificationJob>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -139,5 +193,11 @@ public sealed class CatalogDb(DbContextOptions<CatalogDb> options) : IdentityDbC
         model.Entity<FilingRuleRevision>().HasOne<FilingRuleDefinition>().WithMany().HasForeignKey(x => x.RuleId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<FilingPreview>().HasIndex(x => x.EntryId);
         model.Entity<FileOperation>().HasIndex(x => x.FilingPreviewId).IsUnique();
+        model.Entity<OllamaSettings>().Property(x => x.Revision).IsConcurrencyToken();
+        model.Entity<DocumentTypeProfile>().HasKey(x => x.Key);
+        model.Entity<DocumentTypeProfile>().Property(x => x.Revision).IsConcurrencyToken();
+        model.Entity<IdentificationJob>().HasOne<CatalogEntry>().WithMany().HasForeignKey(x => x.EntryId).OnDelete(DeleteBehavior.Restrict);
+        model.Entity<IdentificationJob>().HasIndex(x => new { x.State, x.NotBefore });
+        model.Entity<IdentificationJob>().HasIndex(x => new { x.EntryId, x.CreatedAt });
     }
 }

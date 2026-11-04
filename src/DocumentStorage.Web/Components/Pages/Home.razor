@@ -13,6 +13,7 @@
             <button class="@(view == "documents" ? "active" : "")" @onclick='() => SwitchView("documents")'><Icon Name="folder" />Documents <span class="nav-count">@overview.Documents</span></button>
             <button class="@(view == "intake" ? "active" : "")" @onclick='() => SwitchView("intake")'><Icon Name="inbox" />Intake <span class="nav-count">@overview.IntakeDocuments</span></button>
             <button class="@(view == "rules" ? "active" : "")" @onclick='() => SwitchView("rules")'><Icon Name="spark" />Filing rules</button>
+            <button class="@(view == "local_ai" ? "active" : "")" @onclick='() => SwitchView("local_ai")'><Icon Name="spark" />Local AI</button>
             <button class="@(view == "activity" ? "active" : "")" @onclick='() => SwitchView("activity")'><Icon Name="clock" />Activity</button>
             <button class="@(view == "trash" ? "active" : "")" @onclick='() => SwitchView("trash")'><Icon Name="trash" />Trash</button>
         </nav>
@@ -112,7 +113,7 @@
                             <div class="instructions-heading"><Icon Name="spark" Size="18" /><h3>Filing instructions</h3></div><p class="help-text">Describe what belongs here and how you want it named.</p>
                             <label class="sr-only" for="instructions">Folder filing instructions</label><textarea id="instructions" class="instructions-input" maxlength="20000" @bind="instructions" placeholder="For example: Keep monthly bank statements here. Name them using the statement closing date and bank name." rows="8"></textarea>
                             <button class="button primary full-width" disabled="@busy" @onclick="SaveInstructions">Save instructions</button>
-                            <div class="guidance-note"><Icon Name="info" Size="16" /><p>Saved as folder guidance. Use Filing rules for names and destinations. Ollama identification and conversational editing come next.</p></div>
+                            <div class="guidance-note"><Icon Name="info" Size="16" /><p>Ollama uses this guidance when identifying documents in this folder. Use Filing rules to set names and destinations.</p></div>
                             @if (InheritedInstructions.Length > 0) { <details class="inherited"><summary>Guidance from parent folders</summary><pre>@InheritedInstructions</pre></details> }
                         }
                         else
@@ -132,11 +133,15 @@
         }
         else if (view == "intake")
         {
-            <IntakeWorkspace @ref="intakeWorkspace" Overview="overview" Changed="Reload" OpenRules='() => SwitchView("rules")' />
+            <IntakeWorkspace @ref="intakeWorkspace" Overview="overview" Changed="Reload" OpenRules='() => SwitchView("rules")' OpenLocalAi='() => SwitchView("local_ai")' />
         }
         else if (view == "rules")
         {
             <RulesWorkspace Overview="overview" Changed="Reload" />
+        }
+        else if (view == "local_ai")
+        {
+            <LocalAiWorkspace />
         }
         else if (view == "storage")
         {
@@ -206,9 +211,9 @@
     private int offset;
     private IntakeWorkspace? intakeWorkspace;
     private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
-    private string ViewLabel => view switch { "intake" => "Intake", "rules" => "Filing rules", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
-    private string Heading => view switch { "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
-    private string Subtitle => view switch { "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
+    private string ViewLabel => view switch { "intake" => "Intake", "rules" => "Filing rules", "local_ai" => "Local AI", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
+    private string Heading => view switch { "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "local_ai" => "A little help reading the paperwork.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
+    private string Subtitle => view switch { "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "local_ai" => "Your local model identifies documents. Your rules put them in place.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
     private string RootName(Guid id) => overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
     private IEnumerable<CatalogEntry> Breadcrumbs
     {

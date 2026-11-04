@@ -18,10 +18,12 @@ Working now:
 - Intake folder designation, stable-file readiness, and a queue for reviewing document types/facts.
 - Persisted, versioned filing rules with draft simulations and exact filename/destination previews.
 - Explicit, fingerprint-checked **Rename & file** through the existing recovery journal.
+- Configurable local Ollama identification with durable jobs, cancellation/retries and document-type guidance.
+- Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
 
-See [Intake and deterministic filing](docs/intake-and-rules.md) for the complete workflow.
+See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing workflow, and [Local document identification](docs/local-ai.md) to connect Ollama.
 
-**Not implemented yet:** Ollama identification, unattended filing, instruction chat, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** unattended filing, instruction chat, MCP authentication/tools, PDF/image preview, permanent deletion, cross-root transfer/migration, self-update, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 
@@ -58,6 +60,7 @@ dotnet run --project tests/DocumentStorage.AuthenticationChecks -c Release
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
 node tests/browser/intake.mjs
+node tests/browser/ollama.mjs
 ```
 
 The filesystem .NET runner refuses non-loopback databases or names that do not end `_checks`. Override its connection using `DOCUMENTSTORAGE_CHECKS_DB`. Browser checks sign in using `DOCUMENTSTORAGE_TEST_USERNAME`/`DOCUMENTSTORAGE_TEST_PASSWORD`, or the cloud fixture in ignored `.local/browser-credentials.json`. They create synthetic files under `.local/browser-storage` and register that root in the running catalog. They can be rerun and leave those sample files for inspection; never target a real catalog. Set `DOCUMENTSTORAGE_CHROMIUM` for your Chromium executable, `DOCUMENTSTORAGE_TEST_URL` for another local port, and `DOCUMENTSTORAGE_SCREENSHOT` for the screenshot output.
@@ -70,4 +73,4 @@ Run one application process per catalog. All mutations and scans share one write
 
 App-managed moves preserve IDs, history, and instructions. **External renames currently appear as a missing old record and a newly indexed record.** Stable identity across external moves needs the later fingerprint/reconciliation milestone. File system and PostgreSQL backups both matter; this version does not back them up automatically. NAS monitoring currently uses complete periodic scans rather than relying on network change notifications.
 
-Search currently uses case-insensitive text matching with escaped query terms and pagination. PostgreSQL full-text ranking and indexes are planned as the catalog grows. No document text is sent to an external AI. When using the public hostname, your browser traffic passes through your Cloudflare tunnel.
+Search currently uses case-insensitive text matching with escaped query terms and pagination. PostgreSQL full-text ranking and indexes are planned as the catalog grows. AI identification is off by default. When enabled, text and bounded guidance go only to your configured Ollama server; cloud-backed models are refused before sending OCR. See [local AI boundaries](docs/local-ai.md). When using the public hostname, your browser traffic passes through your Cloudflare tunnel.
