@@ -10,6 +10,7 @@ Working now:
 
 - Register existing local directories or mounted NAS shares; browse a nested folder tree.
 - Discover existing files in place, rescan every minute or on demand, and retain indexed text when a root is offline.
+- Dedicated **Folders** workspace (`/folders`) with search, storage filtering, subfolder creation, rename/move previews and sidebar management shortcuts.
 - Create folders; upload files (100 MB each, 20 per selection); download originals; rename and move within a root.
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
@@ -22,6 +23,8 @@ Working now:
 - Structured fact proposals with OCR evidence, optional automatic identification, and explicit human review before filing.
 - Instruction conversations, local summary drafts, source-linked immutable versions and manual editing.
 - OAuth-authenticated Streamable HTTP MCP with scoped tools/resources/prompts, idempotent proposals, revocation, audit and individually approved filing.
+
+See [Folder management](docs/folders.md) for organizing server directories.
 
 See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing workflow, and [Local document identification](docs/local-ai.md) to connect Ollama.
 
@@ -69,6 +72,7 @@ node tests/browser/smoke.mjs
 node tests/browser/intake.mjs
 # Drop checks require a fresh empty disposable catalog (default port 5241):
 node tests/browser/drop.mjs
+node tests/browser/folders.mjs # default local port 5242
 node tests/browser/ollama.mjs
 node tests/browser/instructions-mcp.mjs
 ```

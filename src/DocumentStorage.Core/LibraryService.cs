@@ -236,7 +236,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         return (entry, root);
     }
 
-    public async Task<Guid> CreateFolderAsync(Guid parentId, string name)
+    public async Task<Guid> CreateFolderAsync(Guid parentId, string name, string? expectedParentPath = null)
     {
         name = StoragePaths.ValidateName(name);
         await writer.WaitAsync();
@@ -245,6 +245,8 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             await using var db = await factory.CreateDbContextAsync();
             var (parent, root) = await WritableEntryAsync(db, parentId);
             if (!parent.IsFolder || parent.TrashBatchId != null) throw new StorageException("Choose an available destination folder.");
+            if (expectedParentPath != null && parent.RelativePath != expectedParentPath) throw new StorageException("The parent folder changed since you opened the form. Refresh folders and try again.");
+            if (!Directory.Exists(StoragePaths.Resolve(root.Location, parent.RelativePath))) throw new StorageException("The parent folder is unavailable on storage. Rescan before creating folders.");
             var relative = StoragePaths.Join(parent.RelativePath, name);
             var path = StoragePaths.Resolve(root.Location, relative);
             if (StoragePaths.Exists(path)) throw new StorageException("An item with that name already exists.");
@@ -316,10 +318,10 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         finally { writer.Release(); }
     }
 
-    public async Task MoveAsync(Guid id, Guid parentId, string name) => await ChangePathAsync(id, parentId, StoragePaths.ValidateName(name), false);
+    public async Task MoveAsync(Guid id, Guid parentId, string name, string? expectedSourcePath = null, string? expectedDestinationPath = null) => await ChangePathAsync(id, parentId, StoragePaths.ValidateName(name), false, expectedSourcePath, expectedDestinationPath);
     public async Task TrashEntryAsync(Guid id) => await ChangePathAsync(id, null, "", true);
 
-    private async Task ChangePathAsync(Guid id, Guid? parentId, string name, bool trash)
+    private async Task ChangePathAsync(Guid id, Guid? parentId, string name, bool trash, string? expectedSourcePath = null, string? expectedDestinationPath = null)
     {
         await writer.WaitAsync();
         try
@@ -327,6 +329,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             await using var db = await factory.CreateDbContextAsync();
             var (entry, root) = await WritableEntryAsync(db, id);
             if (entry.RelativePath == "" || entry.TrashBatchId != null) throw new StorageException("Storage roots and items already in trash cannot be moved.");
+            if (expectedSourcePath != null && entry.RelativePath != expectedSourcePath) throw new StorageException("This folder changed since you opened the form. Refresh folders and try again.");
             var op = new FileOperation { RootId = root.Id, EntryId = id, FromPath = entry.RelativePath, Kind = trash ? "Trash" : "Move", TargetParentId = parentId };
             if (trash)
             {
@@ -341,6 +344,13 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                 if (root.Id != parentRoot.Id) throw new StorageException("Moves between storage locations are not available yet. Choose a folder in the same location.");
                 if (parent.RelativePath == entry.RelativePath || parent.RelativePath.StartsWith(entry.RelativePath + "/", StringComparison.Ordinal))
                     throw new StorageException("A folder cannot be moved inside itself.");
+                if (expectedDestinationPath != null && parent.RelativePath != expectedDestinationPath) throw new StorageException("The destination changed since you opened the form. Refresh folders and try again.");
+                if (entry.IsFolder)
+                {
+                    var folders = await db.Entries.Where(x => x.RootId == root.Id && x.IsFolder && !x.IsMissing && x.TrashBatchId == null).ToListAsync();
+                    if (HasIntakeAncestor(parent, folders) && folders.Any(x => x.IsIntake && (x.Id == entry.Id || x.RelativePath.StartsWith(entry.RelativePath + "/", StringComparison.Ordinal))))
+                        throw new StorageException("This move would nest intake folders. Choose a destination outside intake.");
+                }
                 op.ToPath = StoragePaths.Join(parent.RelativePath, name);
             }
             await ExecuteMoveAsync(db, root, entry, op);

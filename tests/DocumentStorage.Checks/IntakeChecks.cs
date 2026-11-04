@@ -184,7 +184,20 @@ internal static class IntakeChecks
         await library.UploadToIntakeAsync(dropFolder, "copied.txt", new MemoryStream(Encoding.UTF8.GetBytes("Synthetic browser copy.")));
         await refuses(() => library.UploadToIntakeAsync(dropFolder, "copied.txt", new MemoryStream([0])), "intake upload collisions preserve the first file");
         check(await File.ReadAllTextAsync(Path.Combine(storage,"Browser copies/copied.txt")) == "Synthetic browser copy.", "intake upload writes unchanged bytes into the designated server folder");
+        var folderParent = await library.CreateFolderAsync(rootFolder.Id, "Folder tools");
+        await library.MoveAsync(dropFolder, folderParent, "Renamed intake", "Browser copies", "Folder tools");
+        check((await library.EntryAsync(dropFolder))!.IsIntake && File.Exists(Path.Combine(storage, "Folder tools/Renamed intake/copied.txt")), "moving an intake folder retains its scope and complete subtree");
+        await refuses(() => library.MoveAsync(dropFolder, rootFolder.Id, "Stale", "Browser copies", ""), "stale source paths cannot move a folder after another tab changed it");
+        await refuses(() => library.CreateFolderAsync(dropFolder, "Stale child", "Browser copies"), "stale parent paths cannot create a folder in an unexpected location");
+        await refuses(() => library.MoveAsync(dropFolder, rootFolder.Id, "Stale target", "Folder tools/Renamed intake", "old root path"), "stale destination paths cannot redirect a folder move");
+        await library.SetIntakeAsync(incoming, true);
+        await refuses(() => library.MoveAsync(folderParent, incoming, "Nested"), "moving a parent containing intake cannot create overlapping intake scopes");
+        await library.SetIntakeAsync(incoming, false);
         await library.SetIntakeAsync(dropFolder, false);
+        var disappeared = await library.CreateFolderAsync(rootFolder.Id, "Disappeared parent");
+        Directory.Delete(Path.Combine(storage, "Disappeared parent"));
+        await refuses(() => library.CreateFolderAsync(disappeared, "Unexpected child"), "creating a child refuses a parent removed externally before rescan");
+        check(!Directory.Exists(Path.Combine(storage, "Disappeared parent")), "folder creation never silently recreates an externally removed ancestor");
     }
 
     private sealed class ManualClock : TimeProvider

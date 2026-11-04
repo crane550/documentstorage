@@ -58,6 +58,7 @@ internal static partial class Runner
             using var client = NewClient();
             Check((await client.GetAsync("/health")).StatusCode == HttpStatusCode.OK, "anonymous health check remains available");
             Check((await client.GetAsync("/")).StatusCode == HttpStatusCode.Redirect, "anonymous workspace redirects to built-in login");
+            Check((await client.GetAsync("/folders")).StatusCode == HttpStatusCode.Redirect, "anonymous folder management redirects to built-in login");
             Check((await client.GetAsync("/app.css")).StatusCode == HttpStatusCode.OK, "login stylesheet is available without authentication");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/download")).StatusCode == HttpStatusCode.Unauthorized, "anonymous document downloads rejected");
             Check((await client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null)).StatusCode == HttpStatusCode.Unauthorized, "anonymous Blazor connection rejected");

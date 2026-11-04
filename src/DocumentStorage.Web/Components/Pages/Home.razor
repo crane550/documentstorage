@@ -1,4 +1,6 @@
 @page "/"
+@page "/folders"
+@inject NavigationManager Navigation
 @attribute [Authorize(Roles = IdentitySetup.Administrator)]
 @inject LibraryService Library
 @inject IConfiguration Configuration
@@ -13,6 +15,7 @@
         <div class="workspace-label">YOUR WORKSPACE <span>LOCAL</span></div>
         <nav class="main-nav" aria-label="Workspace">
             <button class="@(view == "documents" ? "active" : "")" @onclick='() => SwitchView("documents")'><Icon Name="folder" />Documents <span class="nav-count">@overview.Documents</span></button>
+            <button class="@(view == "folders" ? "active" : "")" @onclick='() => SwitchView("folders")'><Icon Name="folder" />Folders</button>
             <button class="@(view == "intake" ? "active" : "")" @onclick='() => SwitchView("intake")'><Icon Name="inbox" />Intake <span class="nav-count">@overview.IntakeDocuments</span></button>
             <button class="@(view == "rules" ? "active" : "")" @onclick='() => SwitchView("rules")'><Icon Name="spark" />Filing rules</button>
             <button class="@(view == "instructions" ? "active" : "")" @onclick='() => SwitchView("instructions")'><Icon Name="spark" />Instructions</button>
@@ -28,7 +31,7 @@
                 <div class="root-caption"><span class="status-dot @(root.IsOnline ? "online" : "offline")"></span>@root.Name <span>@(root.IsNetwork ? "NAS" : "LOCAL")</span></div>
                 @foreach (var folder in overview.Folders.Where(x => x.RootId == root.Id && x.ParentId == null))
                 {
-                    <FolderBranch Folder="folder" AllFolders="overview.Folders" SelectedId="folderId" OnSelect="OpenFolder" />
+                    <FolderBranch Folder="folder" AllFolders="overview.Folders" SelectedId="folderId" OnSelect="OpenFolder" OnManage="ManageFolder" />
                 }
             }
             @if (overview.Roots.Count == 0) { <p class="tree-empty">Connect a folder on your server to start your library.</p> }
@@ -137,6 +140,10 @@
             </div>
             <div class="bottom-note"><Icon Name="info" Size="15" /><span>Built around your folders. Local storage today, room for a NAS tomorrow.</span><span class="milestone-label">FOUNDATION · 01</span></div>
         }
+        else if (view == "folders")
+        {
+            <FoldersWorkspace Overview="overview" SelectedId="folderId" Changed="Reload" Selected="SelectManagedFolder" OpenDocuments="OpenFolder" />
+        }
         else if (view == "intake")
         {
             <IntakeWorkspace @ref="intakeWorkspace" Overview="overview" Changed="Reload" OpenRules='() => SwitchView("rules")' OpenLocalAi='() => SwitchView("local_ai")' />
@@ -225,9 +232,9 @@
     private int offset;
     private IntakeWorkspace? intakeWorkspace;
     private string DisplayName => Configuration["Application:DisplayName"] ?? "Document Manager";
-    private string ViewLabel => view switch { "intake" => "Intake", "rules" => "Filing rules", "local_ai" => "Local AI", "instructions" => "Instructions", "assistants" => "Assistants & MCP", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
-    private string Heading => view switch { "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "local_ai" => "A little help reading the paperwork.", "instructions" => "A conversation your folders remember.", "assistants" => "Helpful assistants. Clear boundaries.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
-    private string Subtitle => view switch { "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "local_ai" => "Your local model identifies documents. Your rules put them in place.", "instructions" => "Keep the original requests, review each draft, and save a clear guide.", "assistants" => "Connect external assistants, review proposals, and control approved filing.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
+    private string ViewLabel => view switch { "folders" => "Folders", "intake" => "Intake", "rules" => "Filing rules", "local_ai" => "Local AI", "instructions" => "Instructions", "assistants" => "Assistants & MCP", "storage" => "Storage", "activity" => "Activity", "trash" => "Trash", _ => "Documents" };
+    private string Heading => view switch { "folders" => "Make room for everything.", "intake" => "From incoming to in its place.", "rules" => "Decide once. File consistently.", "local_ai" => "A little help reading the paperwork.", "instructions" => "A conversation your folders remember.", "assistants" => "Helpful assistants. Clear boundaries.", "storage" => "Your storage, connected.", "activity" => "Every move, accounted for.", "trash" => "Set aside. Not gone.", _ => "Everything in its place." };
+    private string Subtitle => view switch { "folders" => "Build, rename and rearrange real folders on your storage.", "intake" => "Review the facts, preview a rule, and put each scan where it belongs.", "rules" => "Clear naming patterns and folder targets, with a history of every change.", "local_ai" => "Your local model identifies documents. Your rules put them in place.", "instructions" => "Keep the original requests, review each draft, and save a clear guide.", "assistants" => "Connect external assistants, review proposals, and control approved filing.", "storage" => "Local folders and network shares, together in one library.", "activity" => "A clear record of what changed and where your files went.", "trash" => "A second chance for the things you put away.", _ => "Your documents, your folders. A calmer way to keep them together." };
     private string RootName(Guid id) => overview.Roots.FirstOrDefault(x => x.Id == id)?.Name ?? "Storage";
     private IEnumerable<CatalogEntry> Breadcrumbs
     {
@@ -250,7 +257,13 @@
             return string.Join("\n\n", notes);
         }
     }
-    protected override async Task OnInitializedAsync() => await Run(async () => await Reload());
+    protected override async Task OnInitializedAsync()
+    {
+        if (new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/') == "/folders") view = "folders";
+        await Run(async () => await Reload());
+    }
+    private Task SelectManagedFolder(Guid id) { folderId = id; return Task.CompletedTask; }
+    private async Task ManageFolder(Guid id) { folderId = id; view = "folders"; await Reload(); }
     private async Task Reload()
     {
         overview = await Library.OverviewAsync();
