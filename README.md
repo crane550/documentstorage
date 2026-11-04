@@ -39,7 +39,7 @@ Create an empty PostgreSQL database named `documentstorage_dev` using a role tha
 
 ```sh
 # For the first startup, supply BootstrapAdmin__Username and BootstrapAdmin__Password
-# through private environment settings (password minimum 12 characters). Existing accounts are never reset.
+# through private environment settings (password minimum 8 characters). Existing accounts are never reset.
 export ConnectionStrings__Catalog='Host=127.0.0.1;Port=55432;Database=documentstorage_dev;Username=postgres'
 dotnet tool restore --tool-manifest dotnet-tools.json
 dotnet restore --locked-mode

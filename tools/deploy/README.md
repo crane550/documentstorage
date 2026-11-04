@@ -73,7 +73,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\install.ps1 -Pd
 Two local credential dialogs appear:
 
 1. The `documentstorage` **PostgreSQL role** password created above.
-2. Your first **app administrator** username and password. Choose a password of at least 12 characters. This is the login you will use in the browser.
+2. Your first **app administrator** username and password. Choose a password of at least 8 characters. This is the login you will use in the browser.
 
 The installer refuses an existing instance/service rather than overwriting it. It publishes the clean checkout, restricts the installation directory to Administrators/SYSTEM/LocalService, checks the new database connection, and saves private configuration outside Git at `C:\Apps\DocumentStorage\instance.json`. The database password remains in this protected file. The one-time administrator password is removed after successful startup; PostgreSQL stores its Identity password hash. Startup never resets an existing account's password.
 

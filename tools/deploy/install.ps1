@@ -34,8 +34,8 @@ $oldPgPassword = $env:PGPASSWORD
 try {
     $env:PGPASSWORD = $credential.GetNetworkCredential().Password
     Invoke-Native (Join-Path $PostgresBin 'psql.exe') @('-h','127.0.0.1','-p','5432','-U','documentstorage','-d','documentstorage','-w','-v','ON_ERROR_STOP=1','-c','SELECT current_database(), current_user;')
-    $adminCredential = Get-Credential -UserName admin -Message 'Choose the FIRST document workspace administrator username and password (12 characters minimum)'
-    if ($null -eq $adminCredential -or $adminCredential.GetNetworkCredential().Password.Length -lt 12) { throw 'Supply an administrator password with at least 12 characters.' }
+    $adminCredential = Get-Credential -UserName admin -Message 'Choose the FIRST document workspace administrator username and password (8 characters minimum)'
+    if ($null -eq $adminCredential -or $adminCredential.GetNetworkCredential().Password.Length -lt 8) { throw 'Supply an administrator password with at least 8 characters.' }
     $config = [ordered]@{
         Application = @{ DisplayName = 'Document Manager' }
         Urls = 'http://127.0.0.1:5240'

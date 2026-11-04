@@ -17,8 +17,8 @@ internal static partial class Runner
     {
         const string connection = "Host=127.0.0.1;Port=55432;Database=documentstorage_authentication_checks;Username=postgres";
         const string username = "fixture-admin";
-        var password = "Synthetic-only-" + Guid.NewGuid();
-        var newPassword = "Changed-synthetic-" + Guid.NewGuid();
+        const string password = "Start-42"; // Synthetic eight-character bootstrap password.
+        const string newPassword = "Fresh-42"; // Exercise the new minimum through the real form.
         var keyDirectory = Path.Combine(Path.GetTempPath(), "documentstorage-auth-" + Guid.NewGuid());
         Directory.CreateDirectory(keyDirectory);
         var values = new Dictionary<string, string?>
@@ -108,6 +108,7 @@ internal static partial class Runner
                 return await client.PostAsync("/account/change-password", new FormUrlEncodedContent(new Dictionary<string,string>
                 { ["currentPassword"] = current, ["newPassword"] = next, ["confirmPassword"] = confirm, ["__RequestVerificationToken"] = token }));
             }
+            Check((await Change(password, "Short-7", "Short-7")).Headers.Location!.ToString().Contains("failed=true"), "passwords below eight characters are refused");
             Check((await Change(password, newPassword, "mismatched-confirmation")).Headers.Location!.ToString().Contains("failed=true"), "password confirmation mismatch refused");
             Check((await Change("incorrect-current", newPassword, newPassword)).Headers.Location!.ToString().Contains("failed=true"), "password change checks the current password");
             Check((await Change(password, newPassword, newPassword)).Headers.Location!.ToString() == "/account?changed=true", "password change succeeds and refreshes the current sign-in");

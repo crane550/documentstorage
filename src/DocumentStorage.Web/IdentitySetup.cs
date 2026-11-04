@@ -40,7 +40,7 @@ public static class IdentitySetup
             });
         services.AddIdentityCore<LibraryUser>(options =>
         {
-            options.Password.RequiredLength = 12;
+            options.Password.RequiredLength = 8;
             options.Password.RequireNonAlphanumeric = false;
             options.Password.RequireUppercase = false;
             options.Password.RequireLowercase = false;

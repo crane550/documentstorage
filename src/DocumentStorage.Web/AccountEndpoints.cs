@@ -37,7 +37,7 @@ public static class AccountEndpoints
             var current = form["currentPassword"].ToString();
             var password = form["newPassword"].ToString();
             var confirm = form["confirmPassword"].ToString();
-            if (password != confirm || password.Length is < 12 or > 1024 || current.Length > 1024)
+            if (password != confirm || password.Length is < 8 or > 1024 || current.Length > 1024)
                 return Results.LocalRedirect("/account?failed=true");
             var user = await users.GetUserAsync(context.User);
             if (user == null) return Results.Unauthorized();
