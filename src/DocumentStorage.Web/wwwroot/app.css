@@ -892,3 +892,7 @@ button.note-empty:hover { color: #3a3216; }
 @media(max-width:700px) { .desk-workspace,.desk-workspace.with-source { grid-template-columns:minmax(0,1fr); } .desk-workspace .desk-source { grid-column:1; } .desk-history { flex-direction:row; overflow-x:auto; align-items:center; } .desk-history h2,.desk-history>.hint { display:none; } .desk-thread { flex:0 0 150px; } .desk-history>.button { flex-shrink:0; } .desk-chat { padding:16px; } }
 
 .plan-receipt-notes { flex-basis:100%; }
+
+/* Supplied Stash artwork; retain its original aspect ratio. */
+.brand .stash-logo { display: block; width: 190px; max-width: 100%; height: auto; }
+.account-brand .stash-logo { display: block; width: 270px; max-width: 100%; height: auto; }

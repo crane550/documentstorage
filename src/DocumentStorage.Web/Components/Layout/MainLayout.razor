@@ -14,7 +14,7 @@ else
 {
 <div class="shell @(menuOpen ? "menu-open" : "")">
     <aside class="sidebar" aria-label="Workspace">
-        <a class="brand" href="/" @onclick="CloseMenu"><span class="brand-mark"><Icon Name="box" Size="22" Stroke="1.8" /></span><span class="brand-name">@Workspace.DisplayName</span></a>
+        <a class="brand" href="/" @onclick="CloseMenu"><img class="stash-logo" src="images/stash-logo.png" alt="Stash" /><span class="sr-only">@Workspace.DisplayName</span></a>
 
         <nav class="main-nav" aria-label="Main">
             <a href="/ask" class="@Active("ask")" aria-current="@Current("ask")" @onclick="CloseMenu"><Icon Name="spark" /><span>Ask documents</span></a>
