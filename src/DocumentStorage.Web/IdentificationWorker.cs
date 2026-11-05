@@ -8,6 +8,8 @@ public sealed class IdentificationWorker(LibraryService library, IOllamaClient c
     {
         await library.RecoverIdentificationAsync();
         await library.RecoverDeskAsync();
+        try { await library.RebuildRegularsAsync(); }
+        catch (Exception ex) { logger.LogWarning(ex, "Regulars could not be rebuilt from earlier filings; they will build up from new approvals."); }
         var offset = 0; var nextAutomatic = DateTimeOffset.MinValue;
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -15,6 +17,8 @@ public sealed class IdentificationWorker(LibraryService library, IOllamaClient c
             {
                 if (DateTimeOffset.UtcNow >= nextAutomatic)
                 {
+                    // Recurring documents a trusted regular knows file themselves first, with no model call.
+                    await library.AutoFileFromMemoryAsync();
                     offset = await library.QueueAutomaticIdentificationAsync(offset);
                     nextAutomatic = DateTimeOffset.UtcNow.AddSeconds(15);
                 }

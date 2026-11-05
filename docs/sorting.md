@@ -134,6 +134,29 @@ Applying, applied, then Applied; a failure returns it to Pending). An assistant 
 can't switch a kind to file by itself (a kind proposal keeps that switch as it was), and moves
 files only through an accepted re-file of documents Tidy up already lists.
 
+## Regulars: recurring documents from memory
+
+A **regular** (`SortRoute`) is one kind from one sender, such as bank statements from your bank.
+Every approval (Inbox, back-fill, or "Looks right" on something that filed itself) adds to its
+record and keeps the last five as memory: title, tags, fields and **how the date was picked**
+(`DateRules`: from the filename, the latest, first or earliest date in the first page).
+
+Once a regular has three remembered approvals, a new document whose first-found sender is that
+regular's, and where that kind clearly dominates for the sender, is filled in **from memory**
+(`FromMemory`) with no model call: the kind, the date picked the same way, fields whose value never
+changed (only if that value appears in the document), a steady title and the shared tags. It is
+sure when the kind's pattern can be filled completely. A sure memory beats a reading; automatic
+reading skips documents memory is sure of, so the model's time goes to what is new.
+
+Trust can be narrower than a kind: Kinds & tags › **Regulars** lists each with its record and its
+own **File without asking**. After five right in a row the Inbox offers "Let them file
+themselves?" ("Not now" waits five more). The worker's `AutoFileFromMemoryAsync` files sure
+memory cards of trusted regulars (or kinds) every 15 seconds, **with or without the reader**.
+Filed shows them as filed by themselves with **Looks right** (counts toward the record) and
+Undo (switches that regular, and its kind, back to asking; the document never files itself
+again). Merging senders adds their regulars together. Catalogs filed before regulars existed
+rebuild them once from approved filings at startup (`RebuildRegularsAsync`).
+
 ## Not yet
 
 Other file formats beyond PDF, Word and plain text; one set of tags (older descriptions only
@@ -143,7 +166,7 @@ pre-fill cards); measuring the real model on the server.
 
 `tests/DocumentStorage.Checks/SortingChecks.cs` (patterns, hints, Word text, the narrow prompt,
 mapping, plans, filing, corrections, new kinds, undo, automatic filing and its switches, Library
-details, merge, re-filing, back-fill, assistant proposals). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
+details, merge, re-filing, back-fill, assistant proposals) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
 stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Tidy up (a pattern change and its moves),
 back-fill (read, Save & move), Library search and phone width. `DocumentStorage.McpChecks` covers
-the sorting tools over the real protocol. Neither proves model accuracy: try it on real documents on the server.
+the sorting tools over the real protocol. `node tests/browser/regulars.mjs` drives three readings, a fill-in from memory, the nudge, a statement filing itself and Looks right. Neither proves model accuracy: try it on real documents on the server.

@@ -16,6 +16,7 @@
 
 <nav class="inbox-tabs" aria-label="Sections">
     <button type="button" class="@(tab == "kinds" ? "active" : "")" aria-pressed="@(tab == "kinds" ? "true" : "false")" @onclick="@(() => Go("kinds"))">Kinds<span class="count">@vocabulary.Kinds.Count</span></button>
+    <button type="button" class="@(tab == "regulars" ? "active" : "")" aria-pressed="@(tab == "regulars" ? "true" : "false")" @onclick="@(() => Go("regulars"))"><span>Regulars</span><span class="count">@regulars.Count</span></button>
     <button type="button" class="@(tab == "senders" ? "active" : "")" aria-pressed="@(tab == "senders" ? "true" : "false")" @onclick="@(() => Go("senders"))">Senders<span class="count">@vocabulary.Senders.Count</span></button>
     <button type="button" class="@(tab == "tags" ? "active" : "")" aria-pressed="@(tab == "tags" ? "true" : "false")" @onclick="@(() => Go("tags"))">Tags<span class="count">@vocabulary.Tags.Count</span></button>
     <button type="button" class="@(tab == "tidy" ? "active" : "")" aria-pressed="@(tab == "tidy" ? "true" : "false")" @onclick="@(() => Go("tidy"))"><span>Tidy up</span>@if (outOfPlace > 0) { <span class="count">@outOfPlace</span> }</button>
@@ -63,6 +64,28 @@ else if (tab == "kinds")
         }
     </div>
 }
+else if (tab == "regulars")
+{
+    <section class="sheet regulars" aria-label="Regulars">
+        <h2>Regulars</h2>
+        <p class="hint">A regular is one kind from one sender, like bank statements from your bank. Stash remembers how you filed the last @LibraryService.RouteMemory, so after @LibraryService.RouteMinimum it fills the next one in from memory without the reader: the date picked the same way, fields that never change (checked against the document), the title and tags. Switch one on to let it file itself when it's sure, without trusting the whole kind.</p>
+        @if (regulars.Count == 0) { <p class="hint">None yet. They appear as you approve documents from senders Stash knows.</p> }
+        <ul>
+            @foreach (var regular in regulars)
+            {
+                <li class="regular-row @(regular.AutoFile || regular.KindAutoFile ? "auto" : "")" @key="regular.Id">
+                    <div class="regular-text">
+                        <strong>@regular.Kind from @regular.Sender</strong>
+                        <small>@regular.Approved filed · @regular.Corrected corrected@(regular.Streak > 0 ? $" · {regular.Streak} right in a row" : "")@(regular.Remembered < LibraryService.RouteMinimum ? $" · {LibraryService.RouteMinimum - regular.Remembered} more before it fills in from memory" : " · fills in from memory")</small>
+                        @if (regular.Suggest) { <small class="regular-ready"><Icon Name="check-circle" Size="12" />Ready to file itself?</small> }
+                    </div>
+                    @if (regular.KindAutoFile) { <span class="hint">Files itself (the whole kind does)</span> }
+                    else { <label class="switch small"><input type="checkbox" checked="@regular.AutoFile" @onchange="e => SetRegular(regular, (bool)e.Value!)" aria-label="@($"{regular.Kind} from {regular.Sender} files itself")" /><span class="switch-track"></span><span>File without asking</span></label> }
+                </li>
+            }
+        </ul>
+    </section>
+}
 else if (tab == "tidy")
 {
     @if (KindFilter == null && SenderFilter == null) { <BackfillList Changed="Load" /> }
@@ -84,6 +107,7 @@ else
     private Guid? KindFilter => Guid.TryParse(KindParameter, out var id) ? id : null;
     private Guid? SenderFilter => Guid.TryParse(SenderParameter, out var id) ? id : null;
     private int outOfPlace, tidyVersion;
+    private List<RegularView> regulars = [];
     private Dictionary<string, int> outByKind = [];
     private string TidyScope => KindFilter is Guid k ? $"Only {vocabulary.Kinds.FirstOrDefault(x => x.Id == k)?.Name ?? "one kind"}." : SenderFilter is Guid f ? $"Only from {vocabulary.Senders.FirstOrDefault(x => x.Id == f)?.Name ?? "one sender"}." : "";
     private string tab = "kinds";
@@ -94,13 +118,14 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        tab = Tab is "senders" or "tags" or "tidy" ? Tab : "kinds";
+        tab = Tab is "senders" or "tags" or "tidy" or "regulars" ? Tab : "kinds";
         await Load();
         loaded = true;
     }
     private async Task Load()
     {
         tidyVersion++;
+        regulars = await Library.RegularsAsync();
         var moves = await Library.RefilePlanAsync();
         outOfPlace = moves.Count(x => x.Problem == null);
         outByKind = moves.Where(x => x.Problem == null).GroupBy(x => x.Kind).ToDictionary(x => x.Key, x => x.Count());
@@ -128,6 +153,11 @@ else
     {
         await Library.SetKindAutoFileAsync(kind.Id, on, await Workspace.ActorAsync()); await Load();
         Workspace.Notify(on ? $"{kind.Name}: sure readings now file themselves. You'll see them under Inbox › Filed." : $"{kind.Name} will wait for your approval.");
+    });
+    private Task SetRegular(RegularView regular, bool on) => Run(async () =>
+    {
+        await Library.SetRegularAutoFileAsync(regular.Id, on, await Workspace.ActorAsync()); await Load();
+        Workspace.Notify(on ? $"{regular.Kind} from {regular.Sender} will file itself when Stash is sure." : $"{regular.Kind} from {regular.Sender} will wait for your approval.");
     });
     private Task SetMaster(bool on) => Run(async () => { await Library.SetAutoFilingEnabledAsync(on, await Workspace.ActorAsync()); await Load(); Workspace.Notify(on ? "Trusted kinds may file themselves." : "Automatic filing is off. Everything waits for you."); });
     private Task DeleteKind(DocumentKind kind) => Run(async () => { await Library.DeleteKindAsync(kind.Id, await Workspace.ActorAsync()); await Load(); Workspace.Notify($"Deleted {kind.Name}. Its documents stay where they are, without a kind."); });

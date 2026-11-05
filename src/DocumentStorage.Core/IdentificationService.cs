@@ -175,6 +175,9 @@ public sealed partial class LibraryService
                 // Also let an existing active job settle before scheduling a changed version.
                 if (await db.IdentificationJobs.AnyAsync(x => x.EntryId == entry.Id &&
                     (x.ContentHash == entry.ContentHash || x.State == "Queued" || x.State == "Running" || x.State == "Retry"))) continue;
+                // A regular that already knows this one needs no model time.
+                var vocab = await VocabAsync(db); var hints = Hints(entry, vocab);
+                if (FromMemory(entry, vocab, hints, await RoutesForAsync(db, hints.Senders.Take(1))) is { Sure: true }) continue;
                 await EnqueueIdentificationAsync(db, entry, settings, await SortingContextAsync(db, entry, settings), "automatic", false);
             }
             return offset + entries.Count >= total ? 0 : offset + entries.Count;

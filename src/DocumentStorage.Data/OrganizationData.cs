@@ -10,6 +10,8 @@ public sealed class OrganizationFiling
     public string DetailsJson { get; set; } = "";
     public bool Automatic { get; set; }
     public DateTimeOffset? UndoneAt { get; set; }
+    // A person looked at something that filed itself and said it was right.
+    public DateTimeOffset? ConfirmedAt { get; set; }
     public Guid EntryId { get; set; }
     public string Actor { get; set; } = "";
     public string SourcePath { get; set; } = "";

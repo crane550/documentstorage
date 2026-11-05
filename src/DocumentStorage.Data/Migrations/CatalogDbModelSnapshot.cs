@@ -1413,6 +1413,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ContentHash")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1504,6 +1507,54 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("EntryId", "CreatedAt");
 
                     b.ToTable("OrganizationFilings");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.SortRoute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Approved")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("AutoFile")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Corrected")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("CorrespondentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("KindId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("NudgeAtStreak")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecentJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Streak")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrespondentId");
+
+                    b.HasIndex("KindId", "CorrespondentId")
+                        .IsUnique();
+
+                    b.ToTable("Routes");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.StorageRoot", b =>
@@ -2065,6 +2116,21 @@ namespace DocumentStorage.Data.Migrations
                         .WithMany()
                         .HasForeignKey("JobId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.SortRoute", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.Correspondent", null)
+                        .WithMany()
+                        .HasForeignKey("CorrespondentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentStorage.Data.DocumentKind", null)
+                        .WithMany()
+                        .HasForeignKey("KindId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

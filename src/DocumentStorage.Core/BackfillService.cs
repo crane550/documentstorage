@@ -129,6 +129,7 @@ public sealed partial class LibraryService
                 if (sender != null && reply!.From.Length > 0 && Key(reply.From) != Key(sender.Name) && Aliases(sender.AliasesJson).All(x => Key(x) != Key(reply.From)))
                     sender.AliasesJson = JsonSerializer.Serialize(CleanAliases(Aliases(sender.AliasesJson).Append(reply.From), sender.Name));
             }
+            await RecordRouteAsync(db, kind, sender, choice, entry.Name, entry.ExtractedText, suggested == null ? null : Key(suggested.Kind) != Key(kind.Name) || Key(suggested.From) != Key(sender?.Name ?? "") || suggested.Date != choice.Date);
             job.State = "Filed";
             await db.SaveChangesAsync();
             await transaction.CommitAsync();

@@ -23,7 +23,7 @@ public sealed record SortInbox(List<SortCard> Cards, int Total);
 public sealed record SortVocabulary(List<DocumentKind> Kinds, List<Correspondent> Senders, List<Tag> Tags,
     Dictionary<Guid, int> KindUse, Dictionary<Guid, int> SenderUse, Dictionary<Guid, int> TagUse);
 public sealed record FiledItem(Guid PlanId, Guid EntryId, string FileName, string DestinationPath, string SourcePath, string Kind, string From,
-    DateOnly? Date, string Title, string[] Tags, bool Automatic, bool Undone, bool Corrected, DateTimeOffset FiledAt, string Actor);
+    DateOnly? Date, string Title, string[] Tags, bool Automatic, bool Undone, bool Corrected, DateTimeOffset FiledAt, string Actor, bool Confirmed = false);
 public sealed record DocumentDetailView(Guid EntryId, string Kind, string From, DateOnly? Date, string Title, string[] Tags, Dictionary<string, string> Fields, int Revision,
     bool FollowsFolder = false, bool FollowsName = false);
 
@@ -219,6 +219,7 @@ public sealed partial class LibraryService
             var from = await db.Correspondents.SingleAsync(x => x.Id == fromId); var into = await db.Correspondents.SingleAsync(x => x.Id == intoId);
             into.AliasesJson = JsonSerializer.Serialize(CleanAliases(Aliases(into.AliasesJson).Append(from.Name).Concat(Aliases(from.AliasesJson)), into.Name)); into.Revision++;
             await db.Details.Where(x => x.CorrespondentId == fromId).ExecuteUpdateAsync(set => set.SetProperty(x => x.CorrespondentId, (Guid?)intoId));
+            await MergeRoutesAsync(db, fromId, intoId);
             db.Correspondents.Remove(from);
             await db.SaveChangesAsync();
         }
@@ -446,6 +447,9 @@ public sealed partial class LibraryService
             choice = new(view.Kind, view.From, view.Date, view.Title, view.Tags, view.Fields, KeepName: hints.DescriptiveName);
             sources = new() { ["kind"] = "person", ["from"] = "person", ["date"] = "person", ["title"] = "person", ["tags"] = "person" };
         }
+        // A regular's memory, when it's sure, beats a reading: it is what the person chose last time.
+        else if (FromMemory(entry, vocab, hints, await RoutesForAsync(db, hints.Senders.Take(1))) is { } memory && (memory.Sure || reply == null))
+        { choice = memory.Choice; sources = memory.Sources; notes = memory.Notes; sure = memory.Sure; }
         else if (reply != null) (choice, sources, quotes, notes, sure) = FromReply(entry, vocab, hints, reply);
         else
         {
@@ -647,8 +651,12 @@ public sealed partial class LibraryService
             var job = await db.IdentificationJobs.AsNoTracking().Where(x => x.EntryId == entry.Id && x.Sorting && x.ContentHash == entry.ContentHash && x.State == "Succeeded")
                 .OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync();
             var reply = StoredReply(job);
-            var suggested = reply == null ? null : FromReply(entry, vocab, Hints(entry, vocab), reply).Choice;
-            var stored = new StoredSort(choice, suggested?.Kind ?? "", suggested?.From ?? "", suggested?.Date, reply?.From ?? "", reply?.KindDescription ?? "", reply != null);
+            // What the card suggested: a regular's memory when it was sure (or there was no reading), else the reading.
+            var hints = Hints(entry, vocab);
+            var memory = FromMemory(entry, vocab, hints, await RoutesForAsync(db, hints.Senders.Take(1)));
+            var fromMemory = memory != null && (memory.Sure || reply == null);
+            var suggested = fromMemory ? memory!.Choice : reply == null ? null : FromReply(entry, vocab, hints, reply).Choice;
+            var stored = new StoredSort(choice, suggested?.Kind ?? "", suggested?.From ?? "", suggested?.Date, fromMemory ? "" : reply?.From ?? "", reply?.KindDescription ?? "", suggested != null);
             var parentPath = plan.NewFolders.Length == 0 ? plan.FolderPath : string.Join('/', plan.FolderPath.Split('/')[..^plan.NewFolders.Length]);
             var parent = folders.Single(x => x.RelativePath == parentPath);
             var filing = new OrganizationFiling
@@ -688,6 +696,14 @@ public sealed partial class LibraryService
             // The reader's spelling of a sender, corrected to a known one, is remembered as that sender's.
             if (sender != null && stored.RawFrom.Length > 0 && Key(stored.RawFrom) != Key(sender.Name) && Aliases(sender.AliasesJson).All(x => Key(x) != Key(stored.RawFrom)))
                 sender.AliasesJson = JsonSerializer.Serialize(CleanAliases(Aliases(sender.AliasesJson).Append(stored.RawFrom), sender.Name));
+        }
+        if (!plan.Automatic)
+        {
+            // What the person approved becomes the regular's memory; a suggestion that needed no correction adds to its streak.
+            var filedText = await db.Entries.Where(x => x.Id == op.EntryId).Select(x => x.ExtractedText).SingleAsync();
+            bool? routeCorrected = stored.HadSuggestion ? Key(stored.SuggestedKind) != Key(kind.Name) || Key(stored.SuggestedFrom) != Key(sender?.Name ?? "") || stored.SuggestedDate != choice.Date
+                || choice.FolderOverride.Trim().Length > 0 || choice.NameOverride.Trim().Length > 0 : null;
+            await RecordRouteAsync(db, kind, sender, choice, Path.GetFileName(plan.SourcePath), filedText, routeCorrected);
         }
         plan.State = "Filed"; plan.CompletedAt = time.GetUtcNow(); plan.OperationId = op.Id;
         if (plan.JobId is Guid jobId) { var job = await db.IdentificationJobs.SingleAsync(x => x.Id == jobId); job.State = "Filed"; }
@@ -778,7 +794,7 @@ public sealed partial class LibraryService
             var stored = JsonSerializer.Deserialize<StoredSort>(plan.DetailsJson)!;
             var corrected = stored.HadSuggestion && (Key(stored.SuggestedKind) != Key(stored.Choice.Kind) || Key(stored.SuggestedFrom) != Key(stored.Choice.From) || stored.SuggestedDate != stored.Choice.Date);
             return new FiledItem(plan.Id, plan.EntryId, plan.Filename, plan.DestinationPath, plan.SourcePath, plan.DocumentType, stored.Choice.From, stored.Choice.Date, stored.Choice.Title,
-                stored.Choice.Tags, plan.Automatic, plan.UndoneAt != null, corrected, plan.CompletedAt ?? plan.CreatedAt, plan.Actor);
+                stored.Choice.Tags, plan.Automatic, plan.UndoneAt != null, corrected, plan.CompletedAt ?? plan.CreatedAt, plan.Actor, plan.ConfirmedAt != null);
         }).ToList();
     }
 
@@ -808,6 +824,13 @@ public sealed partial class LibraryService
                 kind.Streak = 0;
                 if (plan.Automatic) { kind.AutoFile = false; kind.Corrected++; kind.Revision++; }
             }
+            // The regular it was filed as: start its run again, and stop it filing itself if it just did.
+            var undone = await db.Details.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == plan.EntryId);
+            if (kind != null && undone?.CorrespondentId is Guid undoneSender && await db.Routes.SingleOrDefaultAsync(x => x.KindId == kind.Id && x.CorrespondentId == undoneSender) is { } undoneRoute)
+            {
+                undoneRoute.Streak = 0; undoneRoute.NudgeAtStreak = RouteTrustStreak; undoneRoute.Revision++;
+                if (plan.Automatic) { undoneRoute.AutoFile = false; undoneRoute.Corrected++; }
+            }
             if (plan.JobId is Guid jobId) { var job = await db.IdentificationJobs.SingleAsync(x => x.Id == jobId); job.State = "Succeeded"; }
             await db.FilingExamples.Where(x => x.Id == plan.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.RemovedAt, time.GetUtcNow()).SetProperty(x => x.RemovedBy, actor));
             await db.SaveChangesAsync();
@@ -818,7 +841,7 @@ public sealed partial class LibraryService
     // After a reading: file it now if its kind files itself and nothing in it was a guess.
     public async Task<bool> TryAutoFileAsync(Guid jobId)
     {
-        SortCard? card; DocumentKind? kind;
+        SortCard? card;
         await using (var db = await factory.CreateDbContextAsync())
         {
             var settings = await db.OllamaConfigurations.AsNoTracking().SingleOrDefaultAsync(x => x.Id == 1);
@@ -828,9 +851,8 @@ public sealed partial class LibraryService
             if (await db.Details.AnyAsync(x => x.EntryId == job.EntryId)) return false; // A person has had a hand in it.
             card = await SortCardAsync(job.EntryId);
             if (card == null || !card.Sure || card.JobId != jobId) return false;
-            kind = await db.Kinds.AsNoTracking().SingleOrDefaultAsync(x => x.Name == card.Choice.Kind);
+            if (!await TrustedAsync(db, card)) return false;
         }
-        if (kind?.AutoFile != true) return false;
         try { await FileSortedCoreAsync(card.Document.Id, card.Choice with { Remember = false }, card.Document.ContentHash, "automatic", automatic: true); return true; }
         catch (StorageException) { return false; }
     }

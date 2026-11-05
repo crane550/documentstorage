@@ -97,3 +97,36 @@ public sealed partial class CatalogDb
         model.Entity<EntryTag>().HasIndex(x => x.TagId);
     }
 }
+
+// A regular: one kind from one sender ("Cedar Bank bank statements"). It remembers how the person
+// filed the last few, so a recurring document can be filled in without the model, and it can be
+// trusted to file itself on its own, more narrowly than a whole kind.
+public sealed class SortRoute
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid KindId { get; set; }
+    public Guid CorrespondentId { get; set; }
+    public int Approved { get; set; }
+    public int Corrected { get; set; }
+    public int Streak { get; set; }
+    public bool AutoFile { get; set; }
+    // The streak at which to suggest letting it file itself again, after "Not now".
+    public int NudgeAtStreak { get; set; }
+    // The last few filings a person approved: title, tags, fields and which date was chosen.
+    public string RecentJson { get; set; } = "[]";
+    public int Revision { get; set; } = 1;
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed partial class CatalogDb
+{
+    public DbSet<SortRoute> Routes => Set<SortRoute>();
+    private static void ConfigureRoutes(ModelBuilder model)
+    {
+        model.Entity<SortRoute>().HasIndex(x => new { x.KindId, x.CorrespondentId }).IsUnique();
+        model.Entity<SortRoute>().HasIndex(x => x.CorrespondentId);
+        model.Entity<SortRoute>().HasOne<DocumentKind>().WithMany().HasForeignKey(x => x.KindId).OnDelete(DeleteBehavior.Cascade);
+        model.Entity<SortRoute>().HasOne<Correspondent>().WithMany().HasForeignKey(x => x.CorrespondentId).OnDelete(DeleteBehavior.Cascade);
+        model.Entity<SortRoute>().Property(x => x.Revision).IsConcurrencyToken();
+    }
+}

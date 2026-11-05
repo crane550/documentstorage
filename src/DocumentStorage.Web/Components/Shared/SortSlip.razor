@@ -24,6 +24,7 @@
 
     <div class="sort-reader @(Reading ? "working" : "")" role="status">
         @if (Reading) { <span class="spin"><Icon Name="refresh" Size="14" /></span><span>@Card.ReaderState…</span> }
+        else if (Card.Sources.GetValueOrDefault("kind") == "memory") { <Icon Name="history" Size="15" /><span>@(MemoryNote ?? "Filled in from memory")@(Card.Sure ? ", no reading needed. Check it and press Enter." : ". Check the pencilled-in parts.")</span> }
         else if (Card.Sure) { <Icon Name="check-circle" Size="15" /><span>Read and sure. Check it and press Enter.</span> }
         else if (Card.ReaderState == "Read") { <Icon Name="spark" Size="15" /><span>Read by the reader@(Card.Confidence.Length > 0 ? $" ({Card.Confidence} confidence)" : ""). Check the pencilled-in parts.</span> }
         else if (Card.ReaderState.StartsWith("Reading failed") || Card.ReaderState is "Needs reading again" or "Reading cancelled")
@@ -32,7 +33,7 @@
         else if (!CanRead) { <Icon Name="info" Size="15" /><span>@(Card.Document.Readiness != "Ready" ? "Still arriving…" : "No text to read (" + Card.Document.TextStatus + "). Fill it in by hand.")</span> }
         else { <Icon Name="info" Size="15" /><span>Filled in from the file name and text.</span> }
     </div>
-    @if (Card.Notes.Length > 0 && !edited) { <ul class="sort-notes">@foreach (var note in Card.Notes) { <li>@note</li> }</ul> }
+    @if (Warnings.Any() && !edited) { <ul class="sort-notes">@foreach (var note in Warnings) { <li>@note</li> }</ul> }
 
     <div class="slip-card sort-fields">
         <label class="slip-label" for="sort-kind">Kind <SourceMark Source="@Source("kind")" /></label>
@@ -143,6 +144,8 @@
     private string? loadedKey;
     private int planVersion;
 
+    private string? MemoryNote => Card.Notes.FirstOrDefault(x => x.StartsWith("Filled in from", StringComparison.Ordinal));
+    private IEnumerable<string> Warnings => Card.Notes.Where(x => !x.StartsWith("Filled in from", StringComparison.Ordinal));
     private bool Reading => Card.ReaderState is "Waiting to be read" or "Reading" or "Will try again";
     private bool CanRead => Card.Document.Readiness == "Ready" && Card.Document.TextStatus == "Indexed" && Card.Document.Online;
     private string[] KindFieldNames => (Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase)) is { } k ? LibraryService.KindFields(k) : fields.Keys.ToArray());

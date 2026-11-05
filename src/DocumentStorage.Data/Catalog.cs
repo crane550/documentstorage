@@ -200,6 +200,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         ConfigureDesk(model);
         ConfigureInbox(model);
         ConfigureSorting(model);
+        ConfigureRoutes(model);
         ConfigureDescriptions(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();

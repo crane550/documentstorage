@@ -76,6 +76,20 @@ else
         <span class="inbox-tabs-gap"></span>
         <a class="text-button" href="/kinds"><Icon Name="signpost" Size="14" />Kinds, senders and tags</a>
     </nav>
+    @if (nudges.Count > 0)
+    {
+        <section class="sheet nudges" aria-label="Regulars ready to file themselves">
+            @foreach (var regular in nudges)
+            {
+                <div class="nudge" @key="regular.Id">
+                    <Icon Name="check-circle" Size="16" />
+                    <span><strong>@regular.Kind from @regular.Sender</strong> has been right @regular.Streak times in a row. Let these file themselves?</span>
+                    <button type="button" class="button small primary" disabled="@busy" @onclick="() => Trust(regular)">Let them file themselves</button>
+                    <button type="button" class="text-button" disabled="@busy" @onclick="() => Snooze(regular)">Not now</button>
+                </div>
+            }
+        </section>
+    }
     @if (view == "filed")
     {
         <section class="sheet filed-list" aria-label="Recently filed">
@@ -91,6 +105,8 @@ else
                             <small class="mono">@item.DestinationPath</small>
                         </div>
                         @if (item.Automatic) { <Stamp Text="Filed itself" Tone="working" /> } else if (item.Corrected) { <Stamp Text="Corrected" Tone="attention" /> }
+                        @if (item.Automatic && !item.Confirmed) { <button type="button" class="text-button" disabled="@busy" @onclick="() => Confirm(item)">Looks right</button> }
+                        else if (item.Automatic) { <span class="hint">Confirmed</span> }
                         <a class="text-button" href="@($"/library?doc={item.EntryId}")">Open</a>
                         <button type="button" class="button small" disabled="@busy" @onclick="() => Undo(item)">Undo</button>
                     </li>
@@ -163,6 +179,7 @@ else
     private SortCard? selected;
     private SortVocabulary vocabulary = new([], [], [], [], [], []);
     private List<FiledItem> filed = [];
+    private List<RegularView> nudges = [];
     private readonly HashSet<Guid> checkedIds = [];
     private List<DocumentTypeProfile> types = [];
     private List<AssistantProposal> proposals = [];
@@ -242,6 +259,7 @@ else
                 queue = await Library.SortInboxAsync(offset, PageSize);
             }
             vocabulary = await Library.SortVocabularyAsync();
+            nudges = (await Library.RegularsAsync()).Where(x => x.Suggest).Take(3).ToList();
             checkedIds.IntersectWith(queue.Cards.Where(x => x.Plan.Problem == null).Select(x => x.Document.Id));
             if (view == "filed") filed = await Library.RecentFilingsAsync(100);
             types = (await Library.IdentificationOverviewAsync()).Types;
@@ -364,6 +382,13 @@ else
         await Workspace.RefreshAsync(); await RefreshAsync();
         Workspace.Notify(item.Automatic ? $"{item.FileName} is back in the inbox. {item.Kind} will ask before filing again." : $"{item.FileName} is back in the inbox.");
     });
+    private async Task Confirm(FiledItem item) => await Run(async () => { await Library.ConfirmFilingAsync(item.PlanId, await Workspace.ActorAsync()); await RefreshAsync(); });
+    private async Task Trust(RegularView regular) => await Run(async () =>
+    {
+        await Library.SetRegularAutoFileAsync(regular.Id, true, await Workspace.ActorAsync()); await RefreshAsync();
+        Workspace.Notify($"{regular.Kind} from {regular.Sender} will now file itself when Stash is sure. You'll see them under Filed, with Undo.");
+    });
+    private async Task Snooze(RegularView regular) => await Run(async () => { await Library.SnoozeRegularAsync(regular.Id, await Workspace.ActorAsync()); await RefreshAsync(); });
     private async Task ShowWaiting() { view = "waiting"; Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("view", (string?)null), replace: true); await RefreshAsync(); }
     private async Task ShowFiled() { view = "filed"; Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("view", "filed"), replace: true); await RefreshAsync(); }
     private async Task RequestMove(Guid id) => moving = await Library.EntryAsync(id);
