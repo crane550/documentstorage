@@ -323,7 +323,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
     }
 
     public async Task MoveAsync(Guid id, Guid parentId, string name, string? expectedSourcePath = null, string? expectedDestinationPath = null) => await ChangePathAsync(id, parentId, StoragePaths.ValidateName(name), false, expectedSourcePath, expectedDestinationPath);
-    public async Task TrashEntryAsync(Guid id) => await ChangePathAsync(id, null, "", true);
+    public async Task TrashEntryAsync(Guid id, string? expectedSourcePath = null) => await ChangePathAsync(id, null, "", true, expectedSourcePath);
 
     private async Task ChangePathAsync(Guid id, Guid? parentId, string name, bool trash, string? expectedSourcePath = null, string? expectedDestinationPath = null)
     {

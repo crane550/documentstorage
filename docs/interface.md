@@ -25,6 +25,10 @@ The sidebar also holds the folder tree for every connected storage location. **R
 
 Status stamps include **New**, **Queued**, **Reading**, **Suggested**, **Needs a choice**, **Text unavailable**, **Draft**, **Arriving**, **Changed**, **No rule** and **Ready**. The scan refresh does not itself mean a document has text ready for AI.
 
+Inbox remembers the selected document and page for each sign-in, including across browser reloads. Explicit document links take priority, even beyond the first page. Filing, moving or deleting advances near the current place. Saved review drafts and AI proposals remain in the catalog; unsaved edits still require **Save draft**.
+
+The slip's **More actions › Delete document…** confirms a move to recoverable Trash; restore through **History › Trash**. **Rescan text** beside the extraction status forces this document's text extraction even when its file has not changed. It rereads an existing PDF text layer, not OCR from pixels, and invalidates old AI suggestions. Afterward choose **Try again** or **Read again with AI** for a fresh attempt. **Reading details** shows the model, mode, state, exact submitted text excerpt (for new attempts) and saved folder/guidance context.
+
 ## Rules and types
 
 A **type** is a kind of document: a name, how the reader recognizes it, and the facts it carries. A **rule** takes documents of one type (optionally only when facts match, such as `institution = Cedar Bank`), names a destination folder, and gives a filename pattern built from facts: `{statement_end:yyyy-MM-dd} - {institution} - {account_suffix}.{extension}`. The editor's fact chips build the pattern, and an example filename updates as you type.

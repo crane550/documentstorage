@@ -266,6 +266,7 @@ public sealed partial class LibraryService
             input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, entry.ExtractedText, text,
                 context.Truncated || entry.ExtractedText.Length > settings.MaxInputCharacters, context.Types, context.Facts, claimed.Organizing);
             claimed.ContextJson = context.Json;
+            claimed.InputText = text;
             claimed.State = "Running"; claimed.Attempts++; claimed.RunId = Guid.NewGuid(); claimed.LeaseUntil = time.GetUtcNow().AddSeconds(settings.TimeoutSeconds + 60); claimed.LastError = null;
             live = new(claimed.RunId.Value, CancellationTokenSource.CreateLinkedTokenSource(stoppingToken));
             identificationRequests[claimed.Id] = live;

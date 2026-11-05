@@ -42,6 +42,13 @@ try{
  await check(page.getByLabel('Destination folder',{exact:true}).locator('option:checked').textContent().then(x=>x.includes('Cedar Churhc')&&x.includes('Safety Minstry')),'the AI selects the existing ministry folder by ID despite spelling errors');
  await check(readFile(path.join(directory,'Incoming/ministry.txt'),'utf8').then(x=>x===ministry),'reading and proposing do not move the original');
  await check(page.getByText('Text ready for AI reading',{exact:true}).isVisible(),'the filing slip explicitly reports server text readiness');
+ await page.locator('.reading-details > summary').click();
+ await check(page.locator('.reading-details').textContent().then(t=>t.includes('synthetic-organizer:latest')&&t.includes(ministry)&&t.includes('Safety Minstry')),'reading details show the actual model, submitted excerpt and destination context');
+ await page.locator('.extraction-status').getByRole('button',{name:'Rescan text',exact:true}).click();await toast(page,'Text rescanned:');
+ await page.locator('.reader-note').filter({hasText:'Text was rescanned'}).waitFor();
+ await check(page.locator('.organizing-proposal').count().then(n=>n===0),'rescan removes the previous executable AI proposal');
+ await page.locator('.reader-note').getByRole('button',{name:'Try again',exact:true}).click();await page.locator('.organizing-proposal').waitFor({timeout:25000});
+
  await page.getByLabel('Suggested filename',{exact:true}).fill('Approved West campus guide.txt');await page.getByLabel('Filing preference or correction (optional)',{exact:true}).fill('Keep all campus ministry guides together in this existing folder.');
  await page.screenshot({path:'.local/organizing-proposal.png',fullPage:true});await page.getByRole('button',{name:'Approve & file',exact:true}).click();await toast(page,'Filed as Approved West campus guide.txt');
  await check(readFile(path.join(directory,'Cedar Churhc/Safety Minstry/Approved West campus guide.txt'),'utf8').then(x=>x===ministry),'one approval files unchanged bytes using the corrected filename and existing folder');

@@ -852,6 +852,10 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("InputText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<bool>("InputTruncated")
                         .HasColumnType("boolean");
 
@@ -906,6 +910,22 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("State", "NotBefore");
 
                     b.ToTable("IdentificationJobs");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.InboxPosition", b =>
+                {
+                    b.Property<string>("Actor")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Offset")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Actor");
+
+                    b.ToTable("InboxPositions");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.InstructionMessage", b =>

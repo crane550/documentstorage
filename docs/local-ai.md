@@ -53,4 +53,8 @@ The additive `AddLocalIdentification` migration creates settings, document-type 
 
 PDF text selection in the browser does not prove server extraction succeeded. The slip reports **Text ready for AI reading** only for indexed server text; otherwise it shows the extraction status and disables reading. An image-only PDF still needs an OCR layer. This milestone adds neither OCR nor vision inference.
 
+For diagnosis, use Inbox **Rescan text**, then **Try again / Read again with AI**. Rescan forces extraction of unchanged files, resets the passage index, retains saved human reviews, and supersedes old or running AI jobs even when PDF bytes are identical. It signals cancellation of active inference and rejects late replies. Offline storage leaves the existing index intact. Files still arriving must settle before extraction.
+
+**Reading details** retains the exact bounded excerpt submitted for each new attempt, alongside the existing model/context snapshot, mode, state and errors. Older jobs have no excerpt snapshot; rerun to capture one. These are private document data in the authenticated catalog, never log content. Compare extracted text, submitted excerpt, supplied destination IDs/paths and the resulting suggestion in that order. A protocol fixture verifies plumbing, not the quality of an installed model. Keep real-document diagnosis out of committed fixtures and public artifacts.
+
 [Document questions and folder planning](conversations.md) use the same reader connection and preserve private conversational history. The passage index backfills existing extracted text automatically.

@@ -101,13 +101,15 @@ else
         {
             <div class="inbox-preview"><DocumentPreviewPanel Entry="selected.Entry" @key="selected.Entry.Id" /></div>
             <FilingSlip @key="selected.Entry.Id" Item="selected" Rules="rules" Types="types" Identification="identification"
-                        Filed="Filed" Changed="RefreshAsync" IdentificationChanged="LoadIdentification" RequestMove="e => moving = e" />
+                        Filed="Filed" Changed="RefreshAsync" IdentificationChanged="LoadIdentification" RequestMove="e => moving = e"
+                        RequestDelete="e => deleting = e" RequestRescan="Rescan" Rescanning="busy" />
         }
     </div>
 }
 
 @if (connecting) { <ConnectStorageDialog OnClose="() => connecting = false" OnConnected="Connected" /> }
 @if (moving != null) { <EntryDialog Mode="move" Entry="moving" OnClose="() => moving = null" OnDone="Moved" /> }
+@if (deleting != null) { <EntryDialog Mode="trash" Entry="deleting" OnClose="() => deleting = null" OnDone="Deleted" /> }
 @if (reviewing != null) { <ProposalDialog Proposal="reviewing" Source="@ConnectionName(reviewing.ConnectionId)" Types="types" OnClose="() => reviewing = null" OnDecided="Decided" /> }
 
 @code {
@@ -122,6 +124,8 @@ else
     private List<AssistantConnection> connections = [];
     private AssistantProposal? reviewing;
     private CatalogEntry? moving;
+    private CatalogEntry? deleting;
+    private string? handledOpen;
     private Guid chosenInbox;
     private bool loaded, busy, connecting;
     private int offset;
@@ -143,13 +147,27 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        Workspace.Changed += WorkspaceChanged;
         await Workspace.EnsureLoadedAsync();
+        var saved = await Library.InboxPositionAsync(await Workspace.ActorAsync(), Guid.TryParse(Open, out var open) ? open : null);
+        offset = saved.Offset;
         await RefreshAsync();
-        if (Guid.TryParse(Open, out var open) && queue.Items.FirstOrDefault(x => x.Entry.Id == open) is { } wanted) await Select(wanted);
+        if (queue.Items.FirstOrDefault(x => x.Entry.Id == saved.EntryId) is { } wanted) await Select(wanted);
         else if (queue.Items.Count > 0) await Select(queue.Items[0]);
+        handledOpen = Open;
         loaded = true;
+        Workspace.Changed += WorkspaceChanged;
         polling = PollAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!loaded || handledOpen == Open) return;
+        handledOpen = Open;
+        if (!Guid.TryParse(Open, out var id)) return;
+        var position = await Library.InboxPositionAsync(await Workspace.ActorAsync(), id);
+        offset = position.Offset; selected = null; identification = null;
+        await RefreshAsync();
+        if (queue.Items.FirstOrDefault(x => x.Entry.Id == id) is { } wanted) await Select(wanted);
     }
 
     public async Task RefreshAsync()
@@ -157,6 +175,11 @@ else
         try
         {
             queue = await Library.IntakeAsync(offset);
+            if (offset > 0 && queue.Items.Count == 0)
+            {
+                offset = Math.Max(0, (queue.Total - 1) / 100 * 100);
+                queue = await Library.IntakeAsync(offset);
+            }
             var identificationOverview = await Library.IdentificationOverviewAsync();
             types = identificationOverview.Types;
             jobs = identificationOverview.Jobs.GroupBy(x => x.EntryId).ToDictionary(x => x.Key, x => x.OrderByDescending(j => j.CreatedAt).First());
@@ -194,7 +217,17 @@ else
         return job?.State == "Succeeded" && job.ContentHash == item.Entry.ContentHash ? ("Suggested", "new") : ("New", "new");
     }
 
-    private async Task Select(IntakeItem item) { selected = item; identification = null; await LoadIdentification(); }
+    private async Task Select(IntakeItem item)
+    {
+        selected = item; identification = null;
+        await Library.SaveInboxPositionAsync(await Workspace.ActorAsync(), item.Entry.Id, offset);
+        if (loaded)
+        {
+            handledOpen = item.Entry.Id.ToString();
+            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("open", handledOpen), replace: true);
+        }
+        await LoadIdentification();
+    }
     private async Task LoadIdentification()
     {
         if (selected == null) return;
@@ -213,20 +246,33 @@ else
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) { Logger.LogWarning("Reader status refresh stopped: {Kind}", ex.GetType().Name); }
     }
-    private void WorkspaceChanged() => InvokeAsync(async () => { if (!busy) { await RefreshAsync(); StateHasChanged(); } });
+    private void WorkspaceChanged() => InvokeAsync(async () => { if (!busy && moving == null && deleting == null) { await RefreshAsync(); StateHasChanged(); } });
 
-    private async Task Filed(string message)
+    private async Task Filed(string message) => await Run(async () =>
     {
         // Move straight on to the next document in the pile.
-        var index = selected == null ? 0 : queue.Items.FindIndex(x => x.Entry.Id == selected.Entry.Id);
+        var position = offset + (selected == null ? 0 : Math.Max(0, queue.Items.FindIndex(x => x.Entry.Id == selected.Entry.Id)));
         var filedId = selected?.Entry.Id;
+        moving = null; deleting = null;
         selected = null; identification = null;
         await Workspace.RefreshAsync(); await RefreshAsync();
         var remaining = queue.Items.Where(x => x.Entry.Id != filedId).ToList();
-        if (remaining.Count > 0) await Select(remaining[Math.Clamp(index, 0, remaining.Count - 1)]);
+        if (remaining.Count > 0) await Select(remaining[Math.Clamp(position - offset, 0, remaining.Count - 1)]);
+        else await Library.SaveInboxPositionAsync(await Workspace.ActorAsync(), null, offset);
         Workspace.Notify(message);
-    }
-    private async Task Moved(Guid _) { moving = null; selected = null; await RefreshAsync(); if (queue.Items.Count > 0) await Select(queue.Items[0]); Workspace.Notify("Moved out of the inbox."); }
+    });
+    private Task Moved(Guid _) => Filed("Document moved.");
+    private Task Deleted(Guid _) => Filed("Document moved to Trash. You can restore it from History → Trash.");
+    private async Task Rescan(CatalogEntry entry) => await Run(async () =>
+    {
+        var result = await Library.RescanDocumentAsync(entry.Id, await Workspace.ActorAsync(), entry.RelativePath);
+        await RefreshAsync(); await LoadIdentification();
+        Workspace.Notify(result.TextStatus == "Indexed" && result.Characters > 0
+            ? $"Text rescanned: {result.Characters:N0} characters. Use Read again with AI for a fresh suggestion."
+            : result.Readiness != "Ready" ? "The file is still arriving. Wait a few seconds, then rescan text again."
+            : result.TextStatus == "Needs OCR" ? "No text layer was found. Rescan text reads existing OCR; it does not create OCR."
+            : "Rescan finished: " + result.TextStatus + ".", result.TextStatus != "Indexed");
+    });
     private async Task Decided(string message) { reviewing = null; await RefreshAsync(); Workspace.Notify(message); }
     private async Task Connected(Guid rootId) { connecting = false; await Workspace.RefreshAsync(); Workspace.Notify("Storage connected. Now pick the folder new scans land in."); }
     private async Task CreateInbox(CatalogEntry top) => await Run(async () =>
@@ -251,8 +297,9 @@ else
         finally { busy = false; }
     }
     private string ConnectionName(Guid? id) => id == null ? "the reader" : connections.FirstOrDefault(x => x.Id == id)?.Name ?? "an assistant";
-    private async Task Previous() { offset = Math.Max(0, offset - 100); await RefreshAsync(); }
-    private async Task Next() { offset += 100; await RefreshAsync(); }
+    private async Task Previous() => await Page(Math.Max(0, offset - 100));
+    private async Task Next() => await Page(offset + 100);
+    private async Task Page(int value) { offset = value; selected = null; identification = null; await RefreshAsync(); if (queue.Items.Count > 0) await Select(queue.Items[0]); }
     public async ValueTask DisposeAsync()
     {
         Workspace.Changed -= WorkspaceChanged;

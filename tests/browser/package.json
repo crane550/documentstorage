@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node smoke.mjs",
     "test:intake": "node intake.mjs",
+    "test:inbox": "node inbox.mjs",
     "test:drop": "node drop.mjs",
     "test:folders": "node folders.mjs",
     "test:recovery": "node recovery.mjs",

@@ -51,6 +51,7 @@ internal static class IdentificationChecks
         await using (var db = await factory.CreateDbContextAsync()) operations = await db.Operations.CountAsync();
         check(await library.ProcessNextIdentificationAsync(client), "persisted queued job is picked up by the worker service");
         var completed = await Job(id);
+        check(completed.InputText.Contains("Cedar"), "reader persists the actual bounded input excerpt for authenticated diagnosis");
         if (completed.State != "Succeeded") throw new Exception($"Identification state {completed.State}: {completed.LastError}");
         var proposal = await library.UsableIdentificationAsync(id);
         check(proposal.State == "Succeeded" && proposal.Attempts == 1 && proposal.DocumentType == "bank_statement", "local model facts are persisted as a separate proposal");
@@ -80,6 +81,14 @@ internal static class IdentificationChecks
             check((await Job(jobId)).State == "Superseded", label);
         }
         await Stale("folder guidance edited during inference discards the stale response", () => library.SaveInstructionsAsync(intake, "Use the closing date. Updated guidance."));
+        var rescanCancelled = false;
+        pending = new(TaskCreationOptions.RunContinuationsAsynchronously); started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        id = await Queue(document.Id);
+        processing = library.ProcessNextIdentificationAsync(new Fake((_, token) => { token.Register(() => rescanCancelled = true); started.SetResult(); return pending.Task; }));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await library.RescanDocumentAsync(document.Id, "owner", "Incoming/statement.txt");
+        pending.SetResult(Good()); await processing;
+        check(rescanCancelled && (await Job(id)).State == "Superseded", "forced text rescan cancels live inference and discards an uncooperative late response");
         await Stale("manual facts edited during inference are preserved", async () => { review = await library.SaveReviewAsync(document.Id, review.Revision, "bank_statement", new() { ["institution"] = "Manual choice" }, false, "owner"); });
         await Stale("source bytes changed without rescan invalidate the model response", () => File.AppendAllTextAsync(Path.Combine(scratch, "Incoming/statement.txt"), " Additional synthetic text."));
         clock.Advance(6); await library.ScanAsync(); clock.Advance(6); await library.ScanAsync();
@@ -131,7 +140,7 @@ internal static class IdentificationChecks
                 "long documents use bounded head and tail OCR excerpts with a bounded guidance context");
             return Task.FromResult(Good());
         }));
-        check((await Job(id)).InputTruncated && (await Job(id)).NeedsReview, "shortened OCR cannot silently become a certain identification");
+        check((await Job(id)).InputTruncated && (await Job(id)).NeedsReview && (await Job(id)).InputText.Length <= 2000 && (await Job(id)).InputText.Contains("EXCERPT OMITTED"), "shortened OCR remains marked for review and the saved snapshot matches the submitted excerpt");
         await library.SaveReviewAsync(longDocument.Id, 0, "bank_statement", new() { ["institution"] = "Cedar" }, true, "owner");
 
         // A guidance edit outside the transmitted excerpt still changes the durable context binding.

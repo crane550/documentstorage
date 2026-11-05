@@ -16,6 +16,8 @@
             <a class="icon-button small" href="@($"/documents/{Item.Entry.Id}/download")" download title="Download original" aria-label="Download original"><Icon Name="download" Size="16" /></a>
             <Menu Label="More actions" ButtonClass="icon-button small" IconSize="16">
                 <button role="menuitem" type="button" @onclick="() => RequestMove.InvokeAsync(Item.Entry)"><Icon Name="move" Size="15" />Move by hand…</button>
+                <button role="menuitem" type="button" disabled="@(busy || Rescanning || Item.Status == "Storage offline")" @onclick="() => RequestRescan.InvokeAsync(Item.Entry)"><Icon Name="refresh" Size="15" />Rescan text</button>
+                <button role="menuitem" type="button" disabled="@(busy || Rescanning || Item.Status == "Storage offline")" @onclick="() => RequestDelete.InvokeAsync(Item.Entry)"><Icon Name="trash" Size="15" />Delete document…</button>
                 <a role="menuitem" href="@($"/library?folder={Item.Entry.ParentId}&doc={Item.Entry.Id}")"><Icon Name="cabinet" Size="15" />Show in library</a>
                 @if (Workspace.ReaderEnabled && !ReaderActive) { <button role="menuitem" type="button" disabled="@(!Ready || !HasText)" @onclick="Identify"><Icon Name="spark" Size="15" />Read again with AI</button> }
             </Menu>
@@ -25,7 +27,10 @@
     @if (!Ready) { <p class="slip-alert"><Icon Name="clock" Size="15" />@ReadinessText</p> }
     else if (Item.Status == "Document changed") { <p class="slip-alert"><Icon Name="alert" Size="15" />The file changed after its facts were saved. Check them again.</p> }
 
-    <p class="extraction-status hint" role="status">@(HasText ? "Text ready for AI reading" : "Text extraction: " + Item.Entry.TextStatus + ". Rescan after restoring the PDF text tool or adding OCR.")</p>
+    <p class="extraction-status hint" role="status"><span>@(HasText ? "Text ready for AI reading" : "Text extraction: " + Item.Entry.TextStatus + ". Rescan after restoring the PDF text tool or adding OCR.")</span>
+        @if (HasText) { <span> · @Item.Entry.ExtractedText.Length.ToString("N0") characters</span> }
+        <button type="button" class="text-button" disabled="@(busy || Rescanning || Item.Status == "Storage offline")" @onclick="() => RequestRescan.InvokeAsync(Item.Entry)">@(Rescanning ? "Rescanning…" : "Rescan text")</button>
+    </p>
     @* The reader's suggestion stays separate until you choose to use it. *@
     @if (Identification is { } job)
     {
@@ -118,6 +123,20 @@
     {
         <details class="slip-text review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre>@Item.Entry.ExtractedText</pre></details>
     }
+    @if (Identification is { } reading)
+    {
+        <details class="slip-text reading-details"><summary>Reading details</summary>
+            <p>@reading.Model · @(reading.Organizing ? "Suggest a name and destination" : "Facts only") · @reading.State · @reading.Attempts attempt(s)</p>
+            @if (reading.InputTruncated) { <p class="hint">The text or folder guidance was shortened for this reading. Check whether the relevant evidence and destination were included below.</p> }
+            @if (reading.InputText.Length > 0)
+            {
+                <details><summary>Text sent to the reader (@reading.InputText.Length.ToString("N0") characters)</summary><pre>@reading.InputText</pre></details>
+            }
+            else { <p class="hint">No input snapshot is available for this reading. New readings save the exact excerpt here.</p> }
+            <details><summary>Folder choices and guidance sent to the reader</summary><pre>@PrettyJson(reading.ContextJson)</pre></details>
+            @if (reading.LastError != null) { <p class="hint">@reading.LastError</p> }
+        </details>
+    }
 </section>
 
 @code {
@@ -129,6 +148,15 @@
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public EventCallback IdentificationChanged { get; set; }
     [Parameter] public EventCallback<CatalogEntry> RequestMove { get; set; }
+    [Parameter] public EventCallback<CatalogEntry> RequestDelete { get; set; }
+    [Parameter] public EventCallback<CatalogEntry> RequestRescan { get; set; }
+    [Parameter] public bool Rescanning { get; set; }
+
+    private static string PrettyJson(string value)
+    {
+        try { using var parsed = JsonDocument.Parse(value); return JsonSerializer.Serialize(parsed.RootElement, new JsonSerializerOptions { WriteIndented = true }); }
+        catch (JsonException) { return "No saved guidance is available."; }
+    }
 
     private List<FactField> fields = [];
     private string documentType = "";
