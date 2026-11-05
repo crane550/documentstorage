@@ -15,7 +15,7 @@ public sealed record SortPlan(string FolderPath, string[] NewFolders, string Fil
     public string DestinationPath => FolderPath.Length == 0 ? FileName : FolderPath + "/" + FileName;
 }
 public sealed record SortDocument(Guid Id, Guid RootId, string RootName, string Name, string RelativePath, long Size, string TextStatus, string Readiness,
-    string ContentHash, DateTimeOffset ObservedAt, bool Online);
+    string ContentHash, DateTimeOffset ObservedAt, bool Online, DateTimeOffset ModifiedAt);
 // Sources say where each detail came from: "filename", "text", "reader", "person", "guess" or "".
 public sealed record SortCard(SortDocument Document, SortChoice Choice, Dictionary<string, string> Sources, SortPlan Plan, bool Sure, string[] Notes,
     string ReaderState, Guid? JobId, string Confidence, string KindDescription, Dictionary<string, string> Quotes, bool DescriptiveName);
@@ -103,7 +103,7 @@ public sealed partial class LibraryService
         if (name.Length is 0 or > 40) throw new StorageException("Use a tag of up to 40 characters.");
         return name;
     }
-    private static string[] CleanAliases(IEnumerable<string> aliases, string name) => aliases.Select(x => SortPatterns.Clean(x)).Where(x => x.Length is > 0 and <= 80)
+    private static string[] CleanAliases(IEnumerable<string> aliases, string name) => aliases.Select(x => string.Join(' ', new string(x.Where(c => !char.IsControl(c)).ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries))).Where(x => x.Length is > 0 and <= 80)
         .Where(x => !string.Equals(x, name, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToArray();
 
     public async Task<DocumentKind> SaveKindAsync(DocumentKind input, string actor)
@@ -422,7 +422,7 @@ public sealed partial class LibraryService
     private async Task<SortCard> CardAsync(CatalogDb db, CatalogEntry entry, StorageRoot root, Vocab vocab, IdentificationJob? job, OllamaSettings? settings, List<CatalogEntry> folders)
     {
         var hints = Hints(entry, vocab);
-        var doc = new SortDocument(entry.Id, entry.RootId, root.Name, entry.Name, entry.RelativePath, entry.Size, entry.TextStatus, entry.Readiness, entry.ContentHash, entry.ObservedAt, root.IsOnline);
+        var doc = new SortDocument(entry.Id, entry.RootId, root.Name, entry.Name, entry.RelativePath, entry.Size, entry.TextStatus, entry.Readiness, entry.ContentHash, entry.ObservedAt, root.IsOnline, entry.ModifiedAt);
         var reply = job != null && job.ContentHash == entry.ContentHash ? StoredReply(job) : null;
         SortChoice choice; Dictionary<string, string> sources; var quotes = new Dictionary<string, string>(); var notes = new List<string>(); var sure = false;
         var saved = await db.Details.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id);

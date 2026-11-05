@@ -1,5 +1,7 @@
 # Local document identification
 
+> Since 5 Nov 2026 the inbox uses **sorting** readings: one narrow question (kind, sender, date, title, tags, fields) and code-built folders and names. See [Sorting](sorting.md). The organizing and fact-only modes below remain in Core and are no longer offered in the Inbox.
+
 Ollama reads indexed OCR text and proposes a category, useful evidence-backed facts, filename and destination. It can recognize unfamiliar categories without a configured type or rule. You approve an exact filing plan before the Core service moves anything through the recovery journal. Deterministic rules remain available for repeatable naming.
 
 ## Connect your model

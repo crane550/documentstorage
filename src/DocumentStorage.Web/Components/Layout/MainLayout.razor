@@ -17,11 +17,11 @@ else
         <a class="brand" href="/" @onclick="CloseMenu"><img class="stash-logo" src="images/stash-logo.png" alt="Stash" /><span class="sr-only">@Workspace.DisplayName</span></a>
 
         <nav class="main-nav" aria-label="Main">
-            <a href="/ask" class="@Active("ask")" aria-current="@Current("ask")" @onclick="CloseMenu"><Icon Name="spark" /><span>Ask documents</span></a>
-            <a href="/folder-planner" class="@Active("planning")" aria-current="@Current("planning")" @onclick="CloseMenu"><Icon Name="folder-plus" /><span>Plan folders</span></a>
             <a href="/" class="@Active("inbox")" aria-current="@Current("inbox")" @onclick="CloseMenu"><Icon Name="inbox" /><span>Inbox</span>@if (InboxCount > 0) { <span class="count" title="@($"{InboxCount} waiting")">@InboxCount</span> }</a>
             <a href="/library" class="@Active("library")" aria-current="@Current("library")" @onclick="CloseMenu"><Icon Name="cabinet" /><span>Library</span></a>
-            <a href="/rules" class="@Active("rules")" aria-current="@Current("rules")" @onclick="CloseMenu"><Icon Name="signpost" /><span>Rules</span></a>
+            <a href="/kinds" class="@Active("kinds")" aria-current="@Current("kinds")" @onclick="CloseMenu"><Icon Name="tag" /><span>Kinds &amp; tags</span></a>
+            <a href="/ask" class="@Active("ask")" aria-current="@Current("ask")" @onclick="CloseMenu"><Icon Name="spark" /><span>Ask documents</span></a>
+            <a href="/folder-planner" class="@Active("planning")" aria-current="@Current("planning")" @onclick="CloseMenu"><Icon Name="folder-plus" /><span>Plan folders</span></a>
         </nav>
 
         <div class="drawer-heading"><span>Storage</span><a class="icon-button small" href="/settings?tab=storage" title="Storage locations" aria-label="Storage locations" @onclick="CloseMenu"><Icon Name="plus" Size="15" /></a></div>
@@ -123,7 +123,7 @@ else
         {
             "" or "/inbox" => "inbox",
             "/library" or "/folders" => "library",
-            "/rules" => "rules",
+            "/rules" or "/kinds" => "kinds",
             "/ask" => "ask",
             "/folder-planner" => "planning",
             "/recovery" => "recovery",

@@ -89,7 +89,7 @@
         settingsRevision = latest.Revision; settings.Instructions = latest.Instructions;
     }
     private async Task Cancel(Guid id) => await Run(async () => { await Library.CancelIdentificationAsync(id, await Workspace.ActorAsync()); jobs = (await Library.IdentificationOverviewAsync()).Jobs; });
-    private async Task Retry(Guid id) => await Run(async () => { await Library.QueueOrganizationAsync(id, await Workspace.ActorAsync(), true); jobs = (await Library.IdentificationOverviewAsync()).Jobs; Workspace.Notify("Queued. The suggestion appears on the document in the Inbox."); });
+    private async Task Retry(Guid id) => await Run(async () => { await Library.QueueSortingAsync(id, await Workspace.ActorAsync(), true); jobs = (await Library.IdentificationOverviewAsync()).Jobs; Workspace.Notify("Queued. The suggestion appears on the document in the Inbox."); });
     private async Task Run(Func<Task> action)
     {
         if (busy) return; busy = true;

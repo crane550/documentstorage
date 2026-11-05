@@ -6,8 +6,14 @@ Built with .NET 10, Blazor Server, EF Core and PostgreSQL. The interface uses kr
 
 ## Working features
 
+The main loop is described in [Sorting](docs/sorting.md): the reader says what a document is, who it's from, its date and tags; Stash builds the folder and name from the kind's patterns; you approve with Enter, correct with a click, and let trusted kinds file themselves. See [the direction](docs/direction.md).
+
 Working now:
 
+- Kinds, senders and tags (Kinds & tags page), details saved on every filed document and searchable (`kind:`, `from:`, `tag:`).
+- An approval list in the Inbox with live destinations, new folders made as needed, Enter to file, batch approval, and a Filed list with Undo.
+- Per-kind automatic filing once you switch it on, with a master switch; undoing one it filed switches its kind back to asking.
+- Word (.docx) text extraction.
 - Register existing local directories or mounted NAS shares; browse a nested folder tree.
 - Discover existing files in place, rescan every minute or on demand, and retain indexed text when a root is offline.
 - One **Library** for folders and files: a sidebar folder tree, breadcrumbs, folder tools in the header, rename/move with path previews, and folder notes.
@@ -46,7 +52,7 @@ See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing w
 
 See [Instruction conversations and MCP](docs/assistants-and-mcp.md) for connection setup, permissions and protocol boundaries.
 
-**Not implemented yet:** unattended filing, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, and document backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** refiling when patterns change, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 
@@ -85,12 +91,11 @@ dotnet run --project tests/DocumentStorage.McpChecks -c Release
 # With the app running against a disposable catalog, system Chromium available:
 npm --prefix tests/browser ci --ignore-scripts
 node tests/browser/smoke.mjs
-node tests/browser/intake.mjs
+node tests/browser/sorting.mjs
 # Drop checks require a fresh empty disposable catalog (default port 5241):
 node tests/browser/drop.mjs
 node tests/browser/folders.mjs # default local port 5242
 # Recovery browser checks require the separate seeded fixture; see docs/recovery.md.
-node tests/browser/ollama.mjs
 node tests/browser/instructions-mcp.mjs
 ```
 

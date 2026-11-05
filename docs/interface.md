@@ -1,6 +1,6 @@
 # The interface
 
-The app is built around one loop: **documents arrive in an inbox, the reader suggests a name and folder, and you approve the filing.** You can correct its choice and remember that example for later documents. Deterministic rules remain available for predictable repeat work.
+The app is built around one loop: **documents arrive in an inbox, the reader says what each is (kind, sender, date, title, tags), Stash works out the folder and name from the kind's patterns, and you approve with Enter.** See [Sorting](sorting.md); the section on filing below describes the older slip and is kept for the rule workflow's history.
 
 ## Where things are
 
@@ -8,7 +8,7 @@ The app is built around one loop: **documents arrive in an inbox, the reader sug
 | --- | --- |
 | **Inbox** (`/`) | Everything waiting for you: new documents, suggestions from connected assistants, and the first-run setup. |
 | **Library** (`/library`) | Your folders and files as they are on disk: browse, search, upload, rename, move, trash, and each folder's notes. |
-| **Rules** (`/rules`) | Kinds of documents (types and the facts they carry) and the rules that file them. |
+| **Kinds & tags** (`/kinds`) | Kinds (with folder and name patterns, record and file-without-asking switch), senders and tags. The older rules page is linked from it. |
 | **History** (`/history`) | Every move, filing, trash and restore; **Trash** and **Recovery** are its other tabs. |
 | **Settings** (`/settings`) | Storage locations, the AI reader (Ollama), and assistant (MCP) connections. Account links to the password page. |
 

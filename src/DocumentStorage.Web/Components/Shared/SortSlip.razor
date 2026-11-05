@@ -1,0 +1,225 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<SortSlip> Logger
+
+@*
+    The filing slip: what the document is, who it's from, its date, title and tags. You correct
+    the details, never a path; the folder and name below follow them live from the kind's
+    patterns. Enter (or Approve & file) files it and moves on to the next one.
+*@
+<form class="slip sort-slip" aria-label="Filing slip" aria-busy="@(busy ? "true" : "false")" @onsubmit="Approve" @onsubmit:preventDefault>
+    <header class="slip-head">
+        <span class="slip-kicker">Filing slip</span>
+        <h2 title="@Card.Document.Name">@Card.Document.Name</h2>
+        <div class="slip-tools">
+            <a class="icon-button small" href="@($"/documents/{Card.Document.Id}/download")" download title="Download original" aria-label="Download original"><Icon Name="download" Size="16" /></a>
+            <Menu Label="More actions" ButtonClass="icon-button small" IconSize="16">
+                @if (Workspace.ReaderEnabled) { <button role="menuitem" type="button" disabled="@(busy || !CanRead || Reading)" @onclick="ReadWithAi"><Icon Name="spark" Size="15" />@(Card.JobId == null ? "Read with AI" : "Read again with AI")</button> }
+                <button role="menuitem" type="button" @onclick="() => RequestMove.InvokeAsync(Card.Document.Id)"><Icon Name="move" Size="15" />Move by hand…</button>
+                <button role="menuitem" type="button" disabled="@(busy || !Card.Document.Online)" @onclick="() => RequestRescan.InvokeAsync(Card.Document.Id)"><Icon Name="refresh" Size="15" />Rescan text</button>
+                <button role="menuitem" type="button" disabled="@(busy || !Card.Document.Online)" @onclick="() => RequestDelete.InvokeAsync(Card.Document.Id)"><Icon Name="trash" Size="15" />Not a document: delete…</button>
+            </Menu>
+        </div>
+    </header>
+
+    <div class="sort-reader @(Reading ? "working" : "")" role="status">
+        @if (Reading) { <span class="spin"><Icon Name="refresh" Size="14" /></span><span>@Card.ReaderState…</span> }
+        else if (Card.Sure) { <Icon Name="check-circle" Size="15" /><span>Read and sure. Check it and press Enter.</span> }
+        else if (Card.ReaderState == "Read") { <Icon Name="spark" Size="15" /><span>Read by the reader@(Card.Confidence.Length > 0 ? $" ({Card.Confidence} confidence)" : ""). Check the pencilled-in parts.</span> }
+        else if (Card.ReaderState.StartsWith("Reading failed") || Card.ReaderState is "Needs reading again" or "Reading cancelled")
+        { <Icon Name="alert" Size="15" /><span>@Card.ReaderState</span>@if (CanRead) { <button type="button" class="text-button" disabled="@busy" @onclick="ReadWithAi">Try again</button> } }
+        else if (Workspace.ReaderEnabled && CanRead && Card.JobId == null) { <Icon Name="spark" Size="15" /><span>Not read yet.</span><button type="button" class="text-button" disabled="@busy" @onclick="ReadWithAi">Read with AI</button> }
+        else if (!CanRead) { <Icon Name="info" Size="15" /><span>@(Card.Document.Readiness != "Ready" ? "Still arriving…" : "No text to read (" + Card.Document.TextStatus + "). Fill it in by hand.")</span> }
+        else { <Icon Name="info" Size="15" /><span>Filled in from the file name and text.</span> }
+    </div>
+    @if (Card.Notes.Length > 0 && !edited) { <ul class="sort-notes">@foreach (var note in Card.Notes) { <li>@note</li> }</ul> }
+
+    <div class="slip-card sort-fields">
+        <label class="slip-label" for="sort-kind">Kind <SourceMark Source="@Source("kind")" /></label>
+        <div class="sort-field-row">
+            <input id="sort-kind" class="slip-field @Guess("kind")" list="sort-kinds" @bind="kind" @bind:after="Changed" placeholder="What is it?" maxlength="60" autocomplete="off" />
+            @if (plan?.NewKind == true && kind.Trim().Length > 0) { <span class="new-mark" title="Approving makes this a new kind">new</span> }
+        </div>
+        <datalist id="sort-kinds">@foreach (var k in Vocabulary.Kinds) { <option value="@k.Name">@k.Description</option> }</datalist>
+        @if (kind.Trim().Length == 0)
+        {
+            <div class="type-picks" aria-label="Choose a kind">@foreach (var k in Vocabulary.Kinds.OrderByDescending(x => Vocabulary.KindUse.GetValueOrDefault(x.Id)).Take(10)) { <button type="button" class="token" @onclick="() => PickKind(k.Name)">@k.Name</button> }</div>
+        }
+
+        <label class="slip-label" for="sort-from">From <SourceMark Source="@Source("from")" /></label>
+        <div class="sort-field-row">
+            <input id="sort-from" class="slip-field @Guess("from")" list="sort-senders" @bind="from" @bind:after="Changed" placeholder="Who sent it?" maxlength="80" autocomplete="off" />
+            @if (plan?.NewSender == true) { <span class="new-mark" title="Approving adds this sender">new</span> }
+        </div>
+        <datalist id="sort-senders">@foreach (var s in Vocabulary.Senders) { <option value="@s.Name" /> }</datalist>
+
+        <div class="field-pair sort-pair">
+            <div>
+                <label class="slip-label" for="sort-date">Date <SourceMark Source="@Source("date")" /></label>
+                <input id="sort-date" type="date" class="slip-field @Guess("date")" @bind="date" @bind:after="Changed" />
+            </div>
+            <div>
+                <label class="slip-label" for="sort-title">Title <SourceMark Source="@Source("title")" /></label>
+                <input id="sort-title" class="slip-field" @bind="title" @bind:after="Changed" placeholder="Short description" maxlength="80" autocomplete="off" />
+            </div>
+        </div>
+
+        <span class="slip-label">Tags <SourceMark Source="@Source("tags")" /></span>
+        <div class="tag-editor">
+            @foreach (var tag in tags)
+            {
+                <span class="tag-chip @(Vocabulary.Tags.Any(x => x.Name == tag) ? "" : "new")" @key="tag">#@tag<button type="button" aria-label="@($"Remove tag {tag}")" @onclick="() => RemoveTag(tag)">×</button></span>
+            }
+            <input class="tag-input" form="@tagFormId" list="sort-tags" @bind="newTag" placeholder="@(tags.Count == 0 ? "Add a tag" : "+ tag")" maxlength="40" autocomplete="off" aria-label="Add a tag" />
+            <datalist id="sort-tags">@foreach (var t in Vocabulary.Tags.Where(x => !tags.Contains(x.Name))) { <option value="@t.Name" /> }</datalist>
+        </div>
+
+        @if (KindFieldNames.Length > 0)
+        {
+            <div class="sort-kind-fields">
+                @foreach (var name in KindFieldNames)
+                {
+                    <label class="slip-label" for="@($"sort-field-{name}")">@name.Replace('_', ' ') <SourceMark Source="@(Card.Quotes.ContainsKey(name) && !edited ? "reader" : "")" Title="@Card.Quotes.GetValueOrDefault(name)" /></label>
+                    <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" />
+                }
+            </div>
+        }
+    </div>
+
+    <div class="destination sort-destination @(plan?.Problem == null ? "ready" : "pending")" aria-live="polite">
+        <span class="slip-label">Goes to</span>
+        @if (plan == null) { <p class="hint">Working out where it goes…</p> }
+        else if (plan.Problem != null) { <p class="destination-problem"><Icon Name="alert" Size="14" />@plan.Problem</p> }
+        else
+        {
+            <p class="sort-path" data-sort-path>
+                <span class="path-root">@Card.Document.RootName</span>
+                @foreach (var part in ExistingParts) { <span class="path-sep">/</span><span>@part</span> }
+                @foreach (var part in plan.NewFolders) { <span class="path-sep">/</span><span class="path-new" title="A new folder">@part</span> }
+            </p>
+            <p class="sort-name mono" data-sort-name><Icon Name="file" Size="14" />@plan.FileName</p>
+            @if (plan.NewFolders.Length > 0) { <p class="hint">Makes @(plan.NewFolders.Length == 1 ? "a new folder" : $"{plan.NewFolders.Length} new folders").</p> }
+        }
+        <div class="sort-name-choice">
+            <label class="check"><input type="checkbox" checked="@keepName" @onchange="e => SetKeepName((bool)e.Value!)" /> Keep the original name</label>
+            <button type="button" class="text-button" @onclick="() => showOverrides = !showOverrides">@(showOverrides ? "Use the kind's folder and name" : "Change folder or name…")</button>
+        </div>
+        @if (showOverrides)
+        {
+            <label class="slip-label" for="sort-folder">Folder (inside @Card.Document.RootName)</label>
+            <input id="sort-folder" class="slip-field" list="sort-folders" @bind="folderOverride" @bind:after="Changed" placeholder="@(plan?.FolderPath ?? "")" autocomplete="off" />
+            <datalist id="sort-folders">@foreach (var f in Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && x.RelativePath.Length > 0 && !Workspace.InInbox(x)).Take(400)) { <option value="@f.RelativePath" /> }</datalist>
+            <label class="slip-label" for="sort-name">Name</label>
+            <input id="sort-name" class="slip-field" @bind="nameOverride" @bind:after="Changed" placeholder="@(plan?.FileName ?? "")" autocomplete="off" />
+            <p class="hint">Leave either empty to use the kind's pattern. To change the pattern for every document of this kind, edit it under <a href="/kinds">Kinds</a>.</p>
+        }
+    </div>
+
+    <label class="check remember"><input type="checkbox" @bind="remember" /> Remember this as an example for the reader</label>
+    <div class="slip-actions">
+        <button type="submit" class="button primary" data-sort-approve disabled="@(busy || plan?.Problem != null || plan == null || !Card.Document.Online)"><Icon Name="check" Size="16" />Approve &amp; file<kbd>Enter</kbd></button>
+        <button type="button" class="text-button" data-sort-next-button @onclick="() => Skip.InvokeAsync()">Skip</button>
+    </div>
+</form>
+<form id="@tagFormId" class="sr-only" @onsubmit="AddTag" @onsubmit:preventDefault aria-hidden="true"><button type="submit" tabindex="-1">Add tag</button></form>
+
+@code {
+    [Parameter, EditorRequired] public SortCard Card { get; set; } = default!;
+    [Parameter, EditorRequired] public SortVocabulary Vocabulary { get; set; } = default!;
+    [Parameter] public EventCallback<string> Filed { get; set; }
+    [Parameter] public EventCallback ReadingChanged { get; set; }
+    [Parameter] public EventCallback Skip { get; set; }
+    [Parameter] public EventCallback<Guid> RequestMove { get; set; }
+    [Parameter] public EventCallback<Guid> RequestDelete { get; set; }
+    [Parameter] public EventCallback<Guid> RequestRescan { get; set; }
+
+    private readonly string tagFormId = "tag-form-" + Guid.NewGuid().ToString("N")[..8];
+    private string kind = "", from = "", title = "", newTag = "", folderOverride = "", nameOverride = "";
+    private DateOnly? date;
+    private List<string> tags = [];
+    private Dictionary<string, string> fields = [];
+    private bool keepName, remember = true, showOverrides, busy, edited;
+    private SortPlan? plan;
+    private string? loadedKey;
+    private int planVersion;
+
+    private bool Reading => Card.ReaderState is "Waiting to be read" or "Reading" or "Will try again";
+    private bool CanRead => Card.Document.Readiness == "Ready" && Card.Document.TextStatus == "Indexed" && Card.Document.Online;
+    private string[] KindFieldNames => (Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase)) is { } k ? LibraryService.KindFields(k) : fields.Keys.ToArray());
+    private IEnumerable<string> ExistingParts => plan == null || plan.FolderPath.Length == 0 ? [] : plan.FolderPath.Split('/')[..^plan.NewFolders.Length];
+    private string Source(string key) => edited ? "" : Card.Sources.GetValueOrDefault(key, "");
+    private string Guess(string key) => Source(key) == "guess" ? "guess" : "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A new document, or a reading arriving for one not yet touched, refills the slip.
+        var key = Card.Document.Id + "|" + Card.JobId + "|" + Card.ReaderState + "|" + Card.Document.ContentHash;
+        if (key == loadedKey) return;
+        var sameDocument = loadedKey?.StartsWith(Card.Document.Id.ToString()) == true;
+        loadedKey = key;
+        if (sameDocument && edited) return;
+        kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
+        tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
+        folderOverride = ""; nameOverride = ""; showOverrides = false; edited = false; plan = Card.Plan;
+        await Task.CompletedTask;
+    }
+
+    private SortChoice Choice() => new(kind.Trim(), from.Trim(), date, title.Trim(), tags.ToArray(),
+        fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => x.Key, x => x.Value.Trim()), keepName, nameOverride.Trim(), folderOverride.Trim(), remember);
+
+    private async Task Changed()
+    {
+        edited = true;
+        var version = ++planVersion;
+        try
+        {
+            var next = await Library.PlanSortAsync(Card.Document.Id, Choice());
+            if (version == planVersion) plan = next;
+        }
+        catch (StorageException ex) { if (version == planVersion) plan = new("", [], Card.Document.Name, false, false, [], ex.Message); }
+    }
+    private Task PickKind(string name) { kind = name; return Changed(); }
+    private Task SetKeepName(bool value) { keepName = value; return Changed(); }
+    private Task SetField(string name, string? value) { fields[name] = value ?? ""; return Changed(); }
+    private async Task AddTag()
+    {
+        var raw = newTag.Trim(); newTag = "";
+        if (raw.Length == 0) return;
+        string name;
+        try { name = Vocabulary.Tags.FirstOrDefault(x => string.Equals(x.Name, raw, StringComparison.OrdinalIgnoreCase))?.Name ?? LibraryService.TagName(raw); }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); return; }
+        if (!tags.Contains(name)) tags.Add(name);
+        await Changed();
+    }
+    private Task RemoveTag(string tag) { tags.Remove(tag); return Changed(); }
+
+    private async Task Approve()
+    {
+        if (busy) return;
+        if (newTag.Trim().Length > 0) await AddTag();
+        busy = true;
+        try
+        {
+            var choice = Choice();
+            var current = await Library.PlanSortAsync(Card.Document.Id, choice);
+            plan = current;
+            if (current.Problem != null) { Workspace.Notify(current.Problem, true); return; }
+            await Library.FileSortedAsync(Card.Document.Id, choice, Card.Document.ContentHash, await Workspace.ActorAsync());
+            await Filed.InvokeAsync($"Filed as {current.DestinationPath}.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogError(ex, "Filing failed");
+            Workspace.Notify(ex is StorageException ? ex.Message : "Filing could not finish. Check storage and History, then try again.", true);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task ReadWithAi()
+    {
+        if (busy) return; busy = true;
+        try { await Library.QueueSortingAsync(Card.Document.Id, await Workspace.ActorAsync()); edited = false; await ReadingChanged.InvokeAsync(); }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
+        finally { busy = false; }
+    }
+}

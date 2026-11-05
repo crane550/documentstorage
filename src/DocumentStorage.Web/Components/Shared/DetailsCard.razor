@@ -1,0 +1,74 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+
+@* A filed document's details: kind, sender, date, title and tags. Each one links to everything
+   else that shares it. Editing changes the details only; the file stays where it is. *@
+<section class="details-card" aria-label="Document details">
+    @if (!editing)
+    {
+        @if (details == null) { <p class="hint">No details yet. <button type="button" class="text-button" @onclick="StartEdit">Add kind, sender and tags</button></p> }
+        else
+        {
+            <dl class="metadata details-list">
+                <div><dt>Kind</dt><dd>@if (details.Kind.Length > 0) { <a href="@Search("kind", details.Kind)">@details.Kind</a> } else { <span class="hint">none</span> }</dd></div>
+                <div><dt>From</dt><dd>@if (details.From.Length > 0) { <a href="@Search("from", details.From)">@details.From</a> } else { <span class="hint">unknown</span> }</dd></div>
+                <div><dt>Date</dt><dd>@(details.Date?.ToString("MMM d, yyyy") ?? "none")</dd></div>
+                @if (details.Title.Length > 0) { <div><dt>Title</dt><dd>@details.Title</dd></div> }
+                @foreach (var field in details.Fields) { <div><dt>@field.Key.Replace('_', ' ')</dt><dd>@field.Value</dd></div> }
+            </dl>
+            @if (details.Tags.Length > 0) { <p class="tag-line">@foreach (var tag in details.Tags) { <a class="tag-chip" href="@Search("tag", tag)">#@tag</a> }</p> }
+            <button type="button" class="text-button" @onclick="StartEdit"><Icon Name="edit" Size="14" />Edit details</button>
+        }
+    }
+    else
+    {
+        <form class="details-form" @onsubmit="Save" @onsubmit:preventDefault>
+            <label for="d-kind">Kind</label><input id="d-kind" list="d-kinds" @bind="kind" maxlength="60" />
+            <datalist id="d-kinds">@foreach (var k in vocabulary.Kinds) { <option value="@k.Name" /> }</datalist>
+            <label for="d-from">From</label><input id="d-from" list="d-senders" @bind="from" maxlength="80" />
+            <datalist id="d-senders">@foreach (var s in vocabulary.Senders) { <option value="@s.Name" /> }</datalist>
+            <div class="field-pair"><div><label for="d-date">Date</label><input id="d-date" type="date" @bind="date" /></div><div><label for="d-title">Title</label><input id="d-title" @bind="title" maxlength="80" /></div></div>
+            <label for="d-tags">Tags <span class="hint">(comma-separated)</span></label><input id="d-tags" list="d-tag-list" @bind="tags" />
+            <datalist id="d-tag-list">@foreach (var t in vocabulary.Tags) { <option value="@t.Name" /> }</datalist>
+            <p class="hint">This changes the details only. The file stays where it is.</p>
+            <div class="form-actions"><button type="submit" class="button small primary" disabled="@busy">Save details</button><button type="button" class="text-button" @onclick="() => editing = false">Cancel</button></div>
+        </form>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid EntryId { get; set; }
+    private DocumentDetailView? details;
+    private SortVocabulary vocabulary = new([], [], [], [], [], []);
+    private bool editing, busy;
+    private string kind = "", from = "", title = "", tags = "";
+    private DateOnly? date;
+    private Guid loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loaded == EntryId) return;
+        loaded = EntryId; editing = false;
+        details = await Library.DocumentDetailsAsync(EntryId);
+    }
+    private static string Search(string prefix, string value) => "/library?q=" + Uri.EscapeDataString(prefix + ":" + value.Replace(' ', '_'));
+    private async Task StartEdit()
+    {
+        vocabulary = await Library.SortVocabularyAsync();
+        kind = details?.Kind ?? ""; from = details?.From ?? ""; date = details?.Date; title = details?.Title ?? ""; tags = string.Join(", ", details?.Tags ?? []);
+        editing = true;
+    }
+    private async Task Save()
+    {
+        if (busy) return; busy = true;
+        try
+        {
+            var choice = new SortChoice(kind, from, date, title, tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), details?.Fields ?? new());
+            await Library.SaveDocumentDetailsAsync(EntryId, choice, await Workspace.ActorAsync());
+            details = await Library.DocumentDetailsAsync(EntryId); editing = false;
+            Workspace.Notify("Details saved.");
+        }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
+        finally { busy = false; }
+    }
+}

@@ -38,7 +38,7 @@ try{
  // The same renderer stays beside the inbox filing slip.
  const incoming='Incoming previews '+Date.now();await openFolder(page,'Preview test archive');await newFolder(page,incoming);await enterFolder(page,incoming);await useAsInbox(page);
  await page.locator('input[aria-label="Copy files to inbox"]').setInputFiles(fixture.directory+'/statement.pdf');await toast(page,'1 of 1 files added to the inbox.');await inbox(page);await openInboxItem(page,'statement.pdf');await loaded();await rendered();
- await check(page.getByLabel('Document type',{exact:true}).isVisible()&&await root.isVisible(),'the inbox keeps the actual PDF visible beside its filing slip');await page.screenshot({path:'.local/preview-intake.png',fullPage:true});
+ await check(page.getByLabel(/^Kind/).isVisible()&&await root.isVisible(),'the inbox keeps the actual PDF visible beside its filing slip');await page.screenshot({path:'.local/preview-intake.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});await check(page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'PDF preview and filing slip fit a mobile viewport');await root.getByRole('button',{name:'Expand preview',exact:true}).click();await check(root.locator('.preview-surface').evaluate(x=>x.clientHeight>250),'expanded mobile preview uses the available screen');await page.keyboard.press('Escape');
  await check(external.length===0,'PDF rendering and support assets stay on this app origin');await check(errors.length===0,'preview controls and rapid switching cause no browser script errors');console.log(`All ${checks} preview browser checks passed.`);
 }finally{await browser.close();}

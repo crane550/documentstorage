@@ -1,9 +1,7 @@
-# Direction: the inbox-to-folder loop (proposal, 5 Nov 2026, revised with Alex's answers)
+# Direction: the inbox-to-folder loop (accepted 5 Nov 2026)
 
-A proposal for decision, not yet accepted. When it is, it replaces the "Next feature work" in
-[product-plan.md](product-plan.md) and the priorities in [feature-roadmap.md](feature-roadmap.md),
-and AGENTS.md's "no unattended filing" becomes "unattended filing only for kinds the person has
-switched on".
+Accepted by Alex on 5 Nov 2026 ("Let's get going on it"). Steps 1–5 of the build order are built;
+see [sorting.md](sorting.md). This replaces the earlier feature priorities.
 
 ## What Stash is for
 
@@ -186,6 +184,9 @@ tools.
 7. **MCP** tools for kinds, senders, tags, details and refiling.
 
 ## Settled with Alex (5 Nov 2026)
+
+- Scanned documents always need naming and filing; emailed ones keep their good names unless
+  renamed. The AI may make new folders and move documents (through approval until trusted).
 
 - Scans have plain names; emailed documents' names are useful data and are read first.
 - Everything goes in; mostly bank statements, invoices and purchase orders.

@@ -19,18 +19,19 @@ try {
     await connectStorage(page, base, 'Inbox workbench checks', directory);
     await openFolder(page, 'Workbench intake'); await useAsInbox(page); await settleAndRescan(page); await inbox(page);
     await openInboxItem(page, 'work-041.txt');
-    await nav(page, 'Rules'); await inbox(page); await selected('work-041.txt');
+    await nav(page, 'Kinds'); await inbox(page); await selected('work-041.txt');
     await check(Promise.resolve(true), 'returning to Inbox restores the selected document');
     await page.reload(); await ready(page); await selected('work-041.txt');
     await check(Promise.resolve(true), 'selected document survives a full browser reload');
-    await page.locator('.extraction-status').getByRole('button', { name: 'Rescan text', exact: true }).click(); await toast(page, 'Text rescanned:');
-    await check(page.locator('.slip-text.review-text pre').textContent().then(t => t === 'Synthetic inbox document 41. Paid tool receipt.'), 'per-document rescan displays fresh extracted text');
     await page.locator('.slip-tools').getByRole('button', { name: 'More actions', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Delete document…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Rescan text', exact: true }).click();
+    await check(toast(page, 'Text rescanned: 47 characters').then(() => true), 'per-document rescan reads the text again');
+    await page.locator('.slip-tools').getByRole('button', { name: 'More actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Not a document: delete…', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
     await check(readFile(path.join(directory, 'Workbench intake/work-041.txt'), 'utf8').then(t => t.includes('document 41')), 'cancelling delete preserves the incoming file');
     await page.locator('.slip-tools').getByRole('button', { name: 'More actions', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Delete document…', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Not a document: delete…', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Move to trash', exact: true }).click(); await toast(page, 'Document moved to Trash.');
     await selected('work-042.txt');
     await check(access(path.join(directory, 'Workbench intake/work-041.txt')).then(() => false, () => true), 'confirmed delete removes the source and advances to the next document');
@@ -39,25 +40,27 @@ try {
     await trashRow.getByRole('button', { name: /Restore/ }).click(); await toast(page, 'work-041.txt restored');
     await check(readFile(path.join(directory, 'Workbench intake/work-041.txt'), 'utf8').then(t => t.includes('document 41')), 'inbox deletion remains restorable with its original bytes');
     await inbox(page); await selected('work-042.txt');
+    await page.locator('.tray-pager').getByRole('button', { name: 'Next', exact: true }).click(); await selected('work-050.txt');
     await page.locator('.tray-pager').getByRole('button', { name: 'Next', exact: true }).click(); await selected('work-100.txt');
     await openInboxItem(page, 'work-101.txt');
     const id = await page.locator('.slip-tools a[download]').getAttribute('href').then(x => x.split('/')[2]);
-    await nav(page, 'Rules'); await inbox(page); await selected('work-101.txt');
+    await nav(page, 'Kinds'); await inbox(page); await selected('work-101.txt');
     await check(page.locator('.tray-pager').textContent().then(t => t.includes('101–102')), 'saved selection restores the correct page');
-    await page.locator('.tray-pager').getByRole('button', { name: 'Previous', exact: true }).click();
+    await page.locator('.tray-pager').getByRole('button', { name: 'Previous', exact: true }).click(); await selected('work-050.txt');
     await page.evaluate(url => Blazor.navigateTo(url), base + '/?open=' + id); await selected('work-101.txt');
     await check(Promise.resolve(true), 'an explicit link opens a document beyond the first inbox page');
     for (const name of ['work-101.txt', 'work-100.txt']) {
         await selected(name);
         await page.locator('.slip-tools').getByRole('button', { name: 'More actions', exact: true }).click();
-        await page.getByRole('menuitem', { name: 'Delete document…', exact: true }).click();
+        await page.getByRole('menuitem', { name: 'Not a document: delete…', exact: true }).click();
+        await page.getByRole('dialog').locator('.entry-chip').filter({ hasText: name }).waitFor();
         await page.getByRole('dialog').getByRole('button', { name: 'Move to trash', exact: true }).click();
         await toast(page, 'Document moved to Trash.');
     }
     await selected('work-099.txt');
-    await check(page.locator('.intake-item').count().then(n => n === 100), 'emptying the last page returns near the end of the preceding page');
+    await check(page.locator('.intake-item').count().then(n => n === 50), 'emptying the last page returns near the end of the preceding page');
     await page.setViewportSize({ width: 390, height: 844 });
     await check(noOverflow(page), 'inbox tools fit the mobile viewport');
     await check(errors.length === 0, 'inbox navigation, rescan and trash produce no browser errors');
     console.log(`All ${checks} inbox browser checks passed.`);
-} finally { await browser.close(); }
+} catch (e) { await page.screenshot({ path: '.local/inbox-failure.png' }); throw e; } finally { await browser.close(); }

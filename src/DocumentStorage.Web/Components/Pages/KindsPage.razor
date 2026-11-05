@@ -1,0 +1,128 @@
+@page "/kinds"
+@attribute [Authorize(Roles = IdentitySetup.Administrator)]
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject NavigationManager Navigation
+@inject ILogger<KindsPage> Logger
+
+<PageTitle>Kinds · @Workspace.DisplayName</PageTitle>
+
+<header class="page-head">
+    <div>
+        <h1>Kinds, senders and tags</h1>
+        <p class="page-sub">What Stash knows about your documents. The reader picks from these; the folder and name come from each kind's patterns.</p>
+    </div>
+</header>
+
+<nav class="inbox-tabs" aria-label="Sections">
+    <button type="button" class="@(tab == "kinds" ? "active" : "")" aria-pressed="@(tab == "kinds" ? "true" : "false")" @onclick="@(() => Go("kinds"))">Kinds<span class="count">@vocabulary.Kinds.Count</span></button>
+    <button type="button" class="@(tab == "senders" ? "active" : "")" aria-pressed="@(tab == "senders" ? "true" : "false")" @onclick="@(() => Go("senders"))">Senders<span class="count">@vocabulary.Senders.Count</span></button>
+    <button type="button" class="@(tab == "tags" ? "active" : "")" aria-pressed="@(tab == "tags" ? "true" : "false")" @onclick="@(() => Go("tags"))">Tags<span class="count">@vocabulary.Tags.Count</span></button>
+    <span class="inbox-tabs-gap"></span>
+    <a class="text-button" href="/rules">Older filing rules</a>
+</nav>
+
+@if (!loaded) { <div class="loading-sheet" aria-busy="true"></div> }
+else if (tab == "kinds")
+{
+    <section class="sheet auto-master">
+        <label class="switch"><input type="checkbox" checked="@autoFiling" @onchange="e => SetMaster((bool)e.Value!)" /><span class="switch-track"></span><span><strong>Let trusted kinds file themselves</strong></span></label>
+        <p class="hint">Off stops all automatic filing at once. Each kind below still has to be switched on by you; until then everything waits for your approval. Only readings that are sure (kind, sender and date written plainly, nothing new) ever file themselves, and you can undo them from the Inbox's Filed list.</p>
+    </section>
+    <div class="kinds-head"><button type="button" class="button primary" @onclick="NewKind"><Icon Name="plus" Size="15" />New kind</button></div>
+    @if (editing != null) { <KindForm Kind="editing" Busy="busy" Save="SaveKind" Cancel="() => editing = null" /> }
+    <div class="kind-grid">
+        @foreach (var kind in vocabulary.Kinds)
+        {
+            var earned = kind.Streak >= LibraryService.TrustStreak && !kind.AutoFile;
+            <article class="kind-card @(kind.AutoFile ? "auto" : "")" @key="kind.Id">
+                <header>
+                    <h2>@kind.Name</h2>
+                    @if (kind.IsCatchAll) { <Stamp Text="Catch-all" Tone="muted" /> }
+                    <Menu Label="@($"Actions for {kind.Name}")" ButtonClass="icon-button small" IconSize="15">
+                        <button role="menuitem" type="button" @onclick="() => editing = Copy(kind)"><Icon Name="edit" Size="15" />Edit</button>
+                        <a role="menuitem" href="@($"/library?q=kind:{Uri.EscapeDataString(kind.Name.Replace(' ', '_'))}")"><Icon Name="cabinet" Size="15" />Show its documents</a>
+                        @if (!kind.IsCatchAll) { <button role="menuitem" type="button" @onclick="() => DeleteKind(kind)"><Icon Name="trash" Size="15" />Delete kind</button> }
+                    </Menu>
+                </header>
+                @if (kind.Description.Length > 0) { <p class="kind-description">@kind.Description</p> }
+                <dl class="kind-patterns">
+                    <div><dt>Folder</dt><dd class="mono">@(kind.FolderPattern.Length == 0 ? "(the storage root)" : kind.FolderPattern)</dd></div>
+                    <div><dt>Name</dt><dd class="mono">@kind.NamePattern</dd></div>
+                    @if (LibraryService.KindFields(kind).Length > 0) { <div><dt>Fields</dt><dd>@string.Join(", ", LibraryService.KindFields(kind).Select(x => x.Replace('_', ' ')))</dd></div> }
+                    <div><dt>Example</dt><dd class="mono example-path">@Example(kind)</dd></div>
+                </dl>
+                <footer>
+                    <span class="kind-record" title="Approvals of the reader's suggestions">@vocabulary.KindUse.GetValueOrDefault(kind.Id) filed · @kind.Approved approved · @kind.Corrected corrected@(kind.Streak > 0 ? $" · {kind.Streak} right in a row" : "")</span>
+                    <label class="switch small"><input type="checkbox" checked="@kind.AutoFile" @onchange="e => SetAuto(kind, (bool)e.Value!)" aria-label="@($"{kind.Name} files itself")" /><span class="switch-track"></span><span>File without asking</span></label>
+                </footer>
+                @if (earned) { <p class="kind-earned"><Icon Name="check-circle" Size="14" />The reader has had the last @kind.Streak right. Ready to let it file these itself?</p> }
+            </article>
+        }
+    </div>
+}
+else if (tab == "senders")
+{
+    <NameList Items="senderRows" What="sender" Busy="busy" Save="SaveSender" Merge="MergeSender" Delete="DeleteSender" />
+}
+else
+{
+    <NameList Items="tagRows" What="tag" Busy="busy" Save="SaveTag" Merge="MergeTag" Delete="DeleteTag" />
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    private string tab = "kinds";
+    private SortVocabulary vocabulary = new([], [], [], [], [], []);
+    private List<NameList.Row> senderRows = [], tagRows = [];
+    private DocumentKind? editing;
+    private bool loaded, busy, autoFiling = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        tab = Tab is "senders" or "tags" ? Tab : "kinds";
+        await Load();
+        loaded = true;
+    }
+    private async Task Load()
+    {
+        vocabulary = await Library.SortVocabularyAsync();
+        autoFiling = await Library.AutoFilingEnabledAsync();
+        senderRows = vocabulary.Senders.Select(x => new NameList.Row(x.Id, x.Name, LibraryService.Aliases(x.AliasesJson), vocabulary.SenderUse.GetValueOrDefault(x.Id), $"/library?q=from:{Uri.EscapeDataString(x.Name.Replace(' ', '_'))}")).ToList();
+        tagRows = vocabulary.Tags.Select(x => new NameList.Row(x.Id, x.Name, LibraryService.Aliases(x.AliasesJson), vocabulary.TagUse.GetValueOrDefault(x.Id), $"/library?q=tag:{Uri.EscapeDataString(x.Name)}")).ToList();
+    }
+    private void Go(string to) => Navigation.NavigateTo(to == "kinds" ? "/kinds" : "/kinds?tab=" + to);
+
+    private static string Example(DocumentKind kind)
+    {
+        var fields = LibraryService.KindFields(kind).ToDictionary(x => x, x => x switch { "tax_year" => "2026", "account_ending" => "1234", "total" => "84.20", "vehicle" => "2014 Truck", _ => x.Replace('_', ' ') });
+        var values = new SortValues(kind.Name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", fields);
+        var folder = SortPatterns.Folder(kind.FolderPattern, values);
+        return string.Join("/", folder.Append(SortPatterns.Name(kind.NamePattern, values, "scan.pdf")));
+    }
+    private static DocumentKind Copy(DocumentKind k) => new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
+    private void NewKind() => editing = new() { Id = Guid.Empty, FolderPattern = LibraryService.DefaultKindFolder, NamePattern = LibraryService.DefaultKindName };
+
+    private Task SaveKind(DocumentKind kind) => Run(async () => { await Library.SaveKindAsync(kind, await Workspace.ActorAsync()); editing = null; await Load(); Workspace.Notify("Saved " + kind.Name + "."); });
+    private Task SetAuto(DocumentKind kind, bool on) => Run(async () =>
+    {
+        await Library.SetKindAutoFileAsync(kind.Id, on, await Workspace.ActorAsync()); await Load();
+        Workspace.Notify(on ? $"{kind.Name}: sure readings now file themselves. You'll see them under Inbox › Filed." : $"{kind.Name} will wait for your approval.");
+    });
+    private Task SetMaster(bool on) => Run(async () => { await Library.SetAutoFilingEnabledAsync(on, await Workspace.ActorAsync()); await Load(); Workspace.Notify(on ? "Trusted kinds may file themselves." : "Automatic filing is off. Everything waits for you."); });
+    private Task DeleteKind(DocumentKind kind) => Run(async () => { await Library.DeleteKindAsync(kind.Id, await Workspace.ActorAsync()); await Load(); Workspace.Notify($"Deleted {kind.Name}. Its documents stay where they are, without a kind."); });
+    private Task SaveSender(NameList.Row row) => Run(async () => { await Library.SaveSenderAsync(row.Id, row.Name, row.Aliases, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Saved " + row.Name + "."); });
+    private Task MergeSender((Guid From, Guid Into) pair) => Run(async () => { await Library.MergeSendersAsync(pair.From, pair.Into, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Merged. The old name is kept as a spelling."); });
+    private Task DeleteSender(Guid id) => Run(async () => { await Library.DeleteSenderAsync(id, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Sender deleted. Its documents keep everything else."); });
+    private Task SaveTag(NameList.Row row) => Run(async () => { await Library.SaveTagAsync(row.Id, row.Name, row.Aliases, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Saved #" + LibraryService.TagName(row.Name) + "."); });
+    private Task MergeTag((Guid From, Guid Into) pair) => Run(async () => { await Library.MergeTagsAsync(pair.From, pair.Into, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Tags merged."); });
+    private Task DeleteTag(Guid id) => Run(async () => { await Library.DeleteTagAsync(id, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Tag deleted from every document."); });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true;
+        try { await action(); }
+        catch (Exception ex) { Logger.LogError(ex, "Kinds action failed"); Workspace.Notify(ex is StorageException ? ex.Message : "That could not be saved. Reload and try again.", true); }
+        finally { busy = false; }
+    }
+}

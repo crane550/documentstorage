@@ -1,0 +1,60 @@
+@* Editing a kind: its name, what it covers (the reader sees this), the fields it carries, and the
+   folder and name patterns. The example underneath follows every keystroke. *@
+<form class="sheet kind-form" @onsubmit="Submit" @onsubmit:preventDefault>
+    <h2>@(Kind.Id == Guid.Empty ? "New kind" : "Edit " + Kind.Name)</h2>
+    <div class="field-pair">
+        <div><label for="kind-name">Name</label><input id="kind-name" @bind="Kind.Name" @bind:event="oninput" maxlength="60" placeholder="Vehicle title" /></div>
+        <div><label for="kind-fields">Fields <span class="hint">(comma-separated)</span></label><input id="kind-fields" @bind="fields" @bind:event="oninput" placeholder="vin, plate" /></div>
+    </div>
+    <label for="kind-description">What it covers <span class="hint">(the reader sees this)</span></label>
+    <input id="kind-description" @bind="Kind.Description" maxlength="400" placeholder="Titles and registrations for cars, trucks and trailers." />
+    <label for="kind-folder">Folder pattern</label>
+    <input id="kind-folder" class="mono" @bind="Kind.FolderPattern" @bind:event="oninput" placeholder="Vehicles/{vehicle}" />
+    <label for="kind-pattern">Name pattern</label>
+    <input id="kind-pattern" class="mono" @bind="Kind.NamePattern" @bind:event="oninput" placeholder="{date} {from} {title}" />
+    <div class="token-buttons" aria-label="Insert a token">
+        @foreach (var token in Tokens) { <button type="button" class="token" @onclick="() => Kind.NamePattern = (Kind.NamePattern + ' ' + token).Trim()">@token</button> }
+    </div>
+    <p class="hint">Tokens: {kind} {from} {title} {date} (or {date:yyyy}, {date:yyyy-MM}, {date:MMMM}) and any field, like {invoice_number}. A folder level whose tokens are all empty is left out, so a document without a sender still files sensibly.</p>
+    <p class="kind-example">@if (error != null) { <span class="destination-problem"><Icon Name="alert" Size="14" />@error</span> } else { <span class="mono">@example</span> }</p>
+    <label class="check"><input type="checkbox" @bind="Kind.IsCatchAll" disabled="@(Kind.IsCatchAll && Kind.Id != Guid.Empty)" /> Catch-all for anything that fits no other kind</label>
+    <div class="form-actions"><button type="submit" class="button primary" disabled="@(Busy || error != null)">Save kind</button><button type="button" class="text-button" @onclick="Cancel">Cancel</button></div>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public DocumentKind Kind { get; set; } = default!;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<DocumentKind> Save { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    private string fields = "";
+    private Guid loaded = Guid.NewGuid();
+    private string example = "";
+    private string? error;
+    private IEnumerable<string> Tokens => new[] { "{date}", "{from}", "{title}", "{kind}" }.Concat(FieldNames().Select(x => "{" + x + "}"));
+    private string[] FieldNames() => fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => x.ToLowerInvariant().Replace(' ', '_').Replace('-', '_')).ToArray();
+
+    protected override void OnParametersSet()
+    {
+        if (loaded == Kind.Id) return;
+        loaded = Kind.Id; fields = string.Join(", ", LibraryService.KindFields(Kind));
+    }
+    protected override void OnAfterRender(bool firstRender) { }
+    protected override bool ShouldRender() { Update(); return true; }
+    private void Update()
+    {
+        try
+        {
+            SortPatterns.ValidatePattern(Kind.FolderPattern, folder: true);
+            SortPatterns.ValidatePattern(Kind.NamePattern, folder: false);
+            var values = new SortValues(Kind.Name.Length == 0 ? "Kind" : Kind.Name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", FieldNames().ToDictionary(x => x, x => x.Replace('_', ' ')));
+            example = string.Join("/", SortPatterns.Folder(Kind.FolderPattern, values).Append(SortPatterns.Name(Kind.NamePattern, values, "scan.pdf")));
+            error = null;
+        }
+        catch (StorageException ex) { error = ex.Message; }
+    }
+    private async Task Submit()
+    {
+        Kind.FieldsJson = System.Text.Json.JsonSerializer.Serialize(FieldNames());
+        await Save.InvokeAsync(Kind);
+    }
+}

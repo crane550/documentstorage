@@ -1,0 +1,65 @@
+@* Senders or tags: rename, the other spellings the reader may use, merge, delete. *@
+<section class="sheet name-list" aria-label="@($"{What}s")">
+    <form class="name-add" @onsubmit="Add" @onsubmit:preventDefault>
+        <label class="sr-only" for="@($"new-{What}")">New @What</label>
+        <input id="@($"new-{What}")" @bind="newName" placeholder="@($"Add a {What}")" maxlength="80" autocomplete="off" />
+        <button type="submit" class="button small" disabled="@(Busy || newName.Trim().Length == 0)">Add</button>
+        <input class="name-filter" type="search" @bind="filter" @bind:event="oninput" placeholder="Filter" aria-label="@($"Filter {What}s")" />
+    </form>
+    @if (Items.Count == 0) { <p class="hint">No @(What)s yet. They're added when you approve documents, or here.</p> }
+    <ul>
+        @foreach (var row in Items.Where(x => filter.Length == 0 || x.Name.Contains(filter, StringComparison.OrdinalIgnoreCase) || x.Aliases.Any(a => a.Contains(filter, StringComparison.OrdinalIgnoreCase))))
+        {
+            <li @key="row.Id" class="name-row">
+                @if (editing == row.Id)
+                {
+                    <form class="name-edit" @onsubmit="() => SaveRow(row)" @onsubmit:preventDefault>
+                        <label>Name<input @bind="editName" maxlength="80" /></label>
+                        <label>Other spellings <span class="hint">(comma-separated)</span><input @bind="editAliases" /></label>
+                        <label>Merge into<select @bind="mergeInto"><option value="@Guid.Empty">(don't merge)</option>@foreach (var other in Items.Where(x => x.Id != row.Id)) { <option value="@other.Id">@other.Name</option> }</select></label>
+                        <div class="form-actions">
+                            <button type="submit" class="button small primary" disabled="@Busy">@(mergeInto == Guid.Empty ? "Save" : "Merge")</button>
+                            <button type="button" class="text-button" @onclick="() => editing = null">Cancel</button>
+                            <span class="inbox-tabs-gap"></span>
+                            <button type="button" class="text-button danger" disabled="@Busy" @onclick="() => Delete.InvokeAsync(row.Id)">Delete</button>
+                        </div>
+                    </form>
+                }
+                else
+                {
+                    <button type="button" class="name-open" @onclick="() => Edit(row)">
+                        <strong>@(What == "tag" ? "#" : "")@row.Name</strong>
+                        @if (row.Aliases.Length > 0) { <small>also @string.Join(", ", row.Aliases)</small> }
+                    </button>
+                    <a class="text-button" href="@row.Link">@row.Uses @(row.Uses == 1 ? "document" : "documents")</a>
+                }
+            </li>
+        }
+    </ul>
+</section>
+
+@code {
+    public sealed record Row(Guid Id, string Name, string[] Aliases, int Uses, string Link);
+    [Parameter, EditorRequired] public List<Row> Items { get; set; } = [];
+    [Parameter, EditorRequired] public string What { get; set; } = "";
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<Row> Save { get; set; }
+    [Parameter] public EventCallback<(Guid From, Guid Into)> Merge { get; set; }
+    [Parameter] public EventCallback<Guid> Delete { get; set; }
+    private Guid? editing;
+    private Guid mergeInto;
+    private string newName = "", editName = "", editAliases = "", filter = "";
+
+    private void Edit(Row row) { editing = row.Id; editName = row.Name; editAliases = string.Join(", ", row.Aliases); mergeInto = Guid.Empty; }
+    private async Task SaveRow(Row row)
+    {
+        if (mergeInto != Guid.Empty) await Merge.InvokeAsync((row.Id, mergeInto));
+        else await Save.InvokeAsync(row with { Name = editName, Aliases = editAliases.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) });
+        editing = null;
+    }
+    private async Task Add()
+    {
+        var name = newName.Trim(); newName = "";
+        if (name.Length > 0) await Save.InvokeAsync(new(Guid.Empty, name, [], 0, ""));
+    }
+}

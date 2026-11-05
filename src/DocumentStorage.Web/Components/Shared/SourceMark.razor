@@ -1,0 +1,18 @@
+@* A small dot beside a detail saying where it came from. A guess is amber and says so. *@
+@if (Source.Length > 0)
+{
+    <span class="source-mark @Source" title="@(Title ?? Text)"><span class="sr-only">@Text</span></span>
+}
+@code {
+    [Parameter] public string Source { get; set; } = "";
+    [Parameter] public string? Title { get; set; }
+    private string Text => Source switch
+    {
+        "reader" => "Read by the reader",
+        "filename" => "From the file name",
+        "text" => "Found in the text",
+        "person" => "Set by you",
+        "guess" => "A guess: check it",
+        _ => ""
+    };
+}

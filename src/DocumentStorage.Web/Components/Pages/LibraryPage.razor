@@ -79,7 +79,7 @@ else
             <div class="empty-state">
                 <Icon Name="@(searching ? "search" : "folder-open")" Size="38" Stroke="1.3" />
                 <h2>@(searching ? "Nothing matched" : "This folder is empty")</h2>
-                <p>@(searching ? "Try part of a name or a phrase from the document." : "Drop files here with Upload, or make a folder.")</p>
+                <p>@(searching ? "Try part of a name, a phrase from the document, or kind:Invoice, from:Acme, tag:house." : "Drop files here with Upload, or make a folder.")</p>
             </div>
         }
         @if (listing.Total > 100) { <footer class="tray-pager"><button class="text-button" disabled="@(offset == 0 || busy)" @onclick="Previous">Previous</button><span>@(offset + 1)–@(offset + listing.Items.Count) of @listing.Total</span><button class="text-button" disabled="@(offset + 100 >= listing.Total || busy)" @onclick="Next">Next</button></footer> }
@@ -90,6 +90,7 @@ else
         {
             <DocumentPreviewPanel Entry="selected" @key="selected.Id" />
             <div class="doc-meta">
+                <DetailsCard EntryId="selected.Id" @key="selected.Id" />
                 <dl class="metadata"><div><dt>Where</dt><dd>@Workspace.FolderLabel(selected.ParentId ?? Guid.Empty)</dd></div><div><dt>Size</dt><dd>@WorkspaceState.FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div><div><dt>Text</dt><dd>@selected.TextStatus</dd></div></dl>
                 <div class="doc-actions">
                     <a class="button" href="@($"/ask?scope={selected.Id}")"><Icon Name="spark" Size="15" />Ask about this document</a>

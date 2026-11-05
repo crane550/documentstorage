@@ -34,11 +34,38 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
         if (string.IsNullOrWhiteSpace(search)) query = query.Where(x => x.ParentId == folderId);
         else
         {
+            static string Like(string word) => "%" + word.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
             foreach (var word in search.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(10))
             {
-                var pattern = "%" + word.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+                // kind:, from: and tag: narrow by a document's saved details ("_" stands for a space).
+                var colon = word.IndexOf(':');
+                var prefix = colon > 0 ? word[..colon].ToLowerInvariant() : "";
+                var value = colon > 0 ? word[(colon + 1)..].Replace('_', ' ') : "";
+                if (prefix == "kind" && value.Length > 0)
+                {
+                    var exact = value.ToLower();
+                    query = query.Where(x => db.Details.Any(d => d.EntryId == x.Id && db.Kinds.Any(k => k.Id == d.KindId && k.Name.ToLower() == exact)));
+                    continue;
+                }
+                if (prefix == "from" && value.Length > 0)
+                {
+                    var exact = value.ToLower();
+                    query = query.Where(x => db.Details.Any(d => d.EntryId == x.Id && db.Correspondents.Any(c => c.Id == d.CorrespondentId && c.Name.ToLower() == exact)));
+                    continue;
+                }
+                if (prefix == "tag" && value.Length > 0)
+                {
+                    var exact = value.ToLower().Replace(' ', '-');
+                    query = query.Where(x => db.EntryTags.Any(t => t.EntryId == x.Id && db.Tags.Any(g => g.Id == t.TagId && g.Name == exact)));
+                    continue;
+                }
+                var pattern = Like(word);
                 query = query.Where(x => EF.Functions.ILike(x.Name, pattern, "\\") ||
-                    EF.Functions.ILike(x.RelativePath, pattern, "\\") || EF.Functions.ILike(x.ExtractedText, pattern, "\\"));
+                    EF.Functions.ILike(x.RelativePath, pattern, "\\") || EF.Functions.ILike(x.ExtractedText, pattern, "\\") ||
+                    db.Details.Any(d => d.EntryId == x.Id && (EF.Functions.ILike(d.Title, pattern, "\\") ||
+                        db.Kinds.Any(k => k.Id == d.KindId && EF.Functions.ILike(k.Name, pattern, "\\")) ||
+                        db.Correspondents.Any(c => c.Id == d.CorrespondentId && (EF.Functions.ILike(c.Name, pattern, "\\") || EF.Functions.ILike(c.AliasesJson, pattern, "\\"))))) ||
+                    db.EntryTags.Any(t => t.EntryId == x.Id && db.Tags.Any(g => g.Id == t.TagId && EF.Functions.ILike(g.Name, pattern, "\\"))));
             }
         }
         return new(await query.OrderByDescending(x => x.IsFolder).ThenBy(x => x.Name).Skip(Math.Max(0, offset)).Take(100).ToListAsync(), await query.CountAsync());

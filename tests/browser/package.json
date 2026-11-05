@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "test": "node smoke.mjs",
-    "test:intake": "node intake.mjs",
     "test:inbox": "node inbox.mjs",
     "test:drop": "node drop.mjs",
     "test:folders": "node folders.mjs",
@@ -12,9 +11,8 @@
     "test:preview": "node preview.mjs",
     "test:updates": "node updates.mjs",
     "test:desk": "node desk.mjs",
-    "test:ollama": "node ollama.mjs",
-    "test:organizing": "node organizing.mjs",
-    "test:assistants": "node instructions-mcp.mjs"
+    "test:assistants": "node instructions-mcp.mjs",
+    "test:sorting": "node sorting.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"
