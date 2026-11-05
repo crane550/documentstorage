@@ -126,15 +126,30 @@ try {
     // Something new: the reader proposes a new kind; approving makes it.
     await open('Scan 7.txt');
     await check(page.locator('.new-mark').first().isVisible(), 'a kind the reader made up is marked new');
+    // Arrange the name with chips: add words, drag Title to the front.
+    await page.getByRole('button', { name: 'Arrange name & folders' }).click();
+    const nameRow = page.locator('[data-name-row]');
+    await nameRow.locator('.chip-part').first().waitFor();
+    await check(nameRow.locator('.chip-part .chip-label').allTextContents().then(t => t.join('|') === 'Date|From|Title'), 'the arranger shows the name as chips');
+    await page.locator('.composer-palette').getByRole('button', { name: 'Text', exact: true }).click();
+    await nameRow.locator('.chip-text').last().fill('family'); await nameRow.locator('.chip-text').last().press('Tab');
+    await page.dragAndDrop('[data-name-row] .chip-part:has-text("Title")', '[data-name-row] .chip-part:has-text("Date")');
+    await page.waitForFunction(() => document.querySelector('[data-sort-name]')?.textContent.includes('Chili recipe family.txt'));
+    await check(nameRow.locator('.chip-part .chip-label').allTextContents().then(t => t[0] === 'Title'), 'dragging a chip moves it, and the name follows on the spot');
+    await page.dragAndDrop('.composer-palette [data-palette="title"]', '[data-new-level]');
+    await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.includes('Chili recipe'));
+    await check(page.locator('[data-sort-path]').textContent().then(t => t.includes('Recipe') && t.includes('Chili recipe')), 'dragging a part onto + folder makes a new folder level');
+    await page.screenshot({ path: path.join(shots, 'sorting-arranger.png') });
+    await check(page.getByText('A new kind starts with this arrangement').isVisible(), 'a new kind says it will start with the arrangement');
     await page.getByRole('button', { name: /Approve & file/ }).click(); await toast(page, 'Filed as');
-    await check(arrives('Recipe/Chili recipe.txt'), 'a new kind files under its own name until its patterns are set');
+    await check(arrives('Recipe/Chili recipe/Chili recipe family.txt'), 'the document files where it was arranged');
     await page.locator('.caught-up').waitFor();
 
     // Filed list, and Undo.
     await page.getByRole('button', { name: 'Filed', exact: true }).click();
     await check(page.waitForFunction(() => document.querySelectorAll('.filed-row').length === 3, null, { timeout: 10000 }).then(() => true), 'the Filed list shows the three filings');
     await check(page.locator('.filed-row').filter({ hasText: '2026-10 Cedar Bank statement 1234.txt' }).locator('.stamp').textContent().then(t => t.includes('Corrected')), 'a corrected filing is marked as such');
-    await page.locator('.filed-row').filter({ hasText: 'Chili recipe.txt' }).getByRole('button', { name: 'Undo' }).click(); await toast(page, 'back in the inbox');
+    await page.locator('.filed-row').filter({ hasText: 'Chili recipe family.txt' }).getByRole('button', { name: 'Undo' }).click(); await toast(page, 'back in the inbox');
     await check(arrives('Inbox/Scan 7.txt'), 'undo puts the document back in the inbox');
     await page.getByRole('button', { name: /Waiting/ }).click();
     await open('Scan 7.txt');
@@ -154,6 +169,8 @@ try {
     await page.getByRole('button', { name: /^Kinds/ }).click();
     await statements.getByRole('button', { name: 'Actions for Bank statement' }).click();
     await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await check(page.locator('.kind-form .composer .chip-part').first().waitFor().then(() => true), 'the kind form shows its patterns as chips');
+    await page.locator('.kind-form summary', { hasText: 'Type the patterns' }).click();
     await page.getByLabel('Folder pattern', { exact: true }).fill('Statements/{from}');
     await page.getByRole('button', { name: 'Save kind', exact: true }).click(); await toast(page, 'belong somewhere else');
     await check(exists('Banking/Cedar Bank/2026/2026-10 Cedar Bank statement 1234.txt'), 'changing a pattern moves nothing by itself');

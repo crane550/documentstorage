@@ -8,14 +8,16 @@
     </div>
     <label for="kind-description">What it covers <span class="hint">(the reader sees this)</span></label>
     <input id="kind-description" @bind="Kind.Description" maxlength="400" placeholder="Titles and registrations for cars, trucks and trailers." />
-    <label for="kind-folder">Folder pattern</label>
-    <input id="kind-folder" class="mono" @bind="Kind.FolderPattern" @bind:event="oninput" placeholder="Vehicles/{vehicle}" />
-    <label for="kind-pattern">Name pattern</label>
-    <input id="kind-pattern" class="mono" @bind="Kind.NamePattern" @bind:event="oninput" placeholder="{date} {from} {title}" />
-    <div class="token-buttons" aria-label="Insert a token">
-        @foreach (var token in Tokens) { <button type="button" class="token" @onclick="() => Kind.NamePattern = (Kind.NamePattern + ' ' + token).Trim()">@token</button> }
-    </div>
-    <p class="hint">Tokens: {kind} {from} {title} {date} (or {date:yyyy}, {date:yyyy-MM}, {date:MMMM}) and any field, like {invoice_number}. A folder level whose tokens are all empty is left out, so a document without a sender still files sensibly.</p>
+    <span class="form-label">Where its documents go</span>
+    <PatternComposer FolderPattern="@Kind.FolderPattern" NamePattern="@Kind.NamePattern" Fields="FieldNames()" Values="Sample" Extension=".pdf" Changed="Arranged" />
+    <details class="advanced">
+        <summary>Type the patterns</summary>
+        <label for="kind-folder">Folder pattern</label>
+        <input id="kind-folder" class="mono" @bind="Kind.FolderPattern" @bind:event="oninput" placeholder="Vehicles/{vehicle}" />
+        <label for="kind-pattern">Name pattern</label>
+        <input id="kind-pattern" class="mono" @bind="Kind.NamePattern" @bind:event="oninput" placeholder="{date} {from} {title}" />
+        <p class="hint">Tokens: {kind} {from} {title} {date} (or {date:yyyy}, {date:yyyy-MM}, {date:MMMM}) and any field, like {invoice_number}. A folder level whose tokens are all empty is left out, so a document without a sender still files sensibly.</p>
+    </details>
     <p class="kind-example">@if (error != null) { <span class="destination-problem"><Icon Name="alert" Size="14" />@error</span> } else { <span class="mono">@example</span> }</p>
     <label class="check"><input type="checkbox" @bind="Kind.IsCatchAll" disabled="@(Kind.IsCatchAll && Kind.Id != Guid.Empty)" /> Catch-all for anything that fits no other kind</label>
     <div class="form-actions"><button type="submit" class="button primary" disabled="@(Busy || error != null)">Save kind</button><button type="button" class="text-button" @onclick="Cancel">Cancel</button></div>
@@ -27,6 +29,8 @@
     [Parameter] public EventCallback<DocumentKind> Save { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
     private string fields = "";
+    private SortValues Sample => new(Kind.Name.Length == 0 ? "Kind" : Kind.Name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", FieldNames().ToDictionary(x => x, x => LibraryService.IsDateField(x) ? "2026-10-31" : LibraryService.FieldLabel(x)));
+    private void Arranged((string Folder, string Name) value) { Kind.FolderPattern = value.Folder; Kind.NamePattern = value.Name; }
     private Guid loaded = Guid.NewGuid();
     private string example = "";
     private string? error;

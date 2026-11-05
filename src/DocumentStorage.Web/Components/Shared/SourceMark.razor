@@ -1,7 +1,7 @@
 @* A small dot beside a detail saying where it came from. A guess is amber and says so. *@
 @if (Source.Length > 0)
 {
-    <span class="source-mark @Source" title="@(Title ?? Text)"><span class="sr-only">@Text</span></span>
+    <span class="source-mark is-@Source" title="@(Title ?? Text)"><span class="sr-only">@Text</span></span>
 }
 @code {
     [Parameter] public string Source { get; set; } = "";

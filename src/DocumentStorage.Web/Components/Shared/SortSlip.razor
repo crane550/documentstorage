@@ -88,19 +88,13 @@
                         { <input id="@($"sort-field-{name}")" type="date" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" /> }
                         else
                         { <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" /> }
-                        @if (CurrentKind is { } current)
+                        @if (CurrentKind is { } current && !kept)
                         {
-                            @if (!kept)
-                            {
-                                <button type="button" class="field-keep" disabled="@busy" title="@($"Ask for this on every {current.Name}")" @onclick="() => Keep(name)"><Icon Name="plus" Size="12" />Keep for @current.Name</button>
-                            }
-                            else
-                            {
-                                <button type="button" class="field-toggle @(LibraryService.FieldInPattern(current, name, false) ? "on" : "")" aria-pressed="@(LibraryService.FieldInPattern(current, name, false) ? "true" : "false")" disabled="@busy" title="Use in the file name" @onclick="() => Toggle(name, false)">Name</button>
-                                <button type="button" class="field-toggle @(LibraryService.FieldInPattern(current, name, true) ? "on" : "")" aria-pressed="@(LibraryService.FieldInPattern(current, name, true) ? "true" : "false")" disabled="@busy" title="Use as a folder" @onclick="() => Toggle(name, true)">Folder</button>
-                            }
+                            <button type="button" class="field-keep" disabled="@busy" title="@($"Ask for this on every {current.Name}")" @onclick="() => Keep(name)"><Icon Name="plus" Size="12" />Keep for @current.Name</button>
                         }
-                        else if (!kept) { <button type="button" class="field-remove" aria-label="@($"Remove {LibraryService.FieldLabel(name)}")" title="Remove" @onclick="() => RemoveField(name)">×</button> }
+                        <button type="button" class="field-toggle @(InDraft(name, false) ? "on" : "")" aria-pressed="@(InDraft(name, false) ? "true" : "false")" disabled="@busy" title="Use in the file name" @onclick="() => Toggle(name, false)">Name</button>
+                        <button type="button" class="field-toggle @(InDraft(name, true) ? "on" : "")" aria-pressed="@(InDraft(name, true) ? "true" : "false")" disabled="@busy" title="Use as a folder" @onclick="() => Toggle(name, true)">Folder</button>
+                        @if (!kept) { <button type="button" class="field-remove" aria-label="@($"Remove {LibraryService.FieldLabel(name)}")" title="Remove" @onclick="() => RemoveField(name)">×</button> }
                     </div>
                 </div>
             }
@@ -127,9 +121,22 @@
             <p class="sort-name mono" data-sort-name><Icon Name="file" Size="14" />@plan.FileName</p>
             @if (plan.NewFolders.Length > 0) { <p class="hint">Makes @(plan.NewFolders.Length == 1 ? "a new folder" : $"{plan.NewFolders.Length} new folders").</p> }
         }
+        <div class="sort-arrange">
+            <button type="button" class="button small" aria-expanded="@(showArranger ? "true" : "false")" @onclick="() => showArranger = !showArranger"><Icon Name="move" Size="13" />@(showArranger ? "Done arranging" : "Arrange name & folders")</button>
+            @if (touched && kind.Trim().Length > 0)
+            {
+                @if (CurrentKind != null) { <label class="check"><input type="checkbox" @bind="keepArrangement" /> Use for every @CurrentKind.Name</label> }
+                else { <span class="hint">A new kind starts with this arrangement.</span> }
+            }
+        </div>
+        @if (showArranger)
+        {
+            <PatternComposer FolderPattern="@draftFolder" NamePattern="@draftName" Fields="FieldRows" Values="SampleValues" Extension="@System.IO.Path.GetExtension(Card.Document.Name)"
+                             NameKept="keepName" Changed="Arranged" />
+        }
         <div class="sort-name-choice">
             <label class="check"><input type="checkbox" checked="@keepName" @onchange="e => SetKeepName((bool)e.Value!)" /> Keep the original name</label>
-            <button type="button" class="text-button" @onclick="() => showOverrides = !showOverrides">@(showOverrides ? "Use the kind's folder and name" : "Change folder or name…")</button>
+            <button type="button" class="text-button" @onclick="() => showOverrides = !showOverrides">@(showOverrides ? "Use the arrangement" : "Type a folder or name…")</button>
         </div>
         @if (showOverrides)
         {
@@ -138,7 +145,7 @@
             <datalist id="sort-folders">@foreach (var f in Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && x.RelativePath.Length > 0 && !Workspace.InInbox(x)).Take(400)) { <option value="@f.RelativePath" /> }</datalist>
             <label class="slip-label" for="sort-name">Name</label>
             <input id="sort-name" class="slip-field" @bind="nameOverride" @bind:after="Changed" placeholder="@(plan?.FileName ?? "")" autocomplete="off" />
-            <p class="hint">Leave either empty to use the kind's pattern. To change the pattern for every document of this kind, edit it under <a href="/kinds">Kinds</a>.</p>
+            <p class="hint">A folder or name typed here is used for this document only and wins over the arrangement above. Leave either empty to use the arrangement.</p>
         }
     </div>
 
@@ -178,6 +185,9 @@
     private List<string> tags = [];
     private Dictionary<string, string> fields = [];
     private bool keepName, remember = true, showOverrides, busy, edited;
+    // The arrangement being worked on for this document: the kind's patterns until touched.
+    private string draftFolder = LibraryService.DefaultKindFolder, draftName = LibraryService.DefaultKindName, draftKind = "";
+    private bool touched, keepArrangement = true, showArranger;
     private SortPlan? plan;
     private string? loadedKey;
     private int planVersion;
@@ -201,15 +211,35 @@
         kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
         folderOverride = ""; nameOverride = ""; showOverrides = false; edited = false; plan = Card.Plan;
+        draftKind = "\u0000"; SyncDraft();
         await Task.CompletedTask;
     }
 
     private SortChoice Choice() => new(kind.Trim(), from.Trim(), date, title.Trim(), tags.ToArray(),
-        fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => x.Key, x => x.Value.Trim()), keepName, nameOverride.Trim(), folderOverride.Trim(), remember);
+        fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => x.Key, x => x.Value.Trim()), keepName, nameOverride.Trim(), folderOverride.Trim(), remember,
+        touched ? draftFolder : null, touched ? draftName : null, touched && keepArrangement);
+
+    // A different kind brings its own arrangement; an untouched draft follows the kind.
+    private void SyncDraft()
+    {
+        if (string.Equals(draftKind, kind.Trim(), StringComparison.OrdinalIgnoreCase)) return;
+        draftKind = kind.Trim(); touched = false; keepArrangement = true;
+        draftFolder = CurrentKind?.FolderPattern ?? LibraryService.DefaultKindFolder;
+        draftName = CurrentKind?.NamePattern ?? LibraryService.DefaultKindName;
+    }
+    private SortValues SampleValues => new(kind.Trim(), from.Trim(), date, title.Trim(), fields);
+    private bool InDraft(string field, bool folder) => SortPatterns.TokensIn(folder ? draftFolder : draftName).Contains(field);
+    private async Task Arranged((string Folder, string Name) value)
+    {
+        // Rearranging the name means using it, not the original name.
+        if (value.Name != draftName) keepName = false;
+        draftFolder = value.Folder; draftName = value.Name; touched = true;
+        await Changed();
+    }
 
     private async Task Changed()
     {
-        edited = true;
+        edited = true; SyncDraft();
         var version = ++planVersion;
         try
         {
@@ -258,15 +288,26 @@
     {
         await Library.AddKindFieldAsync(kind, name, actor); // The button turning into Name / Folder says it worked.
     });
-    private async Task Toggle(string name, bool folder) => await KindChange(async actor =>
+    // Name and Folder on a field change this document's arrangement (kept for the kind if "Use for every" stays ticked).
+    private async Task Toggle(string name, bool folder)
     {
-        var current = CurrentKind!;
-        var on = !LibraryService.FieldInPattern(current, name, folder);
-        var updated = await Library.SetFieldInPatternAsync(kind, name, folder, on, actor);
-        var moving = (await Library.RefilePlanAsync(kindId: updated.Id)).Count(x => x.Problem == null);
-        // The button and the path below show the change; speak up only when filed documents are affected.
-        if (moving > 0) Workspace.Notify($"{updated.Name}: {moving} filed documents could move. See Kinds › Tidy up.");
-    });
+        var token = "{" + name + (folder && LibraryService.IsDateField(name) ? ":yyyy" : "") + "}";
+        if (folder)
+        {
+            var levels = PatternParts.ParseFolder(draftFolder);
+            if (InDraft(name, true)) levels = levels.Select(l => l.Where(p => p.Token != name).ToList()).Where(l => l.Count > 0).ToList();
+            else levels.Add(PatternParts.Parse(token));
+            draftFolder = PatternParts.JoinFolder(levels);
+        }
+        else
+        {
+            var parts = PatternParts.Parse(draftName);
+            if (InDraft(name, false)) parts.RemoveAll(p => p.Token == name); else { parts.AddRange(PatternParts.Parse(token)); keepName = false; }
+            draftName = parts.Count == 0 ? "{title}" : PatternParts.Join(parts);
+        }
+        touched = true;
+        await Changed();
+    }
     private void EditKind()
     {
         if (CurrentKind is not { } k) return;
@@ -275,6 +316,7 @@
     private async Task SaveKind(DocumentKind input) => await KindChange(async actor =>
     {
         var saved = await Library.SaveKindAsync(input, actor); editingKind = null; kind = saved.Name;
+        draftKind = "\u0000"; touched = false; // Follow the kind as just saved.
         var moving = (await Library.RefilePlanAsync(kindId: saved.Id)).Count(x => x.Problem == null);
         Workspace.Notify($"Saved {saved.Name}.{(moving > 0 ? $" {moving} filed documents could move: see Tidy up." : "")}");
     });
@@ -315,7 +357,9 @@
             plan = current;
             if (current.Problem != null) { Workspace.Notify(current.Problem, true); return; }
             await Library.FileSortedAsync(Card.Document.Id, choice, Card.Document.ContentHash, await Workspace.ActorAsync());
-            await Filed.InvokeAsync($"Filed as {current.DestinationPath}.");
+            var moving = choice.KeepPatterns && CurrentKind is { } kept ? (await Library.RefilePlanAsync(kindId: kept.Id)).Count(x => x.Problem == null) : 0;
+            if (choice.KeepPatterns) await VocabularyChanged.InvokeAsync();
+            await Filed.InvokeAsync($"Filed as {current.DestinationPath}." + (moving > 0 ? $" {moving} other {kind}s now belong elsewhere: see Kinds › Tidy up." : ""));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

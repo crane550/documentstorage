@@ -9,7 +9,10 @@ namespace DocumentStorage.Core;
 // What a person approves: the details, never a path. The folder and name are worked out from
 // the kind's patterns (or the person's own folder or name, when they change them).
 public sealed record SortChoice(string Kind, string From, DateOnly? Date, string Title, string[] Tags, Dictionary<string, string> Fields,
-    bool KeepName = false, string NameOverride = "", string FolderOverride = "", bool Remember = true);
+    bool KeepName = false, string NameOverride = "", string FolderOverride = "", bool Remember = true,
+    // This document's own arrangement of folders and name (from the arranger); null means the kind's.
+    // KeepPatterns saves it to the kind when the document is approved.
+    string? FolderPattern = null, string? NamePattern = null, bool KeepPatterns = false);
 public sealed record SortPlan(string FolderPath, string[] NewFolders, string FileName, bool NewKind, bool NewSender, string[] NewTags, string? Problem)
 {
     public string DestinationPath => FolderPath.Length == 0 ? FileName : FolderPath + "/" + FileName;
@@ -522,12 +525,19 @@ public sealed partial class LibraryService
         catch (StorageException ex) { return new("", [], entry.Name, kind == null, sender == null, newTags, ex.Message); }
         if (kindName.Length == 0) return new("", [], entry.Name, false, false, newTags, "Choose what kind of document this is.");
         var values = new SortValues(kindName, fromName, choice.Date, SortPatterns.Clean(choice.Title), choice.Fields);
+        string folderPattern, namePattern;
+        try
+        {
+            folderPattern = choice.FolderPattern != null ? SortPatterns.ValidatePattern(choice.FolderPattern, folder: true) : kind?.FolderPattern ?? DefaultKindFolder;
+            namePattern = choice.NamePattern != null ? SortPatterns.ValidatePattern(choice.NamePattern, folder: false) : kind?.NamePattern ?? DefaultKindName;
+        }
+        catch (StorageException ex) { return new("", [], entry.Name, kind == null, sender == null && fromName.Length > 0, newTags, ex.Message); }
         string[] segments;
         try
         {
             segments = fixedSegments ?? (choice.FolderOverride.Trim().Length > 0
                 ? choice.FolderOverride.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Select(x => StoragePaths.ValidateName(x.Trim())).ToArray()
-                : SortPatterns.Folder(kind?.FolderPattern ?? DefaultKindFolder, values));
+                : SortPatterns.Folder(folderPattern, values));
         }
         catch (StorageException ex) { return new("", [], entry.Name, kind == null, sender == null && fromName.Length > 0, newTags, ex.Message); }
         // Walk down from the storage root, reusing folders that exist (any letter case).
@@ -563,7 +573,7 @@ public sealed partial class LibraryService
                 if (!string.Equals(Path.GetExtension(name), Path.GetExtension(entry.Name), StringComparison.OrdinalIgnoreCase)) name += Path.GetExtension(entry.Name);
                 name = StoragePaths.ValidateName(name);
             }
-            else name = choice.KeepName ? entry.Name : SortPatterns.Name(kind?.NamePattern ?? DefaultKindName, values, entry.Name);
+            else name = choice.KeepName ? entry.Name : SortPatterns.Name(namePattern, values, entry.Name);
         }
         catch (StorageException ex) { return new(path, created.ToArray(), entry.Name, kind == null, sender == null && fromName.Length > 0, newTags, ex.Message); }
         // Never overwrite: a name already taken gets " (2)", " (3)"…
@@ -685,8 +695,20 @@ public sealed partial class LibraryService
     {
         var stored = JsonSerializer.Deserialize<StoredSort>(plan.DetailsJson)!;
         var choice = stored.Choice;
+        var isNewKind = MatchKind(choice.Kind, await db.Kinds.ToListAsync()) == null;
+        // An arrangement kept for the kind (or the arrangement a brand-new kind is made with) becomes the kind's patterns;
+        // the document then follows them. One used for this document only leaves it where it was put.
+        var keepArrangement = choice.KeepPatterns || isNewKind;
         var (kind, sender) = await SaveDetailsCoreAsync(db, op.EntryId, choice, plan.Actor, stored.KindDescription,
-            followsFolder: choice.FolderOverride.Trim().Length == 0, followsName: !choice.KeepName && choice.NameOverride.Trim().Length == 0);
+            followsFolder: choice.FolderOverride.Trim().Length == 0 && (choice.FolderPattern == null || keepArrangement),
+            followsName: !choice.KeepName && choice.NameOverride.Trim().Length == 0 && (choice.NamePattern == null || keepArrangement));
+        if (keepArrangement && (choice.FolderPattern != null || choice.NamePattern != null))
+        {
+            var changed = false;
+            if (choice.FolderPattern != null && choice.FolderPattern != kind.FolderPattern) { kind.FolderPattern = SortPatterns.ValidatePattern(choice.FolderPattern, folder: true); changed = true; }
+            if (choice.NamePattern != null && choice.NamePattern != kind.NamePattern) { kind.NamePattern = SortPatterns.ValidatePattern(choice.NamePattern, folder: false); changed = true; }
+            if (changed && !isNewKind) kind.Revision++;
+        }
         if (stored.HadSuggestion && !plan.Automatic)
         {
             var corrected = Key(stored.SuggestedKind) != Key(kind.Name) || Key(stored.SuggestedFrom) != Key(sender?.Name ?? "") || stored.SuggestedDate != choice.Date
@@ -720,7 +742,8 @@ public sealed partial class LibraryService
         if (kind == null)
         {
             kind = new() { Name = KindName(choice.Kind), Description = kindDescription.Length > 400 ? kindDescription[..400] : kindDescription,
-                FolderPattern = DefaultKindFolder, NamePattern = DefaultKindName, FieldsJson = JsonSerializer.Serialize(choice.Fields.Keys.Select(FactKey).Take(12)), CreatedAt = time.GetUtcNow() };
+                FolderPattern = choice.FolderPattern != null ? SortPatterns.ValidatePattern(choice.FolderPattern, folder: true) : DefaultKindFolder,
+                NamePattern = choice.NamePattern != null ? SortPatterns.ValidatePattern(choice.NamePattern, folder: false) : DefaultKindName, FieldsJson = JsonSerializer.Serialize(choice.Fields.Keys.Select(FactKey).Take(12)), CreatedAt = time.GetUtcNow() };
             db.Kinds.Add(kind);
         }
         Correspondent? sender = null;

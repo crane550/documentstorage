@@ -34,16 +34,34 @@ Each kind carries fields (`DocumentKind.FieldsJson`, keys like `statement_end_da
   document only.
 - **Keep for {kind}** (`AddKindFieldAsync`) adds it to the kind, so the reader is asked for it on
   every document of that kind from then on.
-- **Name** and **Folder** (`SetFieldInPatternAsync`) put the field's token at the end of the
-  name pattern or as a new last folder level (a date field files by year there:
-  `{statement_end_date:yyyy}`), and take it out again. The destination updates on the spot; filed
-  documents that now belong elsewhere show under Tidy up.
+- **Name** and **Folder** on every field (new kinds too) add or take out the field's token in this
+  document's arrangement: at the end of the name, or as a new last folder level (a date field
+  files by year there: `{statement_end_date:yyyy}`).
 - **Edit kind…** opens the kind's whole form without leaving the Inbox.
 
 A field whose name has the word "date" gets a date picker and is stored as `yyyy-MM-dd`
 (`NormalizeFieldValue`; the reader is asked for that format and a written-out date is converted),
 so patterns can format it: `{statement_end_date:yyyy-MM}`. A brand-new kind has no Keep buttons:
 its fields travel with the document and become the kind's fields when it is approved.
+
+## Arranging the name and folders
+
+**Arrange name & folders** in Goes To opens the arranger (`PatternComposer`) in place: the folder
+levels and the name as chips (Kind, From, Title, Date, each field, and plain words). Drag a chip
+to move it within a level, between levels, onto **+ folder** for a new level, or into the name; or
+click a chip and then click where it goes (touch screens). ⇄ on a date chip changes how it's
+written (full date, year-month, year, month name); × removes; arrow keys move a focused chip and
+Delete removes it. The palette adds parts; **Text** adds plain words. `PatternParts` (Core, pure)
+splits patterns into chips and joins them back.
+
+The arrangement belongs to this document (`SortChoice.FolderPattern` / `NamePattern`) until it's
+approved. **Use for every {kind}** (ticked by default once you arrange) saves it to the kind in
+the filing's own transaction (`KeepPatterns`); the document then follows its kind, and filed
+documents that followed the old arrangement show under Tidy up. Unticked, only this document is
+arranged and it stays where it was put. A brand-new kind is created with the arrangement its
+first document was filed with. Rearranging the name stops keeping the original name. "Type a
+folder or name…" still overrides both for one document. The kind form (Kinds page and Edit kind…)
+uses the same arranger, with the typed patterns under "Type the patterns".
 
 ## Patterns
 
@@ -186,7 +204,7 @@ pre-fill cards); measuring the real model on the server.
 
 `tests/DocumentStorage.Checks/SortingChecks.cs` (patterns, hints, Word text, the narrow prompt,
 mapping, plans, filing, corrections, new kinds, undo, automatic filing and its switches, Library
-details, merge, re-filing, back-fill, assistant proposals), `KindFieldChecks.cs` (field keys, dates, keeping fields, name and folder toggles) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
+details, merge, re-filing, back-fill, assistant proposals), `KindFieldChecks.cs` (field keys, dates, keeping fields, chips round-tripping, one-off and kept arrangements, new kinds) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
 stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Tidy up (a pattern change and its moves),
 back-fill (read, Save & move), Library search and phone width. `DocumentStorage.McpChecks` covers
 the sorting tools over the real protocol. `node tests/browser/regulars.mjs` drives three readings, a fill-in from memory, the nudge, a statement filing itself and Looks right. Neither proves model accuracy: try it on real documents on the server.

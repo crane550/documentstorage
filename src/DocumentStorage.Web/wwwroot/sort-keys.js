@@ -35,3 +35,17 @@ export function focusById(id) {
     const element = document.getElementById(id);
     if (element instanceof HTMLElement) element.focus();
 }
+
+// Chips in the arranger are dragged with the browser's own drag and drop. Some browsers only start a
+// drag when it carries data, so give every chip drag a little; registered once for the document.
+let chipDrag = false;
+export function enableChipDrag() {
+    if (chipDrag) return;
+    chipDrag = true;
+    document.addEventListener("dragstart", event => {
+        const chip = event.target instanceof Element ? event.target.closest("[data-chip]") : null;
+        if (!chip || !event.dataTransfer) return;
+        event.dataTransfer.effectAllowed = "copyMove";
+        event.dataTransfer.setData("text/plain", chip.getAttribute("data-palette") ?? "chip");
+    });
+}

@@ -1,0 +1,234 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    The arranger: folders and the name as chips. Drag a chip to move it (within a folder level, between
+    levels, onto "+ folder" for a new level, or into the name), or click one and then click where it goes
+    (the way it works on a touch screen). A date chip's ⇄ changes how the date is written. The palette adds
+    built-ins and fields; "Text" adds plain words. Every change goes out as the two patterns.
+*@
+<div class="composer @(selected != null ? "selecting" : "")" data-composer>
+    <div class="composer-row">
+        <span class="composer-label">Folders</span>
+        <div class="composer-levels">
+            @for (var i = 0; i < levels.Count; i++)
+            {
+                var level = i;
+                <div class="composer-level @(dropRow == level ? "over" : "")" role="group" aria-label="@($"Folder level {level + 1}")" data-level="@level"
+                     @ondragover="() => Over(level)" @ondragover:preventDefault @ondragleave="() => Over(null)" @ondrop="() => DropAt(level, levels[level].Count)" @onclick="() => ClickTarget(level)">
+                    @for (var j = 0; j < levels[level].Count; j++) { var index = j; @Chip(level, index) }
+                </div>
+                <span class="composer-sep" aria-hidden="true">/</span>
+            }
+            <button type="button" class="composer-new @(dropRow == NewLevelRow ? "over" : "")" data-new-level @ondragover="() => Over(NewLevelRow)" @ondragover:preventDefault
+                    @ondragleave="() => Over(null)" @ondrop="DropNewLevel" @onclick="ClickNewLevel">+ folder</button>
+        </div>
+    </div>
+    <div class="composer-row">
+        <span class="composer-label">Name</span>
+        <div class="composer-level name @(dropRow == NameRow ? "over" : "") @(NameKept ? "kept" : "")" role="group" aria-label="Name" data-name-row
+             @ondragover="() => Over(NameRow)" @ondragover:preventDefault @ondragleave="() => Over(null)" @ondrop="() => DropAt(NameRow, name.Count)" @onclick="() => ClickTarget(NameRow)">
+            @for (var j = 0; j < name.Count; j++) { var index = j; @Chip(NameRow, index) }
+            @if (name.Count == 0) { <span class="composer-empty">Drop parts of the name here</span> }
+            <span class="composer-ext">@Extension</span>
+        </div>
+    </div>
+    @if (NameKept) { <p class="hint composer-note">The original name is being kept. Changing the name here uses this arrangement instead.</p> }
+    <div class="composer-palette" aria-label="Add a part">
+        <span class="composer-label">Add</span>
+        @foreach (var token in PaletteTokens)
+        {
+            <button type="button" class="palette-chip" draggable="true" data-chip data-palette="@token" title="@($"Add {Label(token)} to the name, or drag it into place")"
+                    @ondragstart="() => StartPalette(token)" @ondragend="EndDrag" @onclick="() => AddToName(PatternPart.Of(token))">@Label(token)</button>
+        }
+        <button type="button" class="palette-chip text" @onclick="AddText" title="Add plain words, like statement">Text</button>
+    </div>
+    <p class="hint composer-help">Drag to arrange, or click a part and then click where it goes. ⇄ changes how a date is written.</p>
+</div>
+
+@code {
+    private const int NameRow = -1;
+    private const int NewLevelRow = -2;
+    [Parameter, EditorRequired] public string FolderPattern { get; set; } = "";
+    [Parameter, EditorRequired] public string NamePattern { get; set; } = "";
+    [Parameter] public IEnumerable<string> Fields { get; set; } = [];
+    [Parameter] public SortValues? Values { get; set; }
+    [Parameter] public string Extension { get; set; } = ".pdf";
+    [Parameter] public bool NameKept { get; set; }
+    [Parameter] public EventCallback<(string Folder, string Name)> Changed { get; set; }
+
+    private List<List<PatternPart>> levels = [];
+    private List<PatternPart> name = [];
+    private string? lastFolder, lastName;
+    private (int Row, int Index)? selected, dragging;
+    private string? draggingPalette;
+    private int? dropRow;
+    private IJSObjectReference? module;
+
+    private IEnumerable<string> PaletteTokens => new[] { "kind", "from", "title", "date" }.Concat(Fields).Distinct();
+    private string Label(string token) => PatternParts.Label(PatternPart.Of(token));
+
+    protected override void OnParametersSet()
+    {
+        // Re-read the patterns only when they changed from outside, not when they're our own echo.
+        if (FolderPattern != lastFolder) { levels = PatternParts.ParseFolder(FolderPattern); lastFolder = FolderPattern; }
+        if (NamePattern != lastName) { name = PatternParts.Parse(NamePattern); lastName = NamePattern; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { module = await JS.InvokeAsync<IJSObjectReference>("import", "./sort-keys.js"); await module.InvokeVoidAsync("enableChipDrag"); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException) { }
+    }
+
+    private RenderFragment Chip(int row, int index) => __builder =>
+    {
+        var part = Row(row)[index];
+        var isSelected = selected == (row, index);
+        <span class="chip-part @(part.IsToken ? "token" : "text") @(isSelected ? "selected" : "")" draggable="true" data-chip
+              aria-pressed="@(isSelected ? "true" : "false")" tabindex="0" title="@(part.IsToken ? "Drag, or click then click where it goes" : "Plain words")"
+              @ondragstart="() => StartDrag(row, index)" @ondragend="EndDrag" @ondragover:preventDefault @ondrop="() => DropAt(row, index)" @ondrop:stopPropagation
+              @onclick="() => ClickChip(row, index)" @onclick:stopPropagation @onkeydown="e => ChipKey(e, row, index)">
+            @if (part.IsToken)
+            {
+                <span class="chip-label">@PatternParts.Label(part)</span>
+                @if (Values != null && PatternParts.Sample(part, Values) is { Length: > 0 } sample) { <small class="chip-sample">@sample</small> }
+                @if (PatternParts.IsDateToken(part.Token)) { <button type="button" class="chip-format" aria-label="@($"Change how {PatternParts.Label(part)} is written")" title="Change how the date is written" @onclick="() => Cycle(row, index)" @onclick:stopPropagation>⇄</button> }
+            }
+            else
+            {
+                <input class="chip-text" value="@part.Text" size="@Math.Max(3, part.Text.Length)" aria-label="Words" @onchange="e => SetText(row, index, e.Value?.ToString())" @onclick:stopPropagation />
+            }
+            <button type="button" class="chip-remove" aria-label="@($"Remove {PatternParts.Label(part)}")" @onclick="() => Remove(row, index)" @onclick:stopPropagation>×</button>
+        </span>
+    };
+
+    private List<PatternPart> Row(int row) => row == NameRow ? name : levels[row];
+    private void Over(int? row) => dropRow = row;
+    private void StartDrag(int row, int index) { dragging = (row, index); draggingPalette = null; selected = null; }
+    private void StartPalette(string token) { draggingPalette = token; dragging = null; selected = null; }
+    private void EndDrag() { dragging = null; draggingPalette = null; dropRow = null; }
+
+    // Takes the moving part out of where it was; returns it, with the target index adjusted.
+    private PatternPart? Take((int Row, int Index) source, int row, ref int index)
+    {
+        if (source.Row != NameRow && source.Row >= levels.Count) return null;
+        var list = Row(source.Row);
+        if (source.Index >= list.Count) return null;
+        var part = list[source.Index];
+        list.RemoveAt(source.Index);
+        if (source.Row == row && source.Index < index) index--;
+        return part;
+    }
+
+    private async Task DropAt(int row, int index)
+    {
+        dropRow = null;
+        PatternPart? part = null;
+        if (draggingPalette != null) part = PatternPart.Of(draggingPalette);
+        else if (dragging is { } source) part = Take(source, row, ref index);
+        EndDrag();
+        if (part == null) return;
+        Insert(row, index, part);
+        await Emit(row == NameRow);
+    }
+
+    private async Task DropNewLevel()
+    {
+        dropRow = null;
+        PatternPart? part = null; var unused = 0;
+        if (draggingPalette != null) part = PatternPart.Of(draggingPalette, PatternParts.IsDateToken(draggingPalette) ? "yyyy" : null);
+        else if (dragging is { } source) part = Take(source, NewLevelRow, ref unused);
+        EndDrag();
+        if (part == null) return;
+        levels.Add([part]);
+        await Emit(false);
+    }
+
+    private void Insert(int row, int index, PatternPart part)
+    {
+        if (row != NameRow && row >= levels.Count) { levels.Add([part]); return; }
+        var list = Row(row);
+        list.Insert(Math.Clamp(index, 0, list.Count), part);
+    }
+
+    private async Task ClickChip(int row, int index)
+    {
+        if (selected == null) { selected = (row, index); return; }
+        if (selected == (row, index)) { selected = null; return; }
+        var target = index; var source = selected.Value; selected = null;
+        var part = Take(source, row, ref target);
+        if (part == null) return;
+        Insert(row, target, part);
+        await Emit(row == NameRow || source.Row == NameRow);
+    }
+
+    private async Task ClickTarget(int row)
+    {
+        if (selected is not { } source) return;
+        selected = null;
+        var index = Row(row).Count;
+        var part = Take(source, row, ref index);
+        if (part == null) return;
+        Insert(row, index, part);
+        await Emit(row == NameRow || source.Row == NameRow);
+    }
+
+    private async Task ClickNewLevel()
+    {
+        if (selected is not { } source) return;
+        selected = null; var unused = 0;
+        var part = Take(source, NewLevelRow, ref unused);
+        if (part == null) return;
+        levels.Add([part]);
+        await Emit(source.Row == NameRow);
+    }
+
+    private async Task ChipKey(KeyboardEventArgs e, int row, int index)
+    {
+        // Keyboard: arrows move a part along its row; Delete removes it.
+        var list = Row(row);
+        if (e.Key == "ArrowLeft" && index > 0) { (list[index - 1], list[index]) = (list[index], list[index - 1]); await Emit(row == NameRow); }
+        else if (e.Key == "ArrowRight" && index < list.Count - 1) { (list[index + 1], list[index]) = (list[index], list[index + 1]); await Emit(row == NameRow); }
+        else if (e.Key is "Delete" or "Backspace") await Remove(row, index);
+        else if (e.Key == "Escape") selected = null;
+    }
+
+    private async Task Cycle(int row, int index)
+    {
+        var list = Row(row); var part = list[index];
+        list[index] = part with { Format = PatternParts.NextFormat(part.Format) };
+        await Emit(row == NameRow);
+    }
+
+    private async Task SetText(int row, int index, string? text)
+    {
+        var list = Row(row);
+        if (string.IsNullOrWhiteSpace(text)) list.RemoveAt(index); else list[index] = PatternPart.Words(text.Trim());
+        await Emit(row == NameRow);
+    }
+
+    private async Task Remove(int row, int index)
+    {
+        selected = null;
+        Row(row).RemoveAt(index);
+        await Emit(row == NameRow);
+    }
+
+    private async Task AddToName(PatternPart part) { name.Add(part); await Emit(true); }
+    private async Task AddText() { name.Add(PatternPart.Words("text")); await Emit(true); }
+
+    private async Task Emit(bool nameChanged)
+    {
+        levels.RemoveAll(x => x.Count == 0);
+        lastFolder = PatternParts.JoinFolder(levels); lastName = PatternParts.Join(name);
+        await Changed.InvokeAsync((lastFolder, lastName));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module == null) return;
+        try { await module.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException) { }
+    }
+}
