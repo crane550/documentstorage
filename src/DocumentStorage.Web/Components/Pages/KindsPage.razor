@@ -65,7 +65,8 @@ else if (tab == "kinds")
 }
 else if (tab == "tidy")
 {
-    <TidyList KindId="KindFilter" SenderId="SenderFilter" Scope="@TidyScope" Moved="Load" />
+    @if (KindFilter == null && SenderFilter == null) { <BackfillList Changed="Load" /> }
+    <TidyList @key="tidyVersion" KindId="KindFilter" SenderId="SenderFilter" Scope="@TidyScope" Moved="Load" />
 }
 else if (tab == "senders")
 {
@@ -82,7 +83,7 @@ else
     [SupplyParameterFromQuery(Name = "sender")] public string? SenderParameter { get; set; }
     private Guid? KindFilter => Guid.TryParse(KindParameter, out var id) ? id : null;
     private Guid? SenderFilter => Guid.TryParse(SenderParameter, out var id) ? id : null;
-    private int outOfPlace;
+    private int outOfPlace, tidyVersion;
     private Dictionary<string, int> outByKind = [];
     private string TidyScope => KindFilter is Guid k ? $"Only {vocabulary.Kinds.FirstOrDefault(x => x.Id == k)?.Name ?? "one kind"}." : SenderFilter is Guid f ? $"Only from {vocabulary.Senders.FirstOrDefault(x => x.Id == f)?.Name ?? "one sender"}." : "";
     private string tab = "kinds";
@@ -99,6 +100,7 @@ else
     }
     private async Task Load()
     {
+        tidyVersion++;
         var moves = await Library.RefilePlanAsync();
         outOfPlace = moves.Count(x => x.Problem == null);
         outByKind = moves.Where(x => x.Problem == null).GroupBy(x => x.Kind).ToDictionary(x => x.Key, x => x.Count());

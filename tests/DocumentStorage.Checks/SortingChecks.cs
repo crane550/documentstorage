@@ -211,6 +211,45 @@ internal static class SortingChecks
         statementKindNow = (await library.SortVocabularyAsync()).Kinds.Single(x => x.Name == "Bank statement");
         statementKindNow.FolderPattern = "Statements/{from}"; await library.SaveKindAsync(statementKindNow, actor);
         check((await library.RefilePlanAsync(kindId: statementKindNow.Id)).All(x => x.EntryId != scan.Document.Id), "a document set to stay where it is is never listed to move");
+
+        // ---- Back-fill: documents already in the Library get details too ----
+        var archive = await library.CreateFolderAsync(top.Id, "Archive");
+        var baseline = (await library.BackfillStatusAsync()).Candidates; // Other checks' documents share this catalog.
+        async Task<CatalogEntry> Old(string name, string text)
+        { await library.UploadAsync(archive, name, new MemoryStream(Encoding.UTF8.GetBytes(text))); clock.Advance(6); await library.ScanAsync(); return (await library.BrowseAsync(archive)).Items.Single(x => x.Name == name); }
+        var oldInvoice = await Old("old invoice.txt", "Acme Supply Co\nInvoice INV-777\nDate 2025-03-02\nSynthetic total 10.00");
+        var oldPermit = await Old("20250105_0900.txt", "City of Synthetic Falls\nDog licence renewed January 5, 2025");
+        var flyer = await Old("Scan 99.txt", "Synthetic pizza flyer");
+        var status = await library.BackfillStatusAsync();
+        check(status.Candidates == baseline + 3 && status.ReaderOn, "documents in the Library without details are counted for back-fill, and filed ones are not");
+        check(await library.QueueBackfillAsync(actor, folderId: archive) == 3 && (await library.BackfillStatusAsync()).Waiting == 3, "back-fill queues readings for the documents in a chosen folder");
+        vocab = await library.SortVocabularyAsync();
+        await library.SetKindAutoFileAsync(vocab.Kinds.Single(x => x.Name == "Invoice").Id, true, actor);
+        var answersFor = new Dictionary<string, SortReply>
+        {
+            ["old invoice.txt"] = new("Invoice", "", "Acme Supply Co", "2025-03-02", "Shop supplies", [], [new("invoice_number", "INV-777", "Invoice INV-777")], "high"),
+            ["20250105_0900.txt"] = new("Permit", "", "City of Synthetic Falls", "2025-01-05", "Dog licence", ["pets"], [], "high"),
+            ["Scan 99.txt"] = new("Everything else", "", "", "", "Pizza flyer", [], [], "low")
+        };
+        for (var i = 0; i < 3; i++) await library.ProcessNextIdentificationAsync(new Model(input => answersFor[JsonDocument.Parse(input.PromptJson).RootElement.GetProperty("file_name").GetString()!]));
+        check(File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")), "a back-fill reading never files anything by itself, even for a kind that files itself");
+        var ours = new[] { oldInvoice.Id, oldPermit.Id, flyer.Id };
+        var suggestions = (await library.BackfillSuggestionsAsync()).Where(x => ours.Contains(x.Document.Id)).ToList();
+        var invoiceSuggestion = suggestions.Single(x => x.Document.Id == oldInvoice.Id);
+        check(suggestions.Count == 3 && invoiceSuggestion.Choice.Kind == "Invoice" && invoiceSuggestion.Choice.From == "Acme Supply Co" && invoiceSuggestion.FolderPath == "Archive"
+            && invoiceSuggestion.WouldGo.DestinationPath == "Invoices/Acme Supply Co/2025/old invoice.txt", "suggestions show the details and where the kind would put each document");
+        check((await library.AcceptBackfillAsync(invoiceSuggestion.JobId, invoiceSuggestion.Choice, move: false, actor)).StartsWith("Details saved. The file stays")
+            && File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")) && (await library.DocumentDetailsAsync(oldInvoice.Id))!.Kind == "Invoice",
+            "accepting saves the details and leaves the file where it is");
+        check((await library.RefilePlanAsync(entryId: oldInvoice.Id)).Count == 0, "a document accepted in place does not show up as out of place");
+        var permitSuggestion = suggestions.Single(x => x.Document.Id == oldPermit.Id);
+        var moved = await library.AcceptBackfillAsync(permitSuggestion.JobId, permitSuggestion.Choice, move: true, actor);
+        check(moved.Contains("moved to Permit/City of Synthetic Falls/2025-01-05 City of Synthetic Falls Dog licence.txt") && File.Exists(Path.Combine(scratch, "Permit/City of Synthetic Falls/2025-01-05 City of Synthetic Falls Dog licence.txt")),
+            "accepting with move files it where its kind puts it, renaming a scanner's name");
+        await library.DismissBackfillAsync(suggestions.Single(x => x.Document.Id == flyer.Id).JobId, actor);
+        status = await library.BackfillStatusAsync();
+        check(status.Candidates == baseline && status.Ready == 0 && !(await library.BackfillSuggestionsAsync()).Any(x => ours.Contains(x.Document.Id)), "skipped and accepted documents are not read or suggested again");
+        await refuses(() => library.AcceptBackfillAsync(invoiceSuggestion.JobId, invoiceSuggestion.Choice, false, actor), "a suggestion cannot be accepted twice");
         await library.SetIntakeAsync(inbox, false);
     }
 

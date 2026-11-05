@@ -1029,6 +1029,20 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .tidy-from { font-size: 12px; color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(123, 112, 98, .45); overflow-wrap: anywhere; }
 .tidy-to { font-size: 12.5px; color: var(--manila-ink); font-weight: 600; overflow-wrap: anywhere; }
 .kind-moves { font-size: 12px; }
+.backfill-list { padding: 14px 16px; margin-bottom: 14px; }
+.backfill-list ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.backfill-row { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr); gap: 8px 14px; padding: 12px 4px; border-top: 1px solid var(--line); }
+.backfill-file { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.backfill-file strong { overflow-wrap: anywhere; }
+.backfill-file small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.backfill-notes { color: var(--amber) !important; }
+.backfill-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 8px; }
+.backfill-fields label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; font-weight: 650; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+.backfill-fields label.wide { grid-column: 1 / -1; }
+.backfill-fields input { min-height: 32px; height: 32px; padding: 4px 8px; font-size: 13px; text-transform: none; letter-spacing: normal; }
+.backfill-fields input.guess { background: var(--amber-bg); border-color: #d9b57a; }
+.backfill-actions { grid-column: 2; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.backfill-to { color: var(--manila-ink); font-size: 11.5px; overflow-wrap: anywhere; }
 .check.follows { margin: 8px 0 4px; font-size: 12.5px; }
 .details-move { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; padding: 8px 10px; border-radius: 6px; background: var(--manila); border: 1px solid var(--manila-2); font-size: 12.5px; color: var(--manila-ink); overflow-wrap: anywhere; }
 
@@ -1041,6 +1055,9 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
     .filed-row { grid-template-columns: 28px minmax(0, 1fr) auto; }
     .filed-row .stamp, .filed-row a.text-button { grid-column: 2; justify-self: start; }
     .kind-grid { grid-template-columns: minmax(0, 1fr); }
+    .backfill-row { grid-template-columns: minmax(0, 1fr); }
+    .backfill-fields { grid-template-columns: 1fr 1fr; }
+    .backfill-actions { grid-column: 1; }
     .tray-keys { display: none; }
 }
 =======

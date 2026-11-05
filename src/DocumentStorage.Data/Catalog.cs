@@ -153,6 +153,8 @@ public sealed class IdentificationJob
     public bool NeedsReview { get; set; }
     // Sorting jobs classify and extract only; code builds the folder and name.
     public bool Sorting { get; set; }
+    // A sorting reading of a document already in the Library (not an inbox): details only, never a filing.
+    public bool Backfill { get; set; }
 }
 
 // Written before a disk move. A restart reconciles a prepared operation before scanning.

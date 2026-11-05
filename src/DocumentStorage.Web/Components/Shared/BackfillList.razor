@@ -1,0 +1,128 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<BackfillList> Logger
+@implements IDisposable
+
+@* Documents already in the Library, read by the reader and waiting for a look. Correct inline;
+   "Save here" keeps the file where it is, "Save & move" files it where its kind puts it. *@
+<section class="sheet backfill-list" aria-label="Library documents without details">
+    <header class="tidy-head">
+        <div>
+            <h2>Library documents without details</h2>
+            <p class="hint">
+                @if (status == null) { <span>Counting…</span> }
+                else
+                {
+                    <span>@status.Candidates not read yet</span>
+                    @if (status.Waiting + status.Reading > 0) { <span> · @(status.Waiting + status.Reading) being read</span> }
+                    @if (status.Ready > 0) { <span> · @status.Ready ready for a look</span> }
+                    <span>. Reading never moves anything; you choose for each one.</span>
+                }
+            </p>
+        </div>
+        @if (status is { Candidates: > 0 })
+        {
+            @if (status.ReaderOn) { <button type="button" class="button" disabled="@busy" @onclick="Read"><Icon Name="spark" Size="15" />Read @Math.Min(status.Candidates, LibraryService.BackfillBatch) with AI</button> }
+            else { <a class="text-button" href="/settings?tab=reader">Turn on the AI reader to read them</a> }
+        }
+    </header>
+    @if (rows.Count > 0)
+    {
+        <ul>
+            @foreach (var row in rows)
+            {
+                <li class="backfill-row" @key="row.Suggestion.JobId">
+                    <div class="backfill-file">
+                        <strong>@row.Suggestion.Document.Name</strong>
+                        <small class="mono">@row.Suggestion.Document.RootName / @(row.Suggestion.FolderPath.Length == 0 ? "" : row.Suggestion.FolderPath + " / ")</small>
+                        @if (row.Suggestion.Notes.Length > 0) { <small class="backfill-notes">@string.Join(" · ", row.Suggestion.Notes)</small> }
+                    </div>
+                    <div class="backfill-fields">
+                        <label>Kind<input list="backfill-kinds" @bind="row.Kind" class="@(row.Suggestion.Sources.GetValueOrDefault("kind") == "guess" ? "guess" : "")" /></label>
+                        <label>From<input list="backfill-senders" @bind="row.From" class="@(row.Suggestion.Sources.GetValueOrDefault("from") == "guess" ? "guess" : "")" /></label>
+                        <label>Date<input type="date" @bind="row.Date" class="@(row.Suggestion.Sources.GetValueOrDefault("date") == "guess" ? "guess" : "")" /></label>
+                        <label>Title<input @bind="row.Title" /></label>
+                        <label class="wide">Tags<input @bind="row.Tags" placeholder="comma-separated" /></label>
+                    </div>
+                    <div class="backfill-actions">
+                        <button type="button" class="button small primary" disabled="@busy" @onclick="() => Accept(row, false)">Save here</button>
+                        @if (row.Suggestion.WouldGo.Problem == null && row.Suggestion.WouldGo.DestinationPath != row.Suggestion.Document.RelativePath)
+                        {
+                            <button type="button" class="button small" disabled="@busy" title="@($"Move to {row.Suggestion.WouldGo.DestinationPath}")" @onclick="() => Accept(row, true)">Save &amp; move</button>
+                            <small class="mono backfill-to">→ @row.Suggestion.WouldGo.DestinationPath</small>
+                        }
+                        <button type="button" class="text-button" disabled="@busy" @onclick="() => Skip(row)">Skip</button>
+                    </div>
+                </li>
+            }
+        </ul>
+        <datalist id="backfill-kinds">@foreach (var k in vocabulary.Kinds) { <option value="@k.Name" /> }</datalist>
+        <datalist id="backfill-senders">@foreach (var s in vocabulary.Senders) { <option value="@s.Name" /> }</datalist>
+    }
+</section>
+
+@code {
+    [Parameter] public EventCallback Changed { get; set; }
+    private sealed class Row(BackfillSuggestion suggestion)
+    {
+        public BackfillSuggestion Suggestion { get; } = suggestion;
+        public string Kind { get; set; } = suggestion.Choice.Kind;
+        public string From { get; set; } = suggestion.Choice.From;
+        public DateOnly? Date { get; set; } = suggestion.Choice.Date;
+        public string Title { get; set; } = suggestion.Choice.Title;
+        public string Tags { get; set; } = string.Join(", ", suggestion.Choice.Tags);
+    }
+    private BackfillStatus? status;
+    private List<Row> rows = [];
+    private SortVocabulary vocabulary = new([], [], [], [], [], []);
+    private bool busy;
+    private readonly CancellationTokenSource lifetime = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        _ = PollAsync();
+    }
+    private async Task Load()
+    {
+        status = await Library.BackfillStatusAsync();
+        vocabulary = await Library.SortVocabularyAsync();
+        var fresh = await Library.BackfillSuggestionsAsync();
+        // Keep what's being typed into rows that are still there.
+        rows = fresh.Select(x => rows.FirstOrDefault(r => r.Suggestion.JobId == x.JobId) ?? new Row(x)).ToList();
+    }
+    private async Task PollAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(6));
+            while (await timer.WaitForNextTickAsync(lifetime.Token))
+                if (status is { } s && s.Waiting + s.Reading > 0 && !busy) await InvokeAsync(async () => { await Load(); StateHasChanged(); });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Logger.LogWarning("Back-fill refresh stopped: {Kind}", ex.GetType().Name); }
+    }
+    private async Task Read() => await Run(async () =>
+    {
+        var queued = await Library.QueueBackfillAsync(await Workspace.ActorAsync());
+        Workspace.Notify(queued == 0 ? "Nothing could be queued. Check that storage is online." : $"Reading {queued} documents in the background. They'll show here as they're done.");
+    });
+    private async Task Accept(Row row, bool move) => await Run(async () =>
+    {
+        var choice = row.Suggestion.Choice with { Kind = row.Kind.Trim(), From = row.From.Trim(), Date = row.Date, Title = row.Title.Trim(),
+            Tags = row.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) };
+        var message = await Library.AcceptBackfillAsync(row.Suggestion.JobId, choice, move, await Workspace.ActorAsync());
+        if (move) await Workspace.RefreshAsync();
+        Workspace.Notify(message);
+        await Changed.InvokeAsync();
+    });
+    private async Task Skip(Row row) => await Run(async () => await Library.DismissBackfillAsync(row.Suggestion.JobId, await Workspace.ActorAsync()));
+    private async Task Run(Func<Task> action)
+    {
+        if (busy) return; busy = true;
+        try { await action(); await Load(); }
+        catch (Exception ex) { Logger.LogError(ex, "Back-fill action failed"); Workspace.Notify(ex is StorageException ? ex.Message : "That could not finish. Try again.", true); }
+        finally { busy = false; }
+    }
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}

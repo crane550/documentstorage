@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentStorage.Core;
 
-public sealed record IdentificationContext(string Json, string Hash, string[] Types, string[] Facts, bool Truncated, bool Organizing = false, bool Sorting = false, string InputText = "");
+public sealed record IdentificationContext(string Json, string Hash, string[] Types, string[] Facts, bool Truncated, bool Organizing = false, bool Sorting = false, string InputText = "", bool Backfill = false);
 public sealed record IdentificationOverview(OllamaSettings Settings, List<DocumentTypeProfile> Types, List<IdentificationJob> Jobs);
 
 public sealed partial class LibraryService
@@ -139,12 +139,12 @@ public sealed partial class LibraryService
     private async Task<Guid> EnqueueIdentificationAsync(CatalogDb db, CatalogEntry entry, OllamaSettings settings, IdentificationContext context, string actor, bool retry)
     {
         var reviewRevision = (await db.Reviews.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id))?.Revision ?? 0;
-        var previous = await db.IdentificationJobs.Where(x => x.Organizing == context.Organizing && x.Sorting == context.Sorting && x.EntryId == entry.Id && x.ContentHash == entry.ContentHash && x.SourcePath == entry.RelativePath &&
+        var previous = await db.IdentificationJobs.Where(x => x.Organizing == context.Organizing && x.Sorting == context.Sorting && x.Backfill == context.Backfill && x.EntryId == entry.Id && x.ContentHash == entry.ContentHash && x.SourcePath == entry.RelativePath &&
             x.SettingsRevision == settings.Revision && x.ContextHash == context.Hash && x.ReviewRevision == reviewRevision).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync();
         if (previous != null && (!retry || previous.State is "Queued" or "Running" or "Retry")) return previous.Id;
         var job = new IdentificationJob
         {
-            Organizing = context.Organizing, Sorting = context.Sorting, EntryId = entry.Id, ContentHash = entry.ContentHash, SourcePath = entry.RelativePath, ReviewRevision = reviewRevision,
+            Organizing = context.Organizing, Sorting = context.Sorting, Backfill = context.Backfill, EntryId = entry.Id, ContentHash = entry.ContentHash, SourcePath = entry.RelativePath, ReviewRevision = reviewRevision,
             SettingsRevision = settings.Revision, ContextHash = context.Hash, ContextJson = context.Json,
             Endpoint = settings.Endpoint, Model = settings.Model, InputTruncated = context.Truncated || (!context.Sorting && entry.ExtractedText.Length > settings.MaxInputCharacters),
             CreatedAt = time.GetUtcNow(), NotBefore = time.GetUtcNow(), CreatedBy = actor
@@ -249,9 +249,9 @@ public sealed partial class LibraryService
             var entry = await db.Entries.SingleOrDefaultAsync(x => x.Id == claimed.EntryId, stoppingToken);
             var review = entry == null ? null : await db.Reviews.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id, stoppingToken);
             if (entry == null || entry.IsMissing || entry.TrashBatchId != null || entry.RelativePath != claimed.SourcePath || settings.Revision != claimed.SettingsRevision ||
-                (review?.Revision ?? 0) != claimed.ReviewRevision || !HasIntakeAncestor(entry, await db.Entries.AsNoTracking().Where(x => x.IsFolder).ToListAsync(stoppingToken)))
+                (review?.Revision ?? 0) != claimed.ReviewRevision || !claimed.Backfill && !HasIntakeAncestor(entry, await db.Entries.AsNoTracking().Where(x => x.IsFolder).ToListAsync(stoppingToken)))
             { await SupersedeAsync(db, claimed, "Document, review or settings changed before identification."); return true; }
-            if (entry.Readiness != "Ready") { claimed.State = "Retry"; claimed.NotBefore = time.GetUtcNow().AddSeconds(30); claimed.LastError = "Waiting for the scan to settle."; await db.SaveChangesAsync(stoppingToken); return true; }
+            if (!claimed.Backfill && entry.Readiness != "Ready") { claimed.State = "Retry"; claimed.NotBefore = time.GetUtcNow().AddSeconds(30); claimed.LastError = "Waiting for the scan to settle."; await db.SaveChangesAsync(stoppingToken); return true; }
             var context = await JobContextAsync(db, entry, settings, claimed);
             if (entry.ContentHash != claimed.ContentHash || context.Hash != claimed.ContextHash)
             { await SupersedeAsync(db, claimed, "Document contents or identification guidance changed. Queue a fresh job."); return true; }
@@ -328,7 +328,7 @@ public sealed partial class LibraryService
                 { await SupersedeAsync(db, job, "The document, review or guidance changed during identification. Its response was discarded."); return true; }
                 try
                 {
-                    await RequireIntakeAsync(db, entry); RequireStable(entry);
+                    if (!job.Backfill) { await RequireIntakeAsync(db, entry); RequireStable(entry); }
                     var (_, root) = await WritableEntryAsync(db, entry.Id);
                     if (await FingerprintAsync(root, entry) != job.ContentHash) { await SupersedeAsync(db, job, "Document contents changed during identification. Its response was discarded."); return true; }
                 }
@@ -369,7 +369,7 @@ public sealed partial class LibraryService
         {
             ((ICollection<KeyValuePair<Guid,LiveIdentification>>)identificationRequests).Remove(new(claimed.Id, live));
             live.Cancellation.Dispose();
-            if (sorted)
+            if (sorted && !claimed.Backfill)
                 try { await TryAutoFileAsync(claimed.Id); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { } // The card simply waits for a person.
         }

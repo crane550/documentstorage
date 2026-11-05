@@ -13,6 +13,8 @@ assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
 const directory = path.resolve('.local/sorting-browser-' + Date.now());
 await mkdir(path.join(directory, 'Inbox'), { recursive: true });
 await mkdir(path.join(directory, 'Banking'), { recursive: true });
+await mkdir(path.join(directory, 'Archive'), { recursive: true });
+await writeFile(path.join(directory, 'Archive', 'IMG_0042.txt'), 'Synthetic Hardware Store\nReceipt\nMarch 3, 2025\nTotal 12.40');
 const statement = 'CEDAR BANK N.A.\nChecking account ending 1234\nStatement period October 1, 2026 to October 31, 2026\nSynthetic closing balance 42.50';
 const invoice = 'Acme Supply Co\nINVOICE INV-20391\nDate: 10/14/2026\nSynthetic shop supplies total 84.20';
 const recipe = 'Grandma\'s synthetic chili\nTwo cans of beans, one onion, a secret amount of cumin.';
@@ -24,6 +26,7 @@ let reads = 0, wireError, sawFolders = false;
 const answers = {
     '20261105_143022.txt': { kind: 'Bank statement', kind_description: '', from: 'CEDAR BANK N.A.', date: '2026-10-31', title: 'Checking statement', tags: [], fields: [{ name: 'account_ending', value: '1234', quote: 'ending 1234' }], confidence: 'high' },
     'Acme_Invoice_INV-20391_2026-10-14.txt': { kind: 'Invoice', kind_description: '', from: 'Acme Supply Co', date: '2026-10-14', title: 'Shop supplies', tags: [], fields: [{ name: 'invoice_number', value: 'INV-20391', quote: 'INVOICE INV-20391' }, { name: 'total', value: '84.20', quote: 'total 84.20' }], confidence: 'high' },
+    'IMG_0042.txt': { kind: 'Receipt', kind_description: '', from: 'Synthetic Hardware Store', date: '2025-03-03', title: 'Hinges', tags: [], fields: [{ name: 'total', value: '12.40', quote: 'Total 12.40' }], confidence: 'high' },
     'Scan 7.txt': { kind: 'Recipe', kind_description: 'Cooking recipes.', from: '', date: '', title: 'Chili recipe', tags: ['recipes'], fields: [], confidence: 'medium' }
 };
 const fixture = http.createServer(async (req, res) => {
@@ -140,6 +143,14 @@ try {
     await page.getByRole('button', { name: /^Move 1/ }).click(); await toast(page, 'Moved 1 document');
     await check(arrives('Statements/Cedar Bank/2026-10 Cedar Bank statement 1234.txt'), 'approving the move re-files the document under the new pattern');
     await page.locator('.tidy-head h2').filter({ hasText: 'Everything is where its kind puts it' }).waitFor();
+
+    // Back-fill: a document already in the Library gets details on request, and moves only when asked.
+    await check(page.locator('.backfill-list').textContent().then(t => t.includes('1 not read yet')), 'Tidy up counts Library documents without details');
+    await page.getByRole('button', { name: /^Read 1 with AI/ }).click(); await toast(page, 'Reading 1 documents');
+    await page.locator('.backfill-row').filter({ hasText: 'IMG_0042.txt' }).waitFor({ timeout: 30000 });
+    await check(page.locator('.backfill-row input').first().inputValue().then(v => v === 'Receipt') && exists('Archive/IMG_0042.txt'), 'the reading shows as a suggestion, and nothing has moved');
+    await page.locator('.backfill-row').getByRole('button', { name: 'Save & move' }).click(); await toast(page, 'moved to');
+    await check(arrives('Receipts/2025/2025-03-03 Synthetic Hardware Store receipt 12.40.txt'), 'Save & move files it where its kind puts it');
 
     // Library: details and search by them.
     await page.goto(base + '/library?q=' + encodeURIComponent('tag:shop')); await ready(page);

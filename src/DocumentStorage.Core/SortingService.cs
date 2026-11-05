@@ -336,7 +336,7 @@ public sealed partial class LibraryService
         vocab.Tags.Select(x => new NamedTerm(x.Id, x.Name, Aliases(x.AliasesJson))).ToList());
 
     // From the filename and text alone: used when the reader is off or hasn't read it yet.
-    private static (SortChoice Choice, Dictionary<string, string> Sources) FromHints(CatalogEntry entry, Vocab vocab, DocumentHintSet hints)
+    private static (SortChoice Choice, Dictionary<string, string> Sources) FromHints(CatalogEntry entry, Vocab vocab, DocumentHintSet hints, DocumentDescription? description = null)
     {
         var sources = new Dictionary<string, string>();
         var kind = hints.Kinds.FirstOrDefault(x => x.Score >= 10) is var top && top.Id != Guid.Empty ? vocab.Kinds.First(x => x.Id == top.Id) : null;
@@ -349,7 +349,18 @@ public sealed partial class LibraryService
         if (title.Length > 0) sources["title"] = "filename";
         var tags = hints.Tags.Take(4).Select(id => vocab.Tags.First(x => x.Id == id).Name).ToArray();
         if (tags.Length > 0) sources["tags"] = "text";
-        return (new(kind?.Name ?? "", sender?.Name ?? "", date?.Date, title.Length > 80 ? title[..80] : title, tags, new(), KeepName: hints.DescriptiveName), sources);
+        // An older reading's saved description (title, tags, organizations) fills what plain matching didn't.
+        var from = sender?.Name ?? "";
+        if (description != null)
+        {
+            if (title.Length == 0 && description.Title.Trim().Length > 0) { title = SortPatterns.Clean(description.Title); sources["title"] = "reader"; }
+            if (from.Length == 0 && description.Organizations.FirstOrDefault() is { } organization)
+            { from = vocab.Sender(organization)?.Name ?? SafeSender(organization); if (from.Length > 0) sources["from"] = vocab.Sender(organization) != null ? "reader" : "guess"; }
+            var more = description.Tags.Select(x => vocab.TagNamed(x)?.Name ?? (TryTag(x) ?? "")).Where(x => x.Length > 0);
+            var merged = tags.Concat(more).Distinct().Take(6).ToArray();
+            if (merged.Length > tags.Length) { tags = merged; sources["tags"] = "reader"; }
+        }
+        return (new(kind?.Name ?? "", from, date?.Date, title.Length > 80 ? title[..80] : title, tags, new(), KeepName: hints.DescriptiveName), sources);
     }
 
     // The reader's answer, checked: kind, sender and tags mapped to what Stash knows, quotes
@@ -400,6 +411,7 @@ public sealed partial class LibraryService
         return (new(kindName, fromName, date, title, tags.ToArray(), fields, KeepName: hints.DescriptiveName), sources, quotes, notes, sure);
     }
 
+    private static string? TryTag(string text) { try { return TagName(text); } catch (StorageException) { return null; } }
     private static string SafeKindName(string text) { try { return KindName(text); } catch (StorageException) { return ""; } }
     private static string SafeSender(string text) { try { return SenderName(text); } catch (StorageException) { return ""; } }
 
@@ -435,7 +447,11 @@ public sealed partial class LibraryService
             sources = new() { ["kind"] = "person", ["from"] = "person", ["date"] = "person", ["title"] = "person", ["tags"] = "person" };
         }
         else if (reply != null) (choice, sources, quotes, notes, sure) = FromReply(entry, vocab, hints, reply);
-        else (choice, sources) = FromHints(entry, vocab, hints);
+        else
+        {
+            var description = await db.DocumentDescriptions.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id && x.ContentHash == entry.ContentHash);
+            (choice, sources) = FromHints(entry, vocab, hints, description);
+        }
         var plan = await PlanAsync(db, root, entry, choice, vocab, folders);
         if (plan.Problem != null) sure = false;
         return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName);

@@ -1024,6 +1024,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("Backfill")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
