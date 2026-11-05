@@ -9,7 +9,7 @@ namespace DocumentStorage.Core;
 public sealed record IdentificationRequest(string Endpoint, string Model, int TimeoutSeconds, string FileName,
     string ContextJson, string SourceText, string InputText, bool Truncated, string[] DocumentTypes, string[] FactNames, bool Organizing = false);
 public sealed record IdentificationResult(string DocumentType, Dictionary<string,string> Facts,
-    Dictionary<string,string> Evidence, string Summary, bool NeedsReview, OrganizationSuggestion? Organization = null);
+    Dictionary<string,string> Evidence, string Summary, bool NeedsReview, OrganizationSuggestion? Organization = null, DocumentUnderstanding? Description = null);
 public sealed record GuidanceDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string TargetKind, string CurrentGuidance, string ConversationJson);
 public sealed record GuidanceDraftResult(string Reply, string Guidance, bool NeedsClarification);
 public sealed record LocalModel(string Name, long Size);
@@ -166,7 +166,8 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
         {
             using var json = JsonDocument.Parse(content);
             var root = json.RootElement;
-            Properties(root, input.Organizing ? ["document_type", "needs_review", "summary", "facts", "filing"] : ["document_type", "needs_review", "summary", "facts"]);
+            var hasDescription = input.Organizing && root.TryGetProperty("description", out _);
+            Properties(root, hasDescription ? ["document_type", "needs_review", "summary", "facts", "filing", "description"] : input.Organizing ? ["document_type", "needs_review", "summary", "facts", "filing"] : ["document_type", "needs_review", "summary", "facts"]);
             var type = Text(root, "document_type", 64);
             if (input.Organizing ? !OrganizationKey(type) : !input.DocumentTypes.Contains(type, StringComparer.Ordinal)) throw new OllamaException("The model returned an unconfigured document type.");
             var review = root.GetProperty("needs_review");
@@ -193,7 +194,7 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
             if (omitted) summary = "Some facts were omitted because their evidence did not match the OCR. " + summary;
             if (input.Truncated) summary = "Input was shortened; check the original document. " + summary;
             return new(type, values, evidence, summary[..Math.Min(800, summary.Length)],
-                review.GetBoolean() || omitted || input.Truncated || type is "unknown" or "other", input.Organizing ? ParseOrganization(root.GetProperty("filing"), input) : null);
+                review.GetBoolean() || omitted || input.Truncated || type is "unknown" or "other", input.Organizing ? ParseOrganization(root.GetProperty("filing"), input) : null, hasDescription ? ParseDescription(root.GetProperty("description")) : null);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
         { throw new OllamaException("The model did not follow the structured fact schema."); }

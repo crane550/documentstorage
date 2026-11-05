@@ -122,6 +122,8 @@ public sealed class IdentificationJob
 {
     // Exact bounded excerpt sent to the local reader, available only in the authenticated inbox.
     public string InputText { get; set; } = "";
+    public bool FromSavedDescription { get; set; }
+    public int DescriptionRevision { get; set; }
     public bool Organizing { get; set; }
     public string OrganizationJson { get; set; } = "";
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -196,6 +198,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         ConfigureDesk(model);
         ConfigureInbox(model);
         ConfigureSorting(model);
+        ConfigureDescriptions(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

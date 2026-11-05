@@ -13,7 +13,7 @@ using NpgsqlTypes;
 namespace DocumentStorage.Data.Migrations
 {
     [DbContext(typeof(CatalogDb))]
-    [Migration("20261105014900_AddDocumentDetailsAndSorting")]
+    [Migration("20261105023319_AddDocumentDetailsAndSorting")]
     partial class AddDocumentDetailsAndSorting
     {
         /// <inheritdoc />
@@ -373,6 +373,65 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("State", "CreatedAt");
 
                     b.ToTable("DeskTurns");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentDescription", b =>
+                {
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("EditedByUser")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("EvidenceJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FactsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<string[]>("Organizations")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SearchText")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SourceJobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.PrimitiveCollection<string[]>("Tags")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("EntryId");
+
+                    b.ToTable("DocumentDescriptions");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.DocumentDetail", b =>
@@ -984,6 +1043,9 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("DescriptionRevision")
+                        .HasColumnType("integer");
+
                     b.Property<string>("DocumentType")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1002,6 +1064,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<string>("FactsJson")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<bool>("FromSavedDescription")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("InputText")
                         .IsRequired()
@@ -1853,6 +1918,15 @@ namespace DocumentStorage.Data.Migrations
                         .WithMany()
                         .HasForeignKey("ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentDescription", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithOne()
+                        .HasForeignKey("DocumentStorage.Data.DocumentDescription", "EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

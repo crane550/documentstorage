@@ -897,7 +897,6 @@ button.note-empty:hover { color: #3a3216; }
 .brand .stash-logo { display: block; width: 190px; max-width: 100%; height: auto; }
 .account-brand .stash-logo { display: block; width: 270px; max-width: 100%; height: auto; }
 
-/* ===========================================================================
    Sorting: the approval list, the filing slip's details, kinds, senders and tags
    =========================================================================== */
 kbd { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 4px; border: 1px solid currentColor; font: 600 10.5px/16px var(--mono); text-align: center; opacity: .7; }
@@ -1027,3 +1026,10 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
     .kind-grid { grid-template-columns: minmax(0, 1fr); }
     .tray-keys { display: none; }
 }
+=======
+.description-card { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); min-width: 0; }
+.description-card summary { cursor: pointer; font-weight: 600; }
+.description-card label { display: grid; gap: 4px; }
+.description-card .button { margin-top: 8px; }
+
+/* ====================================================================

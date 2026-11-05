@@ -65,7 +65,8 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                     db.Details.Any(d => d.EntryId == x.Id && (EF.Functions.ILike(d.Title, pattern, "\\") ||
                         db.Kinds.Any(k => k.Id == d.KindId && EF.Functions.ILike(k.Name, pattern, "\\")) ||
                         db.Correspondents.Any(c => c.Id == d.CorrespondentId && (EF.Functions.ILike(c.Name, pattern, "\\") || EF.Functions.ILike(c.AliasesJson, pattern, "\\"))))) ||
-                    db.EntryTags.Any(t => t.EntryId == x.Id && db.Tags.Any(g => g.Id == t.TagId && EF.Functions.ILike(g.Name, pattern, "\\"))));
+                    db.EntryTags.Any(t => t.EntryId == x.Id && db.Tags.Any(g => g.Id == t.TagId && EF.Functions.ILike(g.Name, pattern, "\\"))) ||
+                    db.DocumentDescriptions.Any(d => d.EntryId == x.Id && d.ContentHash == x.ContentHash && EF.Functions.ILike(d.SearchText, pattern, "\\")));
             }
         }
         return new(await query.OrderByDescending(x => x.IsFolder).ThenBy(x => x.Name).Skip(Math.Max(0, offset)).Take(100).ToListAsync(), await query.CountAsync());

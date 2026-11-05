@@ -74,3 +74,5 @@ Colors stay inside the original palette, now set as tokens at the top of `wwwroo
 - Field styles in `app.css` use `:where()` so they carry no specificity and component rules override them without `!important`.
 - Razor reads `text@expression` as an e-mail address. Write `v@(rule.Revision)` and wrap text that ends right before an `@if` in its own element.
 - `tests/browser/ui.mjs` holds the shared steps (sign in, connect storage, open a folder, make an inbox, rescan, open an inbox item). A layout change should usually mean editing that file, not every check.
+
+**Saved document description** appears in Inbox and in a selected Library document. It holds an editable title, summary, reusable tags and organizations plus saved suggested facts. Save these independently of naming/filing; search includes them. In Inbox, **Suggest folder from saved description** reuses that information with current folders and sends no original OCR. Unsaved edits must be saved before requesting placement. Changed documents show a historical-description warning and require a fresh reading. **Reading details** distinguishes placement from full text reading.

@@ -21,6 +21,7 @@ Working now:
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
 - In-app PDF viewer with page navigation, zoom, rotation, search, selectable text and password support; image and safe source-text previews in the Library and beside each Inbox filing slip.
 - Search filenames, relative paths, UTF-8 text/Markdown/CSV, and text already embedded in PDFs (including ScanSnap OCR).
+- Save independent document titles, summaries, reusable tags, organizations and discovered facts; search saved metadata and request folder suggestions without resending original OCR.
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves with content fingerprints before touching disk; verify moved files and complete folder trees, and recover verified interrupted moves on rescan.
 - Dedicated **Recovery** workspace with actor-bound inspections, explicit catalog repair, preserved disk copies, transactional decision receipts and paused-storage indicators.
