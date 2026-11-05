@@ -105,6 +105,8 @@ public sealed class OllamaSettings
     public int MaxInputCharacters { get; set; } = 12000;
     public string Instructions { get; set; } = "Identify documents from their OCR text. Extract only facts supported by the document. Leave missing facts out.";
     public int Revision { get; set; } = 1;
+    // Master switch: kinds marked AutoFile only file themselves while this is on.
+    public bool AutoFileEnabled { get; set; } = true;
 }
 
 public sealed class DocumentTypeProfile
@@ -147,6 +149,8 @@ public sealed class IdentificationJob
     public string EvidenceJson { get; set; } = "{}";
     public string Summary { get; set; } = "";
     public bool NeedsReview { get; set; }
+    // Sorting jobs classify and extract only; code builds the folder and name.
+    public bool Sorting { get; set; }
 }
 
 // Written before a disk move. A restart reconciles a prepared operation before scanning.
@@ -191,6 +195,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         ConfigureOrganization(model);
         ConfigureDesk(model);
         ConfigureInbox(model);
+        ConfigureSorting(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);

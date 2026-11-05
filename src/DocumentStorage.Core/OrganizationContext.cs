@@ -10,7 +10,7 @@ public sealed partial class LibraryService
 {
     public Task<Guid> QueueOrganizationAsync(Guid entryId,string actor,bool retry=true) => QueueIdentificationAsync(entryId,actor,retry,organizing:true);
     private Task<IdentificationContext> JobContextAsync(CatalogDb db,CatalogEntry entry,OllamaSettings settings,IdentificationJob job)
-        => job.Organizing?OrganizationContextAsync(db,entry,settings):IdentificationContextAsync(db,entry,settings);
+        => job.Sorting?SortingContextAsync(db,entry,settings):job.Organizing?OrganizationContextAsync(db,entry,settings):IdentificationContextAsync(db,entry,settings);
     private static IdentificationResult ValidateOrganizationResult(IdentificationRequest input,IdentificationResult result)
     {
         var plan=result.Organization??throw new OllamaException("Missing filing proposal.");

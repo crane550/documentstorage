@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentStorage.Core;
 
-public sealed record IdentificationContext(string Json, string Hash, string[] Types, string[] Facts, bool Truncated, bool Organizing = false);
+public sealed record IdentificationContext(string Json, string Hash, string[] Types, string[] Facts, bool Truncated, bool Organizing = false, bool Sorting = false, string InputText = "");
 public sealed record IdentificationOverview(OllamaSettings Settings, List<DocumentTypeProfile> Types, List<IdentificationJob> Jobs);
 
 public sealed partial class LibraryService
@@ -117,7 +117,7 @@ public sealed partial class LibraryService
         return await db.IdentificationJobs.AsNoTracking().Where(x => x.EntryId == entryId).OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync();
     }
 
-    public async Task<Guid> QueueIdentificationAsync(Guid entryId, string actor, bool retry = false, bool organizing = false)
+    public async Task<Guid> QueueIdentificationAsync(Guid entryId, string actor, bool retry = false, bool organizing = false, bool sorting = false)
     {
         Actor(actor);
         await writer.WaitAsync();
@@ -130,7 +130,7 @@ public sealed partial class LibraryService
             await RequireIntakeAsync(db, entry); RequireStable(entry);
             if (entry.TextStatus != "Indexed" || string.IsNullOrWhiteSpace(entry.ExtractedText)) throw new StorageException("Server text is not available (" + entry.TextStatus + "). Restore text extraction and rescan before reading with AI.");
             if (await FingerprintAsync(root, entry) != entry.ContentHash) throw new StorageException("The document changed. Rescan it before identification.");
-            var context = organizing ? await OrganizationContextAsync(db, entry, settings) : await IdentificationContextAsync(db, entry, settings);
+            var context = sorting ? await SortingContextAsync(db, entry, settings) : organizing ? await OrganizationContextAsync(db, entry, settings) : await IdentificationContextAsync(db, entry, settings);
             return await EnqueueIdentificationAsync(db, entry, settings, context, actor, retry);
         }
         finally { writer.Release(); }
@@ -139,14 +139,14 @@ public sealed partial class LibraryService
     private async Task<Guid> EnqueueIdentificationAsync(CatalogDb db, CatalogEntry entry, OllamaSettings settings, IdentificationContext context, string actor, bool retry)
     {
         var reviewRevision = (await db.Reviews.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id))?.Revision ?? 0;
-        var previous = await db.IdentificationJobs.Where(x => x.Organizing == context.Organizing && x.EntryId == entry.Id && x.ContentHash == entry.ContentHash && x.SourcePath == entry.RelativePath &&
+        var previous = await db.IdentificationJobs.Where(x => x.Organizing == context.Organizing && x.Sorting == context.Sorting && x.EntryId == entry.Id && x.ContentHash == entry.ContentHash && x.SourcePath == entry.RelativePath &&
             x.SettingsRevision == settings.Revision && x.ContextHash == context.Hash && x.ReviewRevision == reviewRevision).OrderByDescending(x => x.CreatedAt).FirstOrDefaultAsync();
         if (previous != null && (!retry || previous.State is "Queued" or "Running" or "Retry")) return previous.Id;
         var job = new IdentificationJob
         {
-            Organizing = context.Organizing, EntryId = entry.Id, ContentHash = entry.ContentHash, SourcePath = entry.RelativePath, ReviewRevision = reviewRevision,
+            Organizing = context.Organizing, Sorting = context.Sorting, EntryId = entry.Id, ContentHash = entry.ContentHash, SourcePath = entry.RelativePath, ReviewRevision = reviewRevision,
             SettingsRevision = settings.Revision, ContextHash = context.Hash, ContextJson = context.Json,
-            Endpoint = settings.Endpoint, Model = settings.Model, InputTruncated = context.Truncated || entry.ExtractedText.Length > settings.MaxInputCharacters,
+            Endpoint = settings.Endpoint, Model = settings.Model, InputTruncated = context.Truncated || (!context.Sorting && entry.ExtractedText.Length > settings.MaxInputCharacters),
             CreatedAt = time.GetUtcNow(), NotBefore = time.GetUtcNow(), CreatedBy = actor
         };
         db.IdentificationJobs.Add(job); await db.SaveChangesAsync(); return job.Id;
@@ -175,7 +175,7 @@ public sealed partial class LibraryService
                 // Also let an existing active job settle before scheduling a changed version.
                 if (await db.IdentificationJobs.AnyAsync(x => x.EntryId == entry.Id &&
                     (x.ContentHash == entry.ContentHash || x.State == "Queued" || x.State == "Running" || x.State == "Retry"))) continue;
-                await EnqueueIdentificationAsync(db, entry, settings, await OrganizationContextAsync(db, entry, settings), "automatic", false);
+                await EnqueueIdentificationAsync(db, entry, settings, await SortingContextAsync(db, entry, settings), "automatic", false);
             }
             return offset + entries.Count >= total ? 0 : offset + entries.Count;
         }
@@ -231,6 +231,9 @@ public sealed partial class LibraryService
         IdentificationRequest? input = null;
         IdentificationJob? claimed = null;
         LiveIdentification? live = null;
+        SortRequest? sortInput = null;
+        SortReply? sortReply = null;
+        var sorted = false;
         await writer.WaitAsync(stoppingToken);
         try
         {
@@ -249,7 +252,7 @@ public sealed partial class LibraryService
                 (review?.Revision ?? 0) != claimed.ReviewRevision || !HasIntakeAncestor(entry, await db.Entries.AsNoTracking().Where(x => x.IsFolder).ToListAsync(stoppingToken)))
             { await SupersedeAsync(db, claimed, "Document, review or settings changed before identification."); return true; }
             if (entry.Readiness != "Ready") { claimed.State = "Retry"; claimed.NotBefore = time.GetUtcNow().AddSeconds(30); claimed.LastError = "Waiting for the scan to settle."; await db.SaveChangesAsync(stoppingToken); return true; }
-            var context = claimed.Organizing ? await OrganizationContextAsync(db, entry, settings) : await IdentificationContextAsync(db, entry, settings);
+            var context = await JobContextAsync(db, entry, settings, claimed);
             if (entry.ContentHash != claimed.ContentHash || context.Hash != claimed.ContextHash)
             { await SupersedeAsync(db, claimed, "Document contents or identification guidance changed. Queue a fresh job."); return true; }
             try
@@ -262,7 +265,8 @@ public sealed partial class LibraryService
             if (entry.TextStatus != "Indexed" || string.IsNullOrWhiteSpace(entry.ExtractedText))
             { await SupersedeAsync(db, claimed, "OCR text is no longer available. Rescan the document."); return true; }
             var text = entry.ExtractedText;
-            if (text.Length > settings.MaxInputCharacters)
+            if (claimed.Sorting) text = context.InputText;
+            else if (text.Length > settings.MaxInputCharacters)
             {
                 const string marker = "\n[OCR EXCERPT OMITTED]\n";
                 var budget = settings.MaxInputCharacters - marker.Length;
@@ -270,7 +274,8 @@ public sealed partial class LibraryService
                 text = text[..head] + marker + text[^(budget - head)..];
             }
             input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, entry.ExtractedText, text,
-                context.Truncated || entry.ExtractedText.Length > settings.MaxInputCharacters, context.Types, context.Facts, claimed.Organizing);
+                context.Truncated || (!claimed.Sorting && entry.ExtractedText.Length > settings.MaxInputCharacters), context.Types, context.Facts, claimed.Organizing);
+            if (claimed.Sorting) sortInput = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, context.Json);
             claimed.ContextJson = context.Json;
             claimed.InputText = text;
             claimed.State = "Running"; claimed.Attempts++; claimed.RunId = Guid.NewGuid(); claimed.LeaseUntil = time.GetUtcNow().AddSeconds(settings.TimeoutSeconds + 60); claimed.LastError = null;
@@ -293,7 +298,7 @@ public sealed partial class LibraryService
         IdentificationResult? result = null; string? failure = null; var transient = false;
         try
         {
-            try { result = await client.IdentifyAsync(input, live.Cancellation.Token); }
+            try { if (sortInput != null) sortReply = await client.SortAsync(sortInput, live.Cancellation.Token); else result = await client.IdentifyAsync(input, live.Cancellation.Token); }
             catch (OperationCanceledException) { failure = stoppingToken.IsCancellationRequested ? "Server stopping. The saved job will retry." : "Identification was cancelled."; transient = stoppingToken.IsCancellationRequested; }
             catch (OllamaException ex) { failure = ex.Message; transient = ex.Transient; }
             catch (Exception) { failure = "Identification failed unexpectedly. Check the local model connection and retry."; }
@@ -325,6 +330,18 @@ public sealed partial class LibraryService
                 }
                 catch (Exception ex) when (ex is StorageException or IOException or UnauthorizedAccessException)
                 { await SupersedeAsync(db, job, "The source is unavailable or changed. Rescan before identifying again."); return true; }
+                if (sortInput != null)
+                {
+                    if (sortReply == null) { job.State = "Failed"; job.LastError = "The local model returned no reading."; job.CompletedAt = time.GetUtcNow(); }
+                    else
+                    {
+                        job.OrganizationJson = JsonSerializer.Serialize(sortReply); job.DocumentType = sortReply.Kind; job.Summary = sortReply.Title;
+                        job.FactsJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Value));
+                        job.EvidenceJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Quote));
+                        job.NeedsReview = sortReply.Confidence != "high"; job.State = "Succeeded"; job.CompletedAt = time.GetUtcNow(); sorted = true;
+                    }
+                    await db.SaveChangesAsync(); return true;
+                }
                 if (input.Organizing && result != null)
                 {
                     try { result = ValidateOrganizationResult(input, result); }
@@ -347,6 +364,9 @@ public sealed partial class LibraryService
         {
             ((ICollection<KeyValuePair<Guid,LiveIdentification>>)identificationRequests).Remove(new(claimed.Id, live));
             live.Cancellation.Dispose();
+            if (sorted)
+                try { await TryAutoFileAsync(claimed.Id); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { } // The card simply waits for a person.
         }
         return true;
     }

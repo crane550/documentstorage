@@ -23,6 +23,8 @@ public interface IOllamaClient
         => Task.FromException<DeskResult>(new OllamaException("This adapter does not support document conversations."));
     Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default);
     Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default);
+    Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<SortReply>(new OllamaException("This adapter does not support sorting."));
     Task<GuidanceDraftResult> DraftGuidanceAsync(GuidanceDraftRequest request, CancellationToken cancellationToken = default)
         => Task.FromException<GuidanceDraftResult>(new OllamaException("This Ollama adapter does not support guidance drafting."));
 }

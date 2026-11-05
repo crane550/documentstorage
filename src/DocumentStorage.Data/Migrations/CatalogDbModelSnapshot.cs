@@ -250,6 +250,35 @@ namespace DocumentStorage.Data.Migrations
                     b.ToTable("Entries");
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.Correspondent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AliasesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Correspondents");
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.DeskConversation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -341,6 +370,110 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("State", "CreatedAt");
 
                     b.ToTable("DeskTurns");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentDetail", b =>
+                {
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CorrespondentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("DocumentDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("FieldsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("KindId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourcesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("EntryId");
+
+                    b.HasIndex("CorrespondentId");
+
+                    b.HasIndex("DocumentDate");
+
+                    b.HasIndex("KindId");
+
+                    b.ToTable("Details");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.DocumentKind", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Approved")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("AutoFile")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Corrected")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FieldsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FolderPattern")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsCatchAll")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NamePattern")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Streak")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Kinds");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.DocumentPassage", b =>
@@ -452,6 +585,21 @@ namespace DocumentStorage.Data.Migrations
                     b.HasKey("Key");
 
                     b.ToTable("DocumentTypes");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.EntryTag", b =>
+                {
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TagId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("EntryId", "TagId");
+
+                    b.HasIndex("TagId");
+
+                    b.ToTable("EntryTags");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.FileOperation", b =>
@@ -891,6 +1039,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<int>("SettingsRevision")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("Sorting")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("SourcePath")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1085,6 +1236,9 @@ namespace DocumentStorage.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AutoFileEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("AutoIdentify")
                         .HasColumnType("boolean");
 
@@ -1179,6 +1333,9 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("Automatic")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1194,6 +1351,10 @@ namespace DocumentStorage.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DestinationPath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DetailsJson")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -1215,7 +1376,7 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("JobId")
+                    b.Property<Guid?>("JobId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("NewFolderName")
@@ -1255,6 +1416,9 @@ namespace DocumentStorage.Data.Migrations
 
                     b.Property<Guid>("TargetFolderId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -1300,6 +1464,35 @@ namespace DocumentStorage.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Roots");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.Tag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AliasesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Tags");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -1660,6 +1853,25 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("DocumentStorage.Data.DocumentDetail", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.Correspondent", null)
+                        .WithMany()
+                        .HasForeignKey("CorrespondentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithOne()
+                        .HasForeignKey("DocumentStorage.Data.DocumentDetail", "EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentStorage.Data.DocumentKind", null)
+                        .WithMany()
+                        .HasForeignKey("KindId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("DocumentStorage.Data.DocumentPassage", b =>
                 {
                     b.HasOne("DocumentStorage.Data.CatalogEntry", null)
@@ -1675,6 +1887,21 @@ namespace DocumentStorage.Data.Migrations
                         .WithOne()
                         .HasForeignKey("DocumentStorage.Data.DocumentReview", "EntryId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.EntryTag", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithMany()
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DocumentStorage.Data.Tag", null)
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
@@ -1754,8 +1981,7 @@ namespace DocumentStorage.Data.Migrations
                     b.HasOne("DocumentStorage.Data.IdentificationJob", null)
                         .WithMany()
                         .HasForeignKey("JobId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

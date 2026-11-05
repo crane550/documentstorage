@@ -128,7 +128,7 @@ internal static class OrganizingChecks
         await refuses(()=>library.ApplyOrganizationFilingAsync(cancelledPlan.Id,actor),"a recovery-cancelled organizing approval cannot be retried");
         settings=(await library.IdentificationOverviewAsync()).Settings;settings.AutoIdentify=true;await library.SaveOllamaSettingsAsync(settings,settings.Revision,actor);
         var automatic=await New();await library.QueueAutomaticIdentificationAsync(0);
-        await using(var db=await factory.CreateDbContextAsync())check(await db.IdentificationJobs.AnyAsync(x=>x.EntryId==automatic.Id&&x.Organizing&&x.CreatedBy=="automatic"),"automatic reading queues complete organizing proposals rather than requiring a fact profile or rule");
+        await using(var db=await factory.CreateDbContextAsync())check(await db.IdentificationJobs.AnyAsync(x=>x.EntryId==automatic.Id&&x.Sorting&&x.CreatedBy=="automatic"),"automatic reading queues sorting readings rather than requiring a fact profile or rule");
         await library.SetIntakeAsync(inbox,false);
         Directory.Delete(foreignPath,true);
     }

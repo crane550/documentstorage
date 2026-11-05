@@ -131,6 +131,7 @@ try
     await RecoveryChecks.RunAsync(factory, Path.Combine(scratch, "recovery"), Check, Refuses);
     await OrganizingChecks.RunAsync(factory, Path.Combine(scratch, "organizing"), Check, Refuses);
     await DeskChecks.RunAsync(factory, Path.Combine(scratch, "conversations"), Check, Refuses);
+    await SortingChecks.RunAsync(factory, Path.Combine(scratch, "sorting"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

@@ -13,7 +13,12 @@ internal static class MigrationChecks
         var folder = new CatalogEntry { RootId = root.Id, Name = "Legacy folder", IsFolder = true, Instructions = "Keep the original folder instructions." };
         var settings = new OllamaSettings { Instructions = "Keep the original global instructions." };
         var type = new DocumentTypeProfile { Key = "legacy_type", Name = "Legacy type", Instructions = "Keep the original type instructions." };
-        db.Roots.Add(root); db.OllamaConfigurations.Add(settings); db.DocumentTypes.Add(type); await db.SaveChangesAsync();
+        db.Roots.Add(root); db.DocumentTypes.Add(type); await db.SaveChangesAsync();
+        // Settings gained columns later; seed them with the columns this old schema had.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "OllamaConfigurations" ("Id","Endpoint","Model","Enabled","AutoIdentify","TimeoutSeconds","MaxInputCharacters","Instructions","Revision")
+            VALUES ({settings.Id},{settings.Endpoint},{""},{false},{false},{600},{12000},{settings.Instructions},{1})
+            """);
         // Seed the old schema, before the additive passage-index column exists.
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "Entries" ("Id","RootId","RelativePath","Name","IsFolder","IsMissing","Size","ModifiedAt","Instructions","ExtractedText","TextStatus")
@@ -33,6 +38,7 @@ internal static class MigrationChecks
         check(versions.Count == 3 && versions.All(x=>x.Revision==1 && x.Actor=="imported-existing-guidance") &&
             versions.Single(x=>x.TargetKind=="folder").Text==folder.Instructions && versions.Single(x=>x.TargetKind=="global").Text==settings.Instructions && versions.Single(x=>x.TargetKind=="document_type").Text==type.Instructions,
             "upgrading an existing catalog preserves folder, general and document-type guidance as immutable baseline versions");
-        db.InstructionRevisions.RemoveRange(versions); db.Entries.Remove(folder); db.Roots.Remove(root); db.OllamaConfigurations.Remove(settings); db.DocumentTypes.Remove(type); await db.SaveChangesAsync();
+        check((await db.OllamaConfigurations.SingleAsync()).AutoFileEnabled, "upgrading keeps automatic filing available, still off for every kind until switched on");
+        db.InstructionRevisions.RemoveRange(versions); db.Entries.Remove(folder); db.Roots.Remove(root); db.OllamaConfigurations.Remove(await db.OllamaConfigurations.SingleAsync()); db.DocumentTypes.Remove(type); await db.SaveChangesAsync();
     }
 }

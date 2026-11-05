@@ -90,16 +90,25 @@ public sealed partial class LibraryService
         if(op.OrganizationFilingId is not Guid id)return;
         var plan=await db.OrganizationFilings.SingleAsync(x=>x.Id==id);
         if(plan.NewFolderName.Length==0)return;
-        var relative=StoragePaths.Join(plan.ParentPath,plan.NewFolderName);var path=StoragePaths.Resolve(root.Location,relative);
-        if(StoragePaths.Exists(path)||await db.Entries.AnyAsync(x=>x.RootId==root.Id&&x.RelativePath==relative))throw new StorageException("A folder appeared at the approved destination. Inspect this operation in Recovery.");
-        Directory.CreateDirectory(path);
-        db.Entries.Add(new() {Id=plan.TargetFolderId,RootId=root.Id,ParentId=plan.ParentFolderId,RelativePath=relative,Name=plan.NewFolderName,IsFolder=true,ModifiedAt=time.GetUtcNow()});
+        // A sorting plan may create several nested folders ("Cedar Bank/2026"); the last one keeps the planned id.
+        var segments=plan.NewFolderName.Split('/');var parentId=plan.ParentFolderId;var relative=plan.ParentPath;
+        for(var i=0;i<segments.Length;i++)
+        {
+            relative=StoragePaths.Join(relative,segments[i]);var path=StoragePaths.Resolve(root.Location,relative);
+            if(StoragePaths.Exists(path)||await db.Entries.AnyAsync(x=>x.RootId==root.Id&&x.RelativePath==relative))throw new StorageException("A folder appeared at the approved destination. Inspect this operation in Recovery.");
+            Directory.CreateDirectory(path);
+            var folderId=i==segments.Length-1?plan.TargetFolderId:Guid.NewGuid();
+            db.Entries.Add(new() {Id=folderId,RootId=root.Id,ParentId=parentId,RelativePath=relative,Name=segments[i],IsFolder=true,ModifiedAt=time.GetUtcNow()});
+            parentId=folderId;
+        }
         await db.SaveChangesAsync();
     }
     private async Task CompleteOrganizationAsync(CatalogDb db,FileOperation op)
     {
         if(op.OrganizationFilingId is not Guid id)return;
-        var plan=await db.OrganizationFilings.SingleAsync(x=>x.Id==id);var job=await db.IdentificationJobs.SingleAsync(x=>x.Id==plan.JobId);
+        var plan=await db.OrganizationFilings.SingleAsync(x=>x.Id==id);
+        if(plan.DetailsJson.Length>0){await CompleteSortingAsync(db,plan,op);return;}
+        var job=await db.IdentificationJobs.SingleAsync(x=>x.Id==plan.JobId);
         plan.State="Filed";plan.CompletedAt=time.GetUtcNow();plan.OperationId=op.Id;job.State="Filed";
         if(plan.Remember&&!await db.FilingExamples.AnyAsync(x=>x.Id==plan.Id))db.FilingExamples.Add(new() {Id=plan.Id,RootId=op.RootId,EntryId=op.EntryId,FolderId=plan.TargetFolderId,OriginalName=Path.GetFileName(plan.SourcePath),
             Filename=plan.Filename,DocumentType=plan.DocumentType,Summary=job.Summary,Note=plan.Reason,Actor=plan.Actor,CreatedAt=time.GetUtcNow()});
@@ -108,6 +117,7 @@ public sealed partial class LibraryService
     {
         if(op.OrganizationFilingId is not Guid id)return;
         var plan=await db.OrganizationFilings.SingleAsync(x=>x.Id==id);plan.State="Cancelled";plan.CompletedAt=time.GetUtcNow();
+        if(plan.JobId==null)return;
         var job=await db.IdentificationJobs.SingleAsync(x=>x.Id==plan.JobId);job.State="Rejected";job.LastError="The interrupted filing was cancelled in Recovery. Request a new proposal to retry.";
     }
     public async Task RejectOrganizationAsync(Guid jobId,string actor)

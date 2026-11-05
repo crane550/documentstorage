@@ -5,7 +5,11 @@ namespace DocumentStorage.Data;
 public sealed class OrganizationFiling
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid JobId { get; set; }
+    public Guid? JobId { get; set; }
+    // Sorting filings carry the approved details, saved on the document with the move.
+    public string DetailsJson { get; set; } = "";
+    public bool Automatic { get; set; }
+    public DateTimeOffset? UndoneAt { get; set; }
     public Guid EntryId { get; set; }
     public string Actor { get; set; } = "";
     public string SourcePath { get; set; } = "";
