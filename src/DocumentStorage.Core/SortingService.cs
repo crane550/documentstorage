@@ -400,7 +400,7 @@ public sealed partial class LibraryService
             string key; try { key = FactKey(field.Name.Trim().Replace(' ', '_').Replace('-', '_')); } catch (StorageException) { continue; }
             if (allowed != null && !allowed.Contains(key)) continue;
             if (!QuoteFound(entry.ExtractedText, field.Quote) && !QuoteFound(entry.ExtractedText, field.Value)) continue;
-            fields[key] = SortPatterns.Clean(field.Value); quotes[key] = field.Quote;
+            fields[key] = NormalizeFieldValue(key, SortPatterns.Clean(field.Value)); quotes[key] = field.Quote;
         }
         var patterns = (kind?.FolderPattern ?? DefaultKindFolder) + "/" + (kind?.NamePattern ?? DefaultKindName);
         var tokens = SortPatterns.TokensIn(patterns);
@@ -739,7 +739,7 @@ public sealed partial class LibraryService
         var detail = await db.Details.SingleOrDefaultAsync(x => x.EntryId == entryId);
         if (detail == null) { detail = new() { EntryId = entryId, Revision = 0 }; db.Details.Add(detail); }
         detail.KindId = kind.Id; detail.CorrespondentId = sender?.Id; detail.DocumentDate = choice.Date; detail.Title = SortPatterns.Clean(choice.Title);
-        detail.FieldsJson = JsonSerializer.Serialize(choice.Fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => FactKey(x.Key), x => x.Value.Trim()));
+        detail.FieldsJson = JsonSerializer.Serialize(choice.Fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => FactKey(x.Key), x => NormalizeFieldValue(FactKey(x.Key), x.Value)));
         if (followsFolder is bool folder) detail.FollowsFolder = folder;
         if (followsName is bool name) detail.FollowsName = name;
         detail.UpdatedAt = time.GetUtcNow(); detail.UpdatedBy = actor; detail.Revision++;

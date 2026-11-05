@@ -36,7 +36,7 @@
     @if (Warnings.Any() && !edited) { <ul class="sort-notes">@foreach (var note in Warnings) { <li>@note</li> }</ul> }
 
     <div class="slip-card sort-fields">
-        <label class="slip-label" for="sort-kind">Kind <SourceMark Source="@Source("kind")" /></label>
+        <label class="slip-label" for="sort-kind">Kind <SourceMark Source="@Source("kind")" />@if (CurrentKind != null) { <button type="button" class="slip-label-action" @onclick="EditKind">Edit kind…</button> }</label>
         <div class="sort-field-row">
             <input id="sort-kind" class="slip-field @Guess("kind")" list="sort-kinds" @bind="kind" @bind:after="Changed" placeholder="What is it?" maxlength="60" autocomplete="off" />
             @if (plan?.NewKind == true && kind.Trim().Length > 0) { <span class="new-mark" title="Approving makes this a new kind">new</span> }
@@ -75,16 +75,36 @@
             <datalist id="sort-tags">@foreach (var t in Vocabulary.Tags.Where(x => !tags.Contains(x.Name))) { <option value="@t.Name" /> }</datalist>
         </div>
 
-        @if (KindFieldNames.Length > 0)
-        {
-            <div class="sort-kind-fields">
-                @foreach (var name in KindFieldNames)
-                {
-                    <label class="slip-label" for="@($"sort-field-{name}")">@name.Replace('_', ' ') <SourceMark Source="@(Card.Quotes.ContainsKey(name) && !edited ? "reader" : "")" Title="@Card.Quotes.GetValueOrDefault(name)" /></label>
-                    <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" />
-                }
-            </div>
-        }
+        <div class="sort-kind-fields" aria-label="Fields">
+            @foreach (var name in FieldRows)
+            {
+                var kept = CurrentKind is { } k && LibraryService.KindFields(k).Contains(name);
+                <div class="field-row" @key="name">
+                    <label class="slip-label" for="@($"sort-field-{name}")">@LibraryService.FieldLabel(name) <SourceMark Source="@(Card.Quotes.ContainsKey(name) && !edited ? "reader" : "")" Title="@Card.Quotes.GetValueOrDefault(name)" /></label>
+                    <div class="field-line">
+                        @if (LibraryService.IsDateField(name) && (fields.GetValueOrDefault(name, "").Length == 0 || DateOnly.TryParseExact(fields.GetValueOrDefault(name, ""), "yyyy-MM-dd", out _)))
+                        { <input id="@($"sort-field-{name}")" type="date" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" /> }
+                        else
+                        { <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" /> }
+                        @if (CurrentKind is { } current)
+                        {
+                            @if (!kept)
+                            {
+                                <button type="button" class="field-keep" disabled="@busy" title="@($"Ask for this on every {current.Name}")" @onclick="() => Keep(name)"><Icon Name="plus" Size="12" />Keep for @current.Name</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="field-toggle @(LibraryService.FieldInPattern(current, name, false) ? "on" : "")" aria-pressed="@(LibraryService.FieldInPattern(current, name, false) ? "true" : "false")" disabled="@busy" title="Use in the file name" @onclick="() => Toggle(name, false)">Name</button>
+                                <button type="button" class="field-toggle @(LibraryService.FieldInPattern(current, name, true) ? "on" : "")" aria-pressed="@(LibraryService.FieldInPattern(current, name, true) ? "true" : "false")" disabled="@busy" title="Use as a folder" @onclick="() => Toggle(name, true)">Folder</button>
+                            }
+                        }
+                        else if (!kept) { <button type="button" class="field-remove" aria-label="@($"Remove {LibraryService.FieldLabel(name)}")" title="Remove" @onclick="() => RemoveField(name)">×</button> }
+                    </div>
+                </div>
+            }
+            <input class="field-add" form="@fieldFormId" @bind="newField" placeholder="+ Add a field, like Statement end date" maxlength="64" autocomplete="off" aria-label="Add a field" />
+            @if (CurrentKind == null && kind.Trim().Length > 0 && FieldRows.Any()) { <p class="hint">These fields travel with this document; approving makes the kind with them.</p> }
+        </div>
     </div>
 
     <div class="destination sort-destination @(plan?.Problem == null ? "ready" : "pending")" aria-live="polite">
@@ -123,6 +143,13 @@
     </div>
 </form>
 <form id="@tagFormId" class="sr-only" @onsubmit="AddTag" @onsubmit:preventDefault aria-hidden="true"><button type="submit" tabindex="-1">Add tag</button></form>
+<form id="@fieldFormId" class="sr-only" @onsubmit="AddField" @onsubmit:preventDefault aria-hidden="true"><button type="submit" tabindex="-1">Add field</button></form>
+@if (editingKind != null)
+{
+    <Modal Title="@($"Edit {editingKind.Name}")" IconName="edit" OnClose="() => editingKind = null" Wide="true">
+        <KindForm Kind="editingKind" Busy="busy" Save="SaveKind" Cancel="() => editingKind = null" />
+    </Modal>
+}
 
 @code {
     [Parameter, EditorRequired] public SortCard Card { get; set; } = default!;
@@ -130,10 +157,15 @@
     [Parameter] public EventCallback<string> Filed { get; set; }
     [Parameter] public EventCallback ReadingChanged { get; set; }
     [Parameter] public EventCallback Skip { get; set; }
+    // A kind changed from the slip (a kept field, a pattern): the page reloads what Stash knows.
+    [Parameter] public EventCallback VocabularyChanged { get; set; }
     [Parameter] public EventCallback<Guid> RequestMove { get; set; }
     [Parameter] public EventCallback<Guid> RequestDelete { get; set; }
     [Parameter] public EventCallback<Guid> RequestRescan { get; set; }
 
+    private readonly string fieldFormId = "field-form-" + Guid.NewGuid().ToString("N")[..8];
+    private string newField = "";
+    private DocumentKind? editingKind;
     private readonly string tagFormId = "tag-form-" + Guid.NewGuid().ToString("N")[..8];
     private string kind = "", from = "", title = "", newTag = "", folderOverride = "", nameOverride = "";
     private DateOnly? date;
@@ -148,7 +180,6 @@
     private IEnumerable<string> Warnings => Card.Notes.Where(x => !x.StartsWith("Filled in from", StringComparison.Ordinal));
     private bool Reading => Card.ReaderState is "Waiting to be read" or "Reading" or "Will try again";
     private bool CanRead => Card.Document.Readiness == "Ready" && Card.Document.TextStatus == "Indexed" && Card.Document.Online;
-    private string[] KindFieldNames => (Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase)) is { } k ? LibraryService.KindFields(k) : fields.Keys.ToArray());
     private IEnumerable<string> ExistingParts => plan == null || plan.FolderPath.Length == 0 ? [] : plan.FolderPath.Split('/')[..^plan.NewFolders.Length];
     private string Source(string key) => edited ? "" : Card.Sources.GetValueOrDefault(key, "");
     private string Guess(string key) => Source(key) == "guess" ? "guess" : "";
@@ -184,6 +215,57 @@
     private Task PickKind(string name) { kind = name; return Changed(); }
     private Task SetKeepName(bool value) { keepName = value; return Changed(); }
     private Task SetField(string name, string? value) { fields[name] = value ?? ""; return Changed(); }
+    private DocumentKind? CurrentKind => Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase));
+    // The kind's own fields first, then any added on this document.
+    private IEnumerable<string> FieldRows => (CurrentKind is { } k ? LibraryService.KindFields(k) : []).Concat(fields.Keys).Distinct();
+    private async Task AddField()
+    {
+        var label = newField.Trim(); newField = "";
+        if (label.Length == 0) return;
+        string key;
+        try { key = LibraryService.FieldKey(label); }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); return; }
+        if (!fields.ContainsKey(key)) fields[key] = "";
+        await Changed();
+    }
+    private Task RemoveField(string name) { fields.Remove(name); return Changed(); }
+    private async Task Keep(string name) => await KindChange(async actor =>
+    {
+        var updated = await Library.AddKindFieldAsync(kind, name, actor);
+        Workspace.Notify($"{updated.Name} now asks for {LibraryService.FieldLabel(name).ToLowerInvariant()}. Use Name or Folder to put it in where files go.");
+    });
+    private async Task Toggle(string name, bool folder) => await KindChange(async actor =>
+    {
+        var current = CurrentKind!;
+        var on = !LibraryService.FieldInPattern(current, name, folder);
+        var updated = await Library.SetFieldInPatternAsync(kind, name, folder, on, actor);
+        var moving = (await Library.RefilePlanAsync(kindId: updated.Id)).Count(x => x.Problem == null);
+        Workspace.Notify($"{updated.Name}: {(folder ? "folders" : "names")} {(on ? "now use" : "no longer use")} {LibraryService.FieldLabel(name).ToLowerInvariant()}.{(moving > 0 ? $" {moving} filed documents could move: see Tidy up." : "")}");
+    });
+    private void EditKind()
+    {
+        if (CurrentKind is not { } k) return;
+        editingKind = new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
+    }
+    private async Task SaveKind(DocumentKind input) => await KindChange(async actor =>
+    {
+        var saved = await Library.SaveKindAsync(input, actor); editingKind = null; kind = saved.Name;
+        var moving = (await Library.RefilePlanAsync(kindId: saved.Id)).Count(x => x.Problem == null);
+        Workspace.Notify($"Saved {saved.Name}.{(moving > 0 ? $" {moving} filed documents could move: see Tidy up." : "")}");
+    });
+    private async Task KindChange(Func<string, Task> change)
+    {
+        if (busy) return; busy = true;
+        try { await change(await Workspace.ActorAsync()); await VocabularyChanged.InvokeAsync(); edited = true; await Replan(); }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task Replan()
+    {
+        var version = ++planVersion;
+        try { var next = await Library.PlanSortAsync(Card.Document.Id, Choice()); if (version == planVersion) plan = next; }
+        catch (StorageException ex) { if (version == planVersion) plan = new("", [], Card.Document.Name, false, false, [], ex.Message); }
+    }
     private async Task AddTag()
     {
         var raw = newTag.Trim(); newTag = "";

@@ -1,5 +1,7 @@
 # Working on DocumentStorage
 
+Guiding principle, **configure by using** (Alex, 5 Nov 2026): the structure is built while doing the work, not in a setup step. Every place a person corrects something should offer to keep that correction (a field kept for its kind, a field put into the name or folder, a spelling kept for a sender, a regular trusted). Prefer a small inline button on the slip to a settings page; settings pages are for review and tidying.
+
 Read docs/direction.md and docs/sorting.md first: they set the current direction (the inbox-to-folder loop) and override older priorities below. Then README.md, docs/product-plan.md, docs/intake-and-rules.md, docs/local-ai.md and docs/assistants-and-mcp.md first. This is the document application; `/workspace/2FAAccounts` is a read-only stack/deployment reference, not our app. Use the existing checkout; cloud tasks are isolated, so do not create worktrees unless asked.
 
 Keep the product name configurable and provisional. Preserve the cardboard palette and file/folder-centered interface. Read docs/interface.md before changing the UI: pages are real routes over the shared `WorkspaceState`, the filing loop runs Inbox → AI suggestion → approval, with optional rules, and browser checks share their steps through tests/browser/ui.mjs. Use synthetic documents only. Keep actual documents, OCR text, secrets, database backups and machine paths out of commits.

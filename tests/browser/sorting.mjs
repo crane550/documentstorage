@@ -99,8 +99,17 @@ try {
     await page.getByLabel('Add a tag', { exact: true }).fill('shop'); await page.getByLabel('Add a tag', { exact: true }).press('Enter');
     await page.locator('.tag-chip').filter({ hasText: '#shop' }).waitFor();
     await check(exists('Inbox/Acme_Invoice_INV-20391_2026-10-14.txt'), 'Enter in the tag box adds a tag without filing');
+    // Configure by using: a field typed on this slip, kept for the kind, used as a folder.
+    await page.getByLabel('Add a field', { exact: true }).fill('Order number'); await page.getByLabel('Add a field', { exact: true }).press('Enter');
+    await page.locator('#sort-field-order_number').fill('PO-77'); await page.locator('#sort-field-order_number').press('Tab');
+    await check(exists('Inbox/Acme_Invoice_INV-20391_2026-10-14.txt'), 'Enter in the add-a-field box adds a field without filing');
+    await page.getByRole('button', { name: 'Keep for Invoice' }).click(); await toast(page, 'Invoice now asks for order number');
+    await page.locator('.field-row').filter({ hasText: 'Order number' }).getByRole('button', { name: 'Folder' }).click();
+    await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.includes('PO-77'));
+    await check(page.locator('[data-sort-path]').textContent().then(t => t.includes('PO-77')), 'putting the field in the folder pattern updates where it goes on the spot');
+    await page.screenshot({ path: path.join(shots, 'sorting-fields.png') });
     await page.getByRole('button', { name: /Approve & file/ }).click(); await toast(page, 'Filed as');
-    await check(arrives('Invoices/Acme Supply Co/2026/Acme_Invoice_INV-20391_2026-10-14.txt'), 'the invoice files under its kind and sender with its own name');
+    await check(arrives('Invoices/Acme Supply Co/2026/PO-77/Acme_Invoice_INV-20391_2026-10-14.txt'), 'the invoice files under its kind, sender and the new field, with its own name');
 
     // Something new: the reader proposes a new kind; approving makes it.
     await open('Scan 7.txt');

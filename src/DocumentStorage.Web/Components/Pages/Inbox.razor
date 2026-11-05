@@ -157,7 +157,7 @@ else
             {
                 <div class="inbox-preview"><DocumentPreviewPanel Entry="PreviewEntry(selected)" @key="selected.Document.Id" /></div>
                 <SortSlip @key="selected.Document.Id" Card="selected" Vocabulary="vocabulary" Filed="Filed" ReadingChanged="ReloadSelected" Skip="SelectNext"
-                          RequestMove="RequestMove" RequestDelete="RequestDelete" RequestRescan="Rescan" />
+                          RequestMove="RequestMove" RequestDelete="RequestDelete" RequestRescan="Rescan" VocabularyChanged="ReloadVocabulary" />
             }
             <button type="button" hidden data-sort-next @onclick="SelectNext"></button>
             <button type="button" hidden data-sort-previous @onclick="SelectPrevious"></button>
@@ -382,6 +382,7 @@ else
         await Workspace.RefreshAsync(); await RefreshAsync();
         Workspace.Notify(item.Automatic ? $"{item.FileName} is back in the inbox. {item.Kind} will ask before filing again." : $"{item.FileName} is back in the inbox.");
     });
+    private async Task ReloadVocabulary() { vocabulary = await Library.SortVocabularyAsync(); StateHasChanged(); }
     private async Task Confirm(FiledItem item) => await Run(async () => { await Library.ConfirmFilingAsync(item.PlanId, await Workspace.ActorAsync()); await RefreshAsync(); });
     private async Task Trust(RegularView regular) => await Run(async () =>
     {

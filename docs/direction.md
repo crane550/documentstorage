@@ -3,6 +3,10 @@
 Accepted by Alex on 5 Nov 2026 ("Let's get going on it"). Steps 1–5 of the build order are built;
 see [sorting.md](sorting.md). This replaces the earlier feature priorities.
 
+## Guiding principle: configure by using
+
+Stash should be built up while it is used, not set up before. A field is typed on one document's slip, kept for its kind with one click and put into the name or folder with another; a sender's spelling is learned from a correction; a regular earns trust from approvals. Related ideas go by "just-in-time configuration", "progressive disclosure" and "emergent schema". Settings pages remain for review and tidying, never as a required first step.
+
 ## What Stash is for
 
 > Documents land in the inbox: scans (already OCR'd, plain names) and files saved from email

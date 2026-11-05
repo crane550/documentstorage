@@ -25,6 +25,26 @@ The inbox loop, as built on 5 Nov 2026 (see [direction.md](direction.md) for why
 
 Manage them at **Kinds & tags** (`/kinds`).
 
+## Fields, configured by using
+
+Each kind carries fields (`DocumentKind.FieldsJson`, keys like `statement_end_date`, shown as
+"Statement end date"). On the slip:
+
+- **+ Add a field** takes plain words and makes the key (`FieldKey`); the field is saved on that
+  document only.
+- **Keep for {kind}** (`AddKindFieldAsync`) adds it to the kind, so the reader is asked for it on
+  every document of that kind from then on.
+- **Name** and **Folder** (`SetFieldInPatternAsync`) put the field's token at the end of the
+  name pattern or as a new last folder level (a date field files by year there:
+  `{statement_end_date:yyyy}`), and take it out again. The destination updates on the spot; filed
+  documents that now belong elsewhere show under Tidy up.
+- **Edit kind…** opens the kind's whole form without leaving the Inbox.
+
+A field whose name has the word "date" gets a date picker and is stored as `yyyy-MM-dd`
+(`NormalizeFieldValue`; the reader is asked for that format and a written-out date is converted),
+so patterns can format it: `{statement_end_date:yyyy-MM}`. A brand-new kind has no Keep buttons:
+its fields travel with the document and become the kind's fields when it is approved.
+
 ## Patterns
 
 Tokens: `{kind}`, `{from}`, `{title}`, `{date}` (also `{date:yyyy}`, `{date:yyyy-MM}`,
@@ -166,7 +186,7 @@ pre-fill cards); measuring the real model on the server.
 
 `tests/DocumentStorage.Checks/SortingChecks.cs` (patterns, hints, Word text, the narrow prompt,
 mapping, plans, filing, corrections, new kinds, undo, automatic filing and its switches, Library
-details, merge, re-filing, back-fill, assistant proposals) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
+details, merge, re-filing, back-fill, assistant proposals), `KindFieldChecks.cs` (field keys, dates, keeping fields, name and folder toggles) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
 stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Tidy up (a pattern change and its moves),
 back-fill (read, Save & move), Library search and phone width. `DocumentStorage.McpChecks` covers
 the sorting tools over the real protocol. `node tests/browser/regulars.mjs` drives three readings, a fill-in from memory, the nudge, a statement filing itself and Looks right. Neither proves model accuracy: try it on real documents on the server.

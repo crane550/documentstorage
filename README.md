@@ -15,6 +15,7 @@ Working now:
 - Per-kind automatic filing once you switch it on, with a master switch; undoing one it filed switches its kind back to asking.
 - Word (.docx) text extraction.
 - Tidy up: documents re-file when a kind's patterns or a sender change (after you approve each move), and documents already in the Library can be read and given details.
+- Fields on the spot: add a field on a document's slip, keep it for its kind and put it into the name or folder with a click; date fields are stored as dates so patterns can format them.
 - Regulars: recurring documents from a sender you've approved a few times fill in from memory with no model call, and can be trusted to file themselves, even with the reader off.
 - Assistant tools for kinds, senders, tags and details, with proposals you approve in the browser.
 - Register existing local directories or mounted NAS shares; browse a nested folder tree.

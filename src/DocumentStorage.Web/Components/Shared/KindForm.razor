@@ -4,7 +4,7 @@
     <h2>@(Kind.Id == Guid.Empty ? "New kind" : "Edit " + Kind.Name)</h2>
     <div class="field-pair">
         <div><label for="kind-name">Name</label><input id="kind-name" @bind="Kind.Name" @bind:event="oninput" maxlength="60" placeholder="Vehicle title" /></div>
-        <div><label for="kind-fields">Fields <span class="hint">(comma-separated)</span></label><input id="kind-fields" @bind="fields" @bind:event="oninput" placeholder="vin, plate" /></div>
+        <div><label for="kind-fields">Fields <span class="hint">(comma-separated)</span></label><input id="kind-fields" @bind="fields" @bind:event="oninput" placeholder="Statement end date, Account number" /></div>
     </div>
     <label for="kind-description">What it covers <span class="hint">(the reader sees this)</span></label>
     <input id="kind-description" @bind="Kind.Description" maxlength="400" placeholder="Titles and registrations for cars, trucks and trailers." />
@@ -31,12 +31,13 @@
     private string example = "";
     private string? error;
     private IEnumerable<string> Tokens => new[] { "{date}", "{from}", "{title}", "{kind}" }.Concat(FieldNames().Select(x => "{" + x + "}"));
-    private string[] FieldNames() => fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => x.ToLowerInvariant().Replace(' ', '_').Replace('-', '_')).ToArray();
+    private string[] FieldNames() => fields.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(x => { try { return LibraryService.FieldKey(x); } catch (StorageException) { return ""; } }).Where(x => x.Length > 0).Distinct().ToArray();
 
     protected override void OnParametersSet()
     {
         if (loaded == Kind.Id) return;
-        loaded = Kind.Id; fields = string.Join(", ", LibraryService.KindFields(Kind));
+        loaded = Kind.Id; fields = string.Join(", ", LibraryService.KindFields(Kind).Select(LibraryService.FieldLabel));
     }
     protected override void OnAfterRender(bool firstRender) { }
     protected override bool ShouldRender() { Update(); return true; }
