@@ -90,6 +90,7 @@ else
         {
             <DocumentPreviewPanel Entry="selected" @key="selected.Id" />
             <div class="doc-meta">
+                <DescriptionCard Entry="selected" @key="selected.Id" />
                 <dl class="metadata"><div><dt>Where</dt><dd>@Workspace.FolderLabel(selected.ParentId ?? Guid.Empty)</dd></div><div><dt>Size</dt><dd>@WorkspaceState.FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div><div><dt>Text</dt><dd>@selected.TextStatus</dd></div></dl>
                 <div class="doc-actions">
                     <a class="button" href="@($"/ask?scope={selected.Id}")"><Icon Name="spark" Size="15" />Ask about this document</a>

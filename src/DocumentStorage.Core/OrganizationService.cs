@@ -8,6 +8,7 @@ public sealed partial class LibraryService
 {
     private async Task<(CatalogEntry Entry,StorageRoot Root,OllamaSettings Settings)> RequireOrganizationJobAsync(CatalogDb db,IdentificationJob job)
     {
+        if(!await DescriptionMatchesAsync(db,job))throw new StorageException("The saved description changed. Suggest a folder again.");
         if(!job.Organizing||job.State!="Succeeded"||job.OrganizationJson.Length==0)throw new StorageException("Read this document with AI again for a current filing proposal.");
         var (entry,root)=await WritableEntryAsync(db,job.EntryId);await RequireIntakeAsync(db,entry);RequireStable(entry);
         var settings=await db.OllamaConfigurations.SingleAsync(x=>x.Id==1);

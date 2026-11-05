@@ -38,7 +38,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             {
                 var pattern = "%" + word.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
                 query = query.Where(x => EF.Functions.ILike(x.Name, pattern, "\\") ||
-                    EF.Functions.ILike(x.RelativePath, pattern, "\\") || EF.Functions.ILike(x.ExtractedText, pattern, "\\"));
+                    EF.Functions.ILike(x.RelativePath, pattern, "\\") || EF.Functions.ILike(x.ExtractedText, pattern, "\\") || db.DocumentDescriptions.Any(d=>d.EntryId==x.Id && d.ContentHash==x.ContentHash && EF.Functions.ILike(d.SearchText,pattern,"\\")));
             }
         }
         return new(await query.OrderByDescending(x => x.IsFolder).ThenBy(x => x.Name).Skip(Math.Max(0, offset)).Take(100).ToListAsync(), await query.CountAsync());

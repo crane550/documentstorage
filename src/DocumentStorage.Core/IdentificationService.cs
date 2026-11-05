@@ -259,20 +259,24 @@ public sealed partial class LibraryService
             }
             catch (Exception ex) when (ex is StorageException or IOException or UnauthorizedAccessException)
             { claimed.State = "Retry"; claimed.NotBefore = time.GetUtcNow().AddSeconds(30); claimed.LastError = "Storage is unavailable. Waiting to retry."; await db.SaveChangesAsync(stoppingToken); return true; }
-            if (entry.TextStatus != "Indexed" || string.IsNullOrWhiteSpace(entry.ExtractedText))
+            if (!claimed.FromSavedDescription && (entry.TextStatus != "Indexed" || string.IsNullOrWhiteSpace(entry.ExtractedText)))
             { await SupersedeAsync(db, claimed, "OCR text is no longer available. Rescan the document."); return true; }
-            var text = entry.ExtractedText;
-            if (text.Length > settings.MaxInputCharacters)
+            if(!await DescriptionMatchesAsync(db,claimed)) { await SupersedeAsync(db,claimed,"The saved description changed. Suggest a folder again.");return true; }
+            var sourceText = claimed.FromSavedDescription ? PlacementText(await db.DocumentDescriptions.SingleAsync(x=>x.EntryId==entry.Id)) : entry.ExtractedText;
+            var text = sourceText;
+            var excerptTruncated = text.Length > settings.MaxInputCharacters;
+            if (excerptTruncated)
             {
                 const string marker = "\n[OCR EXCERPT OMITTED]\n";
                 var budget = settings.MaxInputCharacters - marker.Length;
                 var head = budget * 3 / 4;
                 text = text[..head] + marker + text[^(budget - head)..];
             }
-            input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, entry.ExtractedText, text,
-                context.Truncated || entry.ExtractedText.Length > settings.MaxInputCharacters, context.Types, context.Facts, claimed.Organizing);
+            input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, sourceText, text,
+                context.Truncated || excerptTruncated, context.Types, context.Facts, claimed.Organizing);
             claimed.ContextJson = context.Json;
             claimed.InputText = text;
+            claimed.InputTruncated = input.Truncated;
             claimed.State = "Running"; claimed.Attempts++; claimed.RunId = Guid.NewGuid(); claimed.LeaseUntil = time.GetUtcNow().AddSeconds(settings.TimeoutSeconds + 60); claimed.LastError = null;
             live = new(claimed.RunId.Value, CancellationTokenSource.CreateLinkedTokenSource(stoppingToken));
             identificationRequests[claimed.Id] = live;
@@ -314,7 +318,7 @@ public sealed partial class LibraryService
                 var settings = await db.OllamaConfigurations.SingleAsync(x => x.Id == 1);
                 var entry = await db.Entries.SingleOrDefaultAsync(x => x.Id == job.EntryId);
                 var review = await db.Reviews.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == job.EntryId);
-                if (entry == null || entry.IsMissing || entry.TrashBatchId != null || entry.RelativePath != job.SourcePath || (review?.Revision ?? 0) != job.ReviewRevision ||
+                if (!await DescriptionMatchesAsync(db,job) || entry == null || entry.IsMissing || entry.TrashBatchId != null || entry.RelativePath != job.SourcePath || (review?.Revision ?? 0) != job.ReviewRevision ||
                     !settings.Enabled || settings.Revision != job.SettingsRevision || (await JobContextAsync(db, entry, settings, job)).Hash != job.ContextHash)
                 { await SupersedeAsync(db, job, "The document, review or guidance changed during identification. Its response was discarded."); return true; }
                 try
@@ -334,6 +338,7 @@ public sealed partial class LibraryService
                 { job.State = "Failed"; job.LastError = "The local model returned an invalid identification result."; job.CompletedAt = time.GetUtcNow(); }
                 else
                 {
+                    await StoreDescriptionAsync(db,entry,job,result);
                     job.OrganizationJson = result.Organization == null ? "" : JsonSerializer.Serialize(result.Organization);
                     job.DocumentType = result.DocumentType; job.FactsJson = JsonSerializer.Serialize(NormalizeFacts(result.Facts));
                     job.EvidenceJson = JsonSerializer.Serialize(result.Evidence); job.Summary = result.Summary;

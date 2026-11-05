@@ -24,7 +24,18 @@ internal static class MigrationChecks
             INSERT INTO "Operations" ("Id", "RootId", "EntryId", "Kind", "FromPath", "ToPath", "State", "CreatedAt")
             VALUES ({legacyOperation}, {root.Id}, {folder.Id}, {"Move"}, {"legacy-source"}, {"legacy-target"}, {"Needs review"}, {DateTimeOffset.UtcNow})
             """);
+        await migrator.MigrateAsync("20261105001255_AddInboxProgressAndReaderInput");
+        var legacyDocument=new CatalogEntry { RootId=root.Id,Name="legacy-guide.txt",RelativePath="legacy-guide.txt",ContentHash="synthetic-legacy-fingerprint" };
+        db.Entries.Add(legacyDocument);await db.SaveChangesAsync();var legacyJob=Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "IdentificationJobs" ("Id","EntryId","ContentHash","SourcePath","ReviewRevision","SettingsRevision","ContextHash","ContextJson","Endpoint","Model","InputTruncated","State","Attempts","CreatedAt","CreatedBy","NotBefore","DocumentType","FactsJson","EvidenceJson","Summary","NeedsReview")
+            VALUES ({legacyJob},{legacyDocument.Id},{legacyDocument.ContentHash},{legacyDocument.RelativePath},{0},{1},{"context"},{"{}"},{"http://127.0.0.1:11434/"},{"synthetic:latest"},{false},{"Succeeded"},{1},{DateTimeOffset.UtcNow},{"owner"},{DateTimeOffset.UtcNow},{"training_guide"},{"{}"},{"{}"},{"Synthetic saved guide summary."},{false})
+            """);
         await migrator.MigrateAsync();
+        var imported=await db.DocumentDescriptions.SingleAsync(x=>x.EntryId==legacyDocument.Id);
+        check(imported.SourceJobId==legacyJob&&imported.Summary=="Synthetic saved guide summary."&&imported.Tags.Contains("training guide"),"description migration reuses an existing saved reading without inference");
+        db.DocumentDescriptions.Remove(imported);db.IdentificationJobs.Remove(await db.IdentificationJobs.SingleAsync(x=>x.Id==legacyJob));db.Entries.Remove(legacyDocument);
+
         var retained = await db.Operations.SingleAsync(x => x.Id == legacyOperation);
         check(retained.State == "Needs review" && retained.SourceSnapshotJson == "" && !await db.OperationRecoveries.AnyAsync(),
             "recovery migration preserves an existing blocked journal without inventing fingerprints or decisions");

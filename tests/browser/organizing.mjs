@@ -9,7 +9,7 @@ const directory=path.resolve('.local/organizing-browser-'+Date.now());
 for(const folder of ['Incoming','Cedar Churhc/Safety Minstry','Finance'])await mkdir(path.join(directory,folder),{recursive:true});
 const ministry='Synthetic West campus ministry post guide. Revision five.';
 for(const [name,text] of [['ministry.txt',ministry],['credit.txt','Synthetic home equity credit line modification.'],['training.txt','Synthetic volunteer training notes.']])await writeFile(path.join(directory,'Incoming',name),text);
-let calls=0,learned=false,wireError,active=0,maxActive=0;
+let reusedDescription=false,calls=0,learned=false,wireError,active=0,maxActive=0;
 const fixture=http.createServer(async(req,res)=>{
  try{
   res.setHeader('Content-Type','application/json');if(req.url==='/api/tags')return res.end(JSON.stringify({models:[{name:'synthetic-organizer:latest',size:123}]}));
@@ -19,10 +19,11 @@ const fixture=http.createServer(async(req,res)=>{
    calls++;active++;maxActive=Math.max(maxActive,active);
    const input=JSON.parse(payload.messages[1].content),catalog=input.workspace;
    assert(payload.format.properties.filing);assert(!payload.format.properties.document_type.enum);assert(!JSON.stringify(catalog).includes(directory));
+   if(input.document_text.startsWith('SAVED DOCUMENT DESCRIPTION')){reusedDescription=true;assert(!input.document_text.includes('Revision five.'));assert(input.document_text.includes('Campus volunteer handbook'));}
    const credit=input.file_name==='credit.txt',training=input.file_name==='training.txt';
    const target=catalog.folders.find(x=>x.path.endsWith(credit?'Finance':'Safety Minstry'));assert(target,'existing destination is supplied');
    learned ||= catalog.approved_examples.some(x=>x.approved_name==='Approved West campus guide.txt');
-   const proposal={document_type:credit?'heloc_modification':training?'volunteer_training':'ministry_post_guide',needs_review:false,summary:'Synthetic organizing suggestion.',facts:credit||training?[]:[{name:'campus',value:'West',evidence:'Synthetic West campus'}],
+   const proposal={description:{title:'Synthetic document title',tags:['training','policy'],organizations:['Synthetic Church']},document_type:credit?'heloc_modification':training?'volunteer_training':'ministry_post_guide',needs_review:false,summary:'Synthetic organizing suggestion.',facts:credit||training?[]:[{name:'campus',value:'West',evidence:'Synthetic West campus'}],
     filing:{destination_folder_id:target.id,new_folder:training?'Training':'',filename:credit?'Credit line modification.txt':training?'Volunteer training.txt':'West campus guide - Rev 5.txt',reason:'The existing folder matches the document subject. A filing rule is not required.'}};
    active--;return res.end(JSON.stringify({done:true,message:{content:JSON.stringify(proposal)}}));
   }
@@ -42,8 +43,15 @@ try{
  await check(page.getByLabel('Destination folder',{exact:true}).locator('option:checked').textContent().then(x=>x.includes('Cedar Churhc')&&x.includes('Safety Minstry')),'the AI selects the existing ministry folder by ID despite spelling errors');
  await check(readFile(path.join(directory,'Incoming/ministry.txt'),'utf8').then(x=>x===ministry),'reading and proposing do not move the original');
  await check(page.getByText('Text ready for AI reading',{exact:true}).isVisible(),'the filing slip explicitly reports server text readiness');
+ await page.getByLabel('Document title',{exact:true}).fill('Campus volunteer handbook');
+ await page.getByLabel('Document tags',{exact:true}).fill('training, policy, zebra-search');
+ const beforeDescriptionSave=calls;await page.getByRole('button',{name:'Save description',exact:true}).click();await toast(page,'Description saved.');
+ await check(calls===beforeDescriptionSave,'saving title and tags does not call the model');
+ await page.getByRole('button',{name:'Suggest folder from saved description',exact:true}).click();await toast(page,'Folder suggestion queued');
+ await page.locator('.reader.working').waitFor({state:'hidden',timeout:25000});await page.locator('.organizing-proposal').waitFor({timeout:25000});
+ await check(reusedDescription,'placement uses the corrected saved description without original OCR');
  await page.locator('.reading-details > summary').click();
- await check(page.locator('.reading-details').textContent().then(t=>t.includes('synthetic-organizer:latest')&&t.includes(ministry)&&t.includes('Safety Minstry')),'reading details show the actual model, submitted excerpt and destination context');
+ await check(page.locator('.reading-details').textContent().then(t=>t.includes('synthetic-organizer:latest')&&t.includes('SAVED DOCUMENT DESCRIPTION')&&t.includes('Safety Minstry')),'reading details show the actual model, submitted excerpt and destination context');
  await page.locator('.extraction-status').getByRole('button',{name:'Rescan text',exact:true}).click();await toast(page,'Text rescanned:');
  await page.locator('.reader-note').filter({hasText:'Text was rescanned'}).waitFor();
  await check(page.locator('.organizing-proposal').count().then(n=>n===0),'rescan removes the previous executable AI proposal');
@@ -53,6 +61,10 @@ try{
  await page.screenshot({path:'.local/organizing-proposal.png',fullPage:true});await page.getByRole('button',{name:'Approve & file',exact:true}).click();await toast(page,'Filed as Approved West campus guide.txt');
  await check(readFile(path.join(directory,'Cedar Churhc/Safety Minstry/Approved West campus guide.txt'),'utf8').then(x=>x===ministry),'one approval files unchanged bytes using the corrected filename and existing folder');
  await check(access(path.join(directory,'Incoming/ministry.txt')).then(()=>false,()=>true),'approved filing removes the source from intake through the move journal');
+ await page.getByLabel('Search documents',{exact:true}).fill('zebra-search');await page.getByLabel('Search documents',{exact:true}).press('Enter');
+ await page.locator('.file-name').filter({hasText:'Approved West campus guide.txt'}).click();
+ await check(page.getByLabel('Document title',{exact:true}).inputValue().then(x=>x==='Campus volunteer handbook'),'filed documents retain corrected descriptions and are found through tags');
+ await inbox(page);
  await read('credit.txt');await check(learned,'a later AI request receives the previously approved correction as an example');
  await page.getByRole('button',{name:'Decline suggestion',exact:true}).click();await page.locator('.reader-note').filter({hasText:'declined'}).waitFor();await check(access(path.join(directory,'Incoming/credit.txt')).then(()=>true,()=>false),'declining a plan leaves its original in intake');
  await read('training.txt');await check(page.getByLabel('Create a new subfolder here',{exact:true}).isChecked(),'the proposal explicitly shows when approval will create a new subfolder');

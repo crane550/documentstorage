@@ -896,3 +896,8 @@ button.note-empty:hover { color: #3a3216; }
 /* Supplied Stash artwork; retain its original aspect ratio. */
 .brand .stash-logo { display: block; width: 190px; max-width: 100%; height: auto; }
 .account-brand .stash-logo { display: block; width: 270px; max-width: 100%; height: auto; }
+
+.description-card { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); min-width: 0; }
+.description-card summary { cursor: pointer; font-weight: 600; }
+.description-card label { display: grid; gap: 4px; }
+.description-card .button { margin-top: 8px; }

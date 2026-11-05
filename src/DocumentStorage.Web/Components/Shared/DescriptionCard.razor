@@ -1,0 +1,58 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+<section class="description-card" aria-label="Saved document description">
+@if (saved != null)
+{
+    <details open>
+        <summary>Saved document description</summary>
+        <p class="hint">@(saved.EditedByUser ? "Your corrected description" : "AI suggested description") · revision @saved.Revision. Saving changes does not move the file or call AI.</p>
+        @if (!Current) { <p class="form-error">The file has changed. This historical description needs a fresh document reading.</p> }
+        <form class="form" @onsubmit="Save" @onsubmit:preventDefault @oninput="()=>dirty=true" @onchange="()=>dirty=true">
+            <label>Document title<input aria-label="Document title" maxlength="180" required @bind="title" @bind:event="oninput" disabled="@(!CanEdit || busy)" /></label>
+            <label>Document summary<textarea aria-label="Document summary" maxlength="1000" rows="3" @bind="summary" @bind:event="oninput" disabled="@(!CanEdit || busy)"></textarea></label>
+            <label>Tags (comma separated)<input aria-label="Document tags" @bind="tags" @bind:event="oninput" disabled="@(!CanEdit || busy)" placeholder="training, policy, church safety" /></label>
+            @if(CanEdit && !busy && known.Length>0) { <div class="type-picks" aria-label="Reuse tags">@foreach(var tag in known.Where(x=>!Split(tags).Contains(x,StringComparer.OrdinalIgnoreCase)).Take(12)) { <button type="button" class="token" @onclick="()=>AddTag(tag)">@tag</button> }</div> }
+            <label>Organizations (comma separated)<input aria-label="Document organizations" @bind="organizations" @bind:event="oninput" disabled="@(!CanEdit || busy)" /></label>
+            <button type="submit" class="button small" disabled="@(!CanEdit || busy || !dirty)">Save description</button>
+        </form>
+        <details><summary>Saved suggested facts</summary><dl class="ai-facts">@foreach(var fact in System.Text.Json.JsonSerializer.Deserialize<Dictionary<string,string>>(saved.FactsJson)??[]) { <div><dt>@fact.Key</dt><dd>@fact.Value</dd></div> }</dl><p class="hint">AI extracted facts remain suggestions; saving a description does not mark them human verified.</p></details>
+        @if(AllowPlacement && CanEdit && Workspace.ReaderEnabled) { <button type="button" class="button small" disabled="@(busy || dirty || ReaderActive)" @onclick="Placement">Suggest folder from saved description</button><p class="hint">Uses the saved description and current folders, without sending original OCR again.</p> }
+    </details>
+}
+else { <p class="hint">A document reading will save a title, summary, tags and discovered facts here.</p> }
+@if(error!=null){<p class="form-error" role="alert">@error</p>}
+</section>
+@code {
+    [Parameter,EditorRequired] public CatalogEntry Entry {get;set;}=default!;
+    [Parameter] public string RefreshKey {get;set;}="";
+    [Parameter] public bool AllowPlacement {get;set;}
+    [Parameter] public bool ReaderActive {get;set;}
+    [Parameter] public EventCallback Changed {get;set;}
+    private DocumentDescription? saved;
+    private string title="",summary="",tags="",organizations="",loaded="";
+    private string[] known=[];
+    private bool busy,dirty;
+    private string? error;
+    private bool Current=>saved?.ContentHash==Entry.ContentHash;
+    private bool CanEdit=>Current && Workspace.IsWritable(Entry.RootId);
+    private static string[] Split(string value)=>value.Split(',',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
+    protected override async Task OnParametersSetAsync()
+    {
+        var key=Entry.Id+Entry.ContentHash+RefreshKey;if(key==loaded)return;loaded=key;
+        if(dirty)return;
+        await Load();
+    }
+    private async Task Load()
+    {
+        saved=await Library.DescriptionAsync(Entry.Id);known=await Library.KnownTagsAsync();
+        title=saved?.Title??"";summary=saved?.Summary??"";tags=string.Join(", ",saved?.Tags??[]);organizations=string.Join(", ",saved?.Organizations??[]);dirty=false;
+    }
+    private void AddTag(string tag){tags=string.Join(", ",Split(tags).Append(tag));dirty=true;}
+    private async Task Run(Func<Task> action)
+    {
+        if(busy)return;busy=true;error=null;
+        try{await action();}catch(StorageException ex){error=ex.Message;}catch{error="The description could not be updated. Refresh and try again.";}finally{busy=false;}
+    }
+    private Task Save()=>Run(async()=>{if(saved==null)return;await Library.SaveDescriptionAsync(Entry.Id,saved.Revision,title,summary,Split(tags),Split(organizations),await Workspace.ActorAsync());await Load();Workspace.Notify("Description saved.");await Changed.InvokeAsync();});
+    private Task Placement()=>Run(async()=>{await Library.QueuePlacementAsync(Entry.Id,await Workspace.ActorAsync());Workspace.Notify("Folder suggestion queued using saved description.");await Changed.InvokeAsync();});
+}

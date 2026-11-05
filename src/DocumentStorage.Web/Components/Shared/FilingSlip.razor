@@ -31,6 +31,7 @@
         @if (HasText) { <span> · @Item.Entry.ExtractedText.Length.ToString("N0") characters</span> }
         <button type="button" class="text-button" disabled="@(busy || Rescanning || Item.Status == "Storage offline")" @onclick="() => RequestRescan.InvokeAsync(Item.Entry)">@(Rescanning ? "Rescanning…" : "Rescan text")</button>
     </p>
+    <DescriptionCard Entry="Item.Entry" RefreshKey="@($"{Identification?.Id}:{Identification?.State}")" AllowPlacement="true" ReaderActive="ReaderActive" Changed="IdentificationChanged" @key="Item.Entry.Id" />
     @* The reader's suggestion stays separate until you choose to use it. *@
     @if (Identification is { } job)
     {
@@ -126,7 +127,7 @@
     @if (Identification is { } reading)
     {
         <details class="slip-text reading-details"><summary>Reading details</summary>
-            <p>@reading.Model · @(reading.Organizing ? "Suggest a name and destination" : "Facts only") · @reading.State · @reading.Attempts attempt(s)</p>
+            <p>@reading.Model · @(reading.FromSavedDescription ? "Saved description → placement" : "Document text reading") · @(reading.Organizing ? "Suggest a name and destination" : "Facts only") · @reading.State · @reading.Attempts attempt(s)</p>
             @if (reading.InputTruncated) { <p class="hint">The text or folder guidance was shortened for this reading. Check whether the relevant evidence and destination were included below.</p> }
             @if (reading.InputText.Length > 0)
             {
