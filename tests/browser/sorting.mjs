@@ -126,6 +126,21 @@ try {
     await check(page.locator('.name-row').filter({ hasText: 'also CEDAR BANK N.A' }).waitFor({ timeout: 10000 }).then(() => true), 'the reader\'s spelling is remembered for the sender');
     await page.screenshot({ path: path.join(shots, 'sorting-kinds.png'), fullPage: true });
 
+    // The fluid tree: change where a kind's documents go, review the moves, move them.
+    await page.getByRole('button', { name: /^Kinds/ }).click();
+    await statements.getByRole('button', { name: 'Actions for Bank statement' }).click();
+    await page.getByRole('menuitem', { name: 'Edit' }).click();
+    await page.getByLabel('Folder pattern', { exact: true }).fill('Statements/{from}');
+    await page.getByRole('button', { name: 'Save kind', exact: true }).click(); await toast(page, 'belong somewhere else');
+    await check(exists('Banking/Cedar Bank/2026/2026-10 Cedar Bank statement 1234.txt'), 'changing a pattern moves nothing by itself');
+    await page.getByRole('button', { name: /Tidy up/ }).click();
+    await page.locator('.tidy-row').filter({ hasText: 'Cedar Bank statement' }).waitFor();
+    await check(page.locator('.tidy-to').first().textContent().then(t => t.includes('Statements/Cedar Bank/2026-10 Cedar Bank statement 1234.txt')), 'Tidy up shows exactly where each document would go');
+    await page.screenshot({ path: path.join(shots, 'sorting-tidy.png'), fullPage: true });
+    await page.getByRole('button', { name: /^Move 1/ }).click(); await toast(page, 'Moved 1 document');
+    await check(arrives('Statements/Cedar Bank/2026-10 Cedar Bank statement 1234.txt'), 'approving the move re-files the document under the new pattern');
+    await page.locator('.tidy-head h2').filter({ hasText: 'Everything is where its kind puts it' }).waitFor();
+
     // Library: details and search by them.
     await page.goto(base + '/library?q=' + encodeURIComponent('tag:shop')); await ready(page);
     await page.locator('.file-name').filter({ hasText: 'Acme_Invoice' }).first().click();

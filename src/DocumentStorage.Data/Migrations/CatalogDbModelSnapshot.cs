@@ -446,6 +446,12 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("FollowsFolder")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("FollowsName")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid?>("KindId")
                         .HasColumnType("uuid");
 

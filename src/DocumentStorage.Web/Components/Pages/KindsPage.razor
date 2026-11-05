@@ -18,6 +18,7 @@
     <button type="button" class="@(tab == "kinds" ? "active" : "")" aria-pressed="@(tab == "kinds" ? "true" : "false")" @onclick="@(() => Go("kinds"))">Kinds<span class="count">@vocabulary.Kinds.Count</span></button>
     <button type="button" class="@(tab == "senders" ? "active" : "")" aria-pressed="@(tab == "senders" ? "true" : "false")" @onclick="@(() => Go("senders"))">Senders<span class="count">@vocabulary.Senders.Count</span></button>
     <button type="button" class="@(tab == "tags" ? "active" : "")" aria-pressed="@(tab == "tags" ? "true" : "false")" @onclick="@(() => Go("tags"))">Tags<span class="count">@vocabulary.Tags.Count</span></button>
+    <button type="button" class="@(tab == "tidy" ? "active" : "")" aria-pressed="@(tab == "tidy" ? "true" : "false")" @onclick="@(() => Go("tidy"))"><span>Tidy up</span>@if (outOfPlace > 0) { <span class="count">@outOfPlace</span> }</button>
     <span class="inbox-tabs-gap"></span>
     <a class="text-button" href="/rules">Older filing rules</a>
 </nav>
@@ -53,6 +54,7 @@ else if (tab == "kinds")
                     <div><dt>Example</dt><dd class="mono example-path">@Example(kind)</dd></div>
                 </dl>
                 <footer>
+                    @if (outByKind.GetValueOrDefault(kind.Name) is int waiting and > 0) { <a class="text-button kind-moves" href="@($"/kinds?tab=tidy&kind={kind.Id}")"><Icon Name="move" Size="13" />@waiting to move</a> }
                     <span class="kind-record" title="Approvals of the reader's suggestions">@vocabulary.KindUse.GetValueOrDefault(kind.Id) filed · @kind.Approved approved · @kind.Corrected corrected@(kind.Streak > 0 ? $" · {kind.Streak} right in a row" : "")</span>
                     <label class="switch small"><input type="checkbox" checked="@kind.AutoFile" @onchange="e => SetAuto(kind, (bool)e.Value!)" aria-label="@($"{kind.Name} files itself")" /><span class="switch-track"></span><span>File without asking</span></label>
                 </footer>
@@ -60,6 +62,10 @@ else if (tab == "kinds")
             </article>
         }
     </div>
+}
+else if (tab == "tidy")
+{
+    <TidyList KindId="KindFilter" SenderId="SenderFilter" Scope="@TidyScope" Moved="Load" />
 }
 else if (tab == "senders")
 {
@@ -72,6 +78,13 @@ else
 
 @code {
     [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "kind")] public string? KindParameter { get; set; }
+    [SupplyParameterFromQuery(Name = "sender")] public string? SenderParameter { get; set; }
+    private Guid? KindFilter => Guid.TryParse(KindParameter, out var id) ? id : null;
+    private Guid? SenderFilter => Guid.TryParse(SenderParameter, out var id) ? id : null;
+    private int outOfPlace;
+    private Dictionary<string, int> outByKind = [];
+    private string TidyScope => KindFilter is Guid k ? $"Only {vocabulary.Kinds.FirstOrDefault(x => x.Id == k)?.Name ?? "one kind"}." : SenderFilter is Guid f ? $"Only from {vocabulary.Senders.FirstOrDefault(x => x.Id == f)?.Name ?? "one sender"}." : "";
     private string tab = "kinds";
     private SortVocabulary vocabulary = new([], [], [], [], [], []);
     private List<NameList.Row> senderRows = [], tagRows = [];
@@ -80,12 +93,15 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        tab = Tab is "senders" or "tags" ? Tab : "kinds";
+        tab = Tab is "senders" or "tags" or "tidy" ? Tab : "kinds";
         await Load();
         loaded = true;
     }
     private async Task Load()
     {
+        var moves = await Library.RefilePlanAsync();
+        outOfPlace = moves.Count(x => x.Problem == null);
+        outByKind = moves.Where(x => x.Problem == null).GroupBy(x => x.Kind).ToDictionary(x => x.Key, x => x.Count());
         vocabulary = await Library.SortVocabularyAsync();
         autoFiling = await Library.AutoFilingEnabledAsync();
         senderRows = vocabulary.Senders.Select(x => new NameList.Row(x.Id, x.Name, LibraryService.Aliases(x.AliasesJson), vocabulary.SenderUse.GetValueOrDefault(x.Id), $"/library?q=from:{Uri.EscapeDataString(x.Name.Replace(' ', '_'))}")).ToList();
@@ -103,7 +119,9 @@ else
     private static DocumentKind Copy(DocumentKind k) => new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
     private void NewKind() => editing = new() { Id = Guid.Empty, FolderPattern = LibraryService.DefaultKindFolder, NamePattern = LibraryService.DefaultKindName };
 
-    private Task SaveKind(DocumentKind kind) => Run(async () => { await Library.SaveKindAsync(kind, await Workspace.ActorAsync()); editing = null; await Load(); Workspace.Notify("Saved " + kind.Name + "."); });
+    private Task SaveKind(DocumentKind kind) => Run(async () => { var saved = await Library.SaveKindAsync(kind, await Workspace.ActorAsync()); editing = null; await Load();
+        var moving = outByKind.GetValueOrDefault(saved.Name);
+        Workspace.Notify(moving > 0 ? $"Saved {saved.Name}. {moving} of its documents now belong somewhere else: see Tidy up." : "Saved " + saved.Name + "."); });
     private Task SetAuto(DocumentKind kind, bool on) => Run(async () =>
     {
         await Library.SetKindAutoFileAsync(kind.Id, on, await Workspace.ActorAsync()); await Load();
@@ -111,8 +129,14 @@ else
     });
     private Task SetMaster(bool on) => Run(async () => { await Library.SetAutoFilingEnabledAsync(on, await Workspace.ActorAsync()); await Load(); Workspace.Notify(on ? "Trusted kinds may file themselves." : "Automatic filing is off. Everything waits for you."); });
     private Task DeleteKind(DocumentKind kind) => Run(async () => { await Library.DeleteKindAsync(kind.Id, await Workspace.ActorAsync()); await Load(); Workspace.Notify($"Deleted {kind.Name}. Its documents stay where they are, without a kind."); });
-    private Task SaveSender(NameList.Row row) => Run(async () => { await Library.SaveSenderAsync(row.Id, row.Name, row.Aliases, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Saved " + row.Name + "."); });
-    private Task MergeSender((Guid From, Guid Into) pair) => Run(async () => { await Library.MergeSendersAsync(pair.From, pair.Into, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Merged. The old name is kept as a spelling."); });
+    private Task SaveSender(NameList.Row row) => Run(async () =>
+    {
+        var saved = await Library.SaveSenderAsync(row.Id, row.Name, row.Aliases, await Workspace.ActorAsync()); await Load();
+        var waiting = row.Id == Guid.Empty ? 0 : await Library.RefileCountAsync(senderId: saved.Id);
+        Workspace.Notify(waiting > 0 ? $"Saved {saved.Name}. {waiting} documents are filed under the old name: see Tidy up." : "Saved " + saved.Name + ".");
+    });
+    private Task MergeSender((Guid From, Guid Into) pair) => Run(async () => { await Library.MergeSendersAsync(pair.From, pair.Into, await Workspace.ActorAsync()); await Load();
+        if (await Library.RefileCountAsync(senderId: pair.Into) is var waiting and > 0) { Navigation.NavigateTo($"/kinds?tab=tidy&sender={pair.Into}"); Workspace.Notify($"Merged. {waiting} documents follow the old name: review the moves."); return; } Workspace.Notify("Merged. The old name is kept as a spelling."); });
     private Task DeleteSender(Guid id) => Run(async () => { await Library.DeleteSenderAsync(id, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Sender deleted. Its documents keep everything else."); });
     private Task SaveTag(NameList.Row row) => Run(async () => { await Library.SaveTagAsync(row.Id, row.Name, row.Aliases, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Saved #" + LibraryService.TagName(row.Name) + "."); });
     private Task MergeTag((Guid From, Guid Into) pair) => Run(async () => { await Library.MergeTagsAsync(pair.From, pair.Into, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Tags merged."); });

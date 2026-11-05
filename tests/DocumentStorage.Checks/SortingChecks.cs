@@ -175,13 +175,42 @@ internal static class SortingChecks
         check(!vocab.Kinds.Single(x => x.Name == "Bank statement").AutoFile, "undoing an automatic filing switches its kind back to asking first");
 
         // Library details without moving, and merging senders.
-        await library.SaveDocumentDetailsAsync(scan.Document.Id, new("Bank statement", "Cedar Bank", new(2026, 10, 31), "Checking statement", ["house", "taxes"], new()), actor);
+        await library.SaveDocumentDetailsAsync(scan.Document.Id, new("Bank statement", "Cedar Bank", new(2026, 10, 31), "Checking statement", ["house", "taxes"], new() { ["account_ending"] = "1234" }), actor);
         check(File.Exists(filedPath) && (await library.DocumentDetailsAsync(scan.Document.Id))!.Tags.Contains("taxes"), "details can be changed in the Library without moving the file");
         vocab = await library.SortVocabularyAsync();
         var bank = vocab.Senders.Single(x => x.Name == "Cedar Bank"); var creditUnion = vocab.Senders.Single(x => x.Name == "Cedar Credit Union");
         await library.MergeSendersAsync(creditUnion.Id, bank.Id, actor);
         check((await library.DocumentDetailsAsync(second.Document.Id))!.From == "Cedar Bank" && LibraryService.Aliases((await library.SortVocabularyAsync()).Senders.Single(x => x.Id == bank.Id).AliasesJson).Contains("Cedar Credit Union"),
             "merging senders moves their documents and keeps the old name as a spelling");
+
+        // ---- The fluid tree: re-filing when patterns or senders change ----
+        // The merge above moved the second statement's sender to Cedar Bank, so its folder and name are out of date.
+        var afterMerge = await library.RefilePlanAsync(senderId: bank.Id);
+        var mergedItem = afterMerge.SingleOrDefault(x => x.EntryId == second.Document.Id);
+        check(mergedItem != null && mergedItem.FromPath == "banking/Cedar Credit Union/2026/2026-10 Cedar Credit Union statement 1234.txt"
+            && mergedItem.ToPath == "banking/Cedar Bank/2026/2026-10 Cedar Bank statement 1234 (2).txt", "merging senders lists the documents whose folder and name follow the old name");
+        check(afterMerge.All(x => x.EntryId != emailed.Document.Id), "documents still in an inbox are left to the Inbox");
+        vocab = await library.SortVocabularyAsync();
+        var statementKindNow = vocab.Kinds.Single(x => x.Name == "Bank statement");
+        statementKindNow.FolderPattern = "Banking/{date:yyyy}/{from}";
+        await library.SaveKindAsync(statementKindNow, actor);
+        var moves = await library.RefilePlanAsync(kindId: statementKindNow.Id);
+        check(moves.Count == 2 && moves.Select(x => x.ToPath).Distinct().Count() == 2 && moves.All(x => x.NewFolders.SequenceEqual(["2026", "Cedar Bank"]) && x.ToPath.StartsWith("banking/2026/Cedar Bank/2026-10 Cedar Bank statement 1234")),
+            "changing a kind's folder pattern lists where each of its documents would go, with the folders it would make");
+        check(File.Exists(filedPath), "listing moves changes nothing on disk");
+        var scanMove = moves.Single(x => x.EntryId == scan.Document.Id);
+        await refuses(() => library.RefileAsync(scan.Document.Id, scanMove.FromPath, "banking/elsewhere.txt", actor), "a move is refused when its destination isn't the one shown");
+        var refiled = await library.RefileManyAsync(moves.Where(x => x.Problem == null), actor);
+        check(refiled.Moved == moves.Count(x => x.Problem == null) && refiled.Failed.Count == 0, "approved moves all go through");
+        check(File.Exists(Path.Combine(scratch, "banking/2026/Cedar Bank/2026-10 Cedar Bank statement 1234.txt")) && !File.Exists(filedPath)
+            && File.Exists(Path.Combine(scratch, "banking/2026/Cedar Bank/2026-10 Cedar Bank statement 1234 (2).txt")), "documents move to their new folders, keeping unchanged bytes and never overwriting");
+        await using (var db = await factory.CreateDbContextAsync())
+            check(await db.Operations.CountAsync(x => x.EntryId == scan.Document.Id && x.Kind == "Move" && x.State == "Completed") == 1, "re-filing goes through the move journal");
+        check((await library.RefilePlanAsync(kindId: statementKindNow.Id)).Count == 0, "once moved, nothing is left to re-file");
+        await library.SetFollowsPatternsAsync(scan.Document.Id, false, actor);
+        statementKindNow = (await library.SortVocabularyAsync()).Kinds.Single(x => x.Name == "Bank statement");
+        statementKindNow.FolderPattern = "Statements/{from}"; await library.SaveKindAsync(statementKindNow, actor);
+        check((await library.RefilePlanAsync(kindId: statementKindNow.Id)).All(x => x.EntryId != scan.Document.Id), "a document set to stay where it is is never listed to move");
         await library.SetIntakeAsync(inbox, false);
     }
 

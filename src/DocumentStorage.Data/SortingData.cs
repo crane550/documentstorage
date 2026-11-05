@@ -52,6 +52,10 @@ public sealed class DocumentDetail
     public string FieldsJson { get; set; } = "{}";
     // Where each detail came from: filename, text, reader, person.
     public string SourcesJson { get; set; } = "{}";
+    // Whether the folder and the name follow the kind's patterns. Only those parts move when a
+    // pattern changes or senders merge; a kept or hand-picked folder or name stays put.
+    public bool FollowsFolder { get; set; }
+    public bool FollowsName { get; set; }
     public int Revision { get; set; } = 1;
     public DateTimeOffset UpdatedAt { get; set; }
     public string UpdatedBy { get; set; } = "";

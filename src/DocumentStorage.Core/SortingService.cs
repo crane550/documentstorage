@@ -24,7 +24,8 @@ public sealed record SortVocabulary(List<DocumentKind> Kinds, List<Correspondent
     Dictionary<Guid, int> KindUse, Dictionary<Guid, int> SenderUse, Dictionary<Guid, int> TagUse);
 public sealed record FiledItem(Guid PlanId, Guid EntryId, string FileName, string DestinationPath, string SourcePath, string Kind, string From,
     DateOnly? Date, string Title, string[] Tags, bool Automatic, bool Undone, bool Corrected, DateTimeOffset FiledAt, string Actor);
-public sealed record DocumentDetailView(Guid EntryId, string Kind, string From, DateOnly? Date, string Title, string[] Tags, Dictionary<string, string> Fields, int Revision);
+public sealed record DocumentDetailView(Guid EntryId, string Kind, string From, DateOnly? Date, string Title, string[] Tags, Dictionary<string, string> Fields, int Revision,
+    bool FollowsFolder = false, bool FollowsName = false);
 
 public sealed partial class LibraryService
 {
@@ -487,7 +488,7 @@ public sealed partial class LibraryService
         return await PlanAsync(db, root, entry, choice, await VocabAsync(db), await FoldersAsync(db, entry.RootId));
     }
 
-    private async Task<SortPlan> PlanAsync(CatalogDb db, StorageRoot root, CatalogEntry entry, SortChoice choice, Vocab vocab, List<CatalogEntry> folders)
+    private async Task<SortPlan> PlanAsync(CatalogDb db, StorageRoot root, CatalogEntry entry, SortChoice choice, Vocab vocab, List<CatalogEntry> folders, string[]? fixedSegments = null)
     {
         var kind = vocab.KindNamed(choice.Kind);
         var sender = vocab.Sender(choice.From);
@@ -504,9 +505,9 @@ public sealed partial class LibraryService
         string[] segments;
         try
         {
-            segments = choice.FolderOverride.Trim().Length > 0
+            segments = fixedSegments ?? (choice.FolderOverride.Trim().Length > 0
                 ? choice.FolderOverride.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Select(x => StoragePaths.ValidateName(x.Trim())).ToArray()
-                : SortPatterns.Folder(kind?.FolderPattern ?? DefaultKindFolder, values);
+                : SortPatterns.Folder(kind?.FolderPattern ?? DefaultKindFolder, values));
         }
         catch (StorageException ex) { return new("", [], entry.Name, kind == null, sender == null && fromName.Length > 0, newTags, ex.Message); }
         // Walk down from the storage root, reusing folders that exist (any letter case).
@@ -552,7 +553,8 @@ public sealed partial class LibraryService
             for (var i = 2; i <= 100; i++)
             {
                 var target = StoragePaths.Join(path, name);
-                if (target != entry.RelativePath && !StoragePaths.Exists(StoragePaths.Resolve(root.Location, target)) && !await db.Entries.AnyAsync(x => x.RootId == root.Id && x.RelativePath == target)) break;
+                // The document's own current path is free for itself (re-filing a document already in place).
+                if (target == entry.RelativePath || (!StoragePaths.Exists(StoragePaths.Resolve(root.Location, target)) && !await db.Entries.AnyAsync(x => x.RootId == root.Id && x.RelativePath == target))) break;
                 if (i == 100) return new(path, [], name, kind == null, sender == null, newTags, "Too many documents already have this name here. Change the name.");
                 name = StoragePaths.ValidateName($"{stem} ({i}){extension}");
             }
@@ -659,7 +661,8 @@ public sealed partial class LibraryService
     {
         var stored = JsonSerializer.Deserialize<StoredSort>(plan.DetailsJson)!;
         var choice = stored.Choice;
-        var (kind, sender) = await SaveDetailsCoreAsync(db, op.EntryId, choice, plan.Actor, stored.KindDescription);
+        var (kind, sender) = await SaveDetailsCoreAsync(db, op.EntryId, choice, plan.Actor, stored.KindDescription,
+            followsFolder: choice.FolderOverride.Trim().Length == 0, followsName: !choice.KeepName && choice.NameOverride.Trim().Length == 0);
         if (stored.HadSuggestion && !plan.Automatic)
         {
             var corrected = Key(stored.SuggestedKind) != Key(kind.Name) || Key(stored.SuggestedFrom) != Key(sender?.Name ?? "") || stored.SuggestedDate != choice.Date
@@ -677,7 +680,8 @@ public sealed partial class LibraryService
                 Filename = plan.Filename, DocumentType = kind.Name, Summary = choice.Title, Note = sender?.Name ?? "", Actor = plan.Actor, CreatedAt = time.GetUtcNow() });
     }
 
-    private async Task<(DocumentKind Kind, Correspondent? Sender)> SaveDetailsCoreAsync(CatalogDb db, Guid entryId, SortChoice choice, string actor, string kindDescription)
+    private async Task<(DocumentKind Kind, Correspondent? Sender)> SaveDetailsCoreAsync(CatalogDb db, Guid entryId, SortChoice choice, string actor, string kindDescription,
+        bool? followsFolder = null, bool? followsName = null)
     {
         var kinds = await db.Kinds.ToListAsync();
         var kind = MatchKind(choice.Kind, kinds);
@@ -704,6 +708,8 @@ public sealed partial class LibraryService
         if (detail == null) { detail = new() { EntryId = entryId, Revision = 0 }; db.Details.Add(detail); }
         detail.KindId = kind.Id; detail.CorrespondentId = sender?.Id; detail.DocumentDate = choice.Date; detail.Title = SortPatterns.Clean(choice.Title);
         detail.FieldsJson = JsonSerializer.Serialize(choice.Fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => FactKey(x.Key), x => x.Value.Trim()));
+        if (followsFolder is bool folder) detail.FollowsFolder = folder;
+        if (followsName is bool name) detail.FollowsName = name;
         detail.UpdatedAt = time.GetUtcNow(); detail.UpdatedBy = actor; detail.Revision++;
         await db.EntryTags.Where(x => x.EntryId == entryId).ExecuteDeleteAsync();
         foreach (var id in tagIds) db.EntryTags.Add(new() { EntryId = entryId, TagId = id });
@@ -742,7 +748,7 @@ public sealed partial class LibraryService
         var tags = await db.EntryTags.Where(x => x.EntryId == detail.EntryId).Join(db.Tags, x => x.TagId, x => x.Id, (_, t) => t.Name).OrderBy(x => x).ToArrayAsync();
         Dictionary<string, string> fields;
         try { fields = JsonSerializer.Deserialize<Dictionary<string, string>>(detail.FieldsJson) ?? new(); } catch (JsonException) { fields = new(); }
-        return new(detail.EntryId, kind, from, detail.DocumentDate, detail.Title, tags, fields, detail.Revision);
+        return new(detail.EntryId, kind, from, detail.DocumentDate, detail.Title, tags, fields, detail.Revision, detail.FollowsFolder, detail.FollowsName);
     }
 
     // ---------- The Filed list and Undo ----------

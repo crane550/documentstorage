@@ -1,0 +1,80 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject ILogger<TidyList> Logger
+
+@* Documents whose kind now puts them somewhere else. Each row says exactly where from and to;
+   nothing moves until you choose Move. *@
+<section class="sheet tidy-list" aria-label="Documents to move">
+    <header class="tidy-head">
+        <div>
+            <h2>@(items.Count == 0 ? "Everything is where its kind puts it" : $"{items.Count} {(items.Count == 1 ? "document" : "documents")} could move")</h2>
+            <p class="hint">@Scope When you change a kind's folder or name pattern, rename or merge a sender, or correct a document's details, the documents that follow their kind's patterns are listed here. A kept name or a folder you picked by hand stays put.</p>
+        </div>
+        @if (Movable.Any())
+        {
+            <button type="button" class="button primary" disabled="@(busy || chosen.Count == 0)" @onclick="Move"><Icon Name="move" Size="15" />Move @chosen.Count</button>
+        }
+    </header>
+    @if (loading) { <p class="hint">Working out where everything goes…</p> }
+    else if (items.Count > 0)
+    {
+        <label class="check tidy-all"><input type="checkbox" checked="@(chosen.Count == Movable.Count())" @onchange="e => All((bool)e.Value!)" /> Select all</label>
+        <ul>
+            @foreach (var item in items)
+            {
+                <li class="tidy-row @(item.Problem != null ? "problem" : "")" @key="item.EntryId">
+                    <input type="checkbox" aria-label="@($"Move {item.Name}")" checked="@chosen.Contains(item.EntryId)" disabled="@(item.Problem != null)" @onchange="e => Toggle(item, (bool)e.Value!)" />
+                    <div class="tidy-text">
+                        <strong>@item.Name</strong>
+                        <small>@item.Kind@(item.From.Length > 0 ? " · " + item.From : "")</small>
+                        <span class="mono tidy-from">@item.RootName / @item.FromPath</span>
+                        @if (item.Problem != null) { <span class="destination-problem"><Icon Name="alert" Size="13" />@item.Problem</span> }
+                        else { <span class="mono tidy-to">→ @item.RootName / @item.ToPath@(item.NewFolders.Length > 0 ? $"  (makes {item.NewFolders.Length} new {(item.NewFolders.Length == 1 ? "folder" : "folders")})" : "")</span> }
+                    </div>
+                    <a class="text-button" href="@($"/library?doc={item.EntryId}")">Open</a>
+                </li>
+            }
+        </ul>
+        @if (items.Count >= LibraryService.RefileLimit) { <p class="hint">Showing the first @LibraryService.RefileLimit. Move these, then come back for the rest.</p> }
+    }
+</section>
+
+@code {
+    [Parameter] public Guid? KindId { get; set; }
+    [Parameter] public Guid? SenderId { get; set; }
+    [Parameter] public string Scope { get; set; } = "";
+    [Parameter] public EventCallback Moved { get; set; }
+    private List<RefileItem> items = [];
+    private readonly HashSet<Guid> chosen = [];
+    private bool loading = true, busy;
+    private string? loadedKey;
+    private IEnumerable<RefileItem> Movable => items.Where(x => x.Problem == null);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = KindId + "|" + SenderId;
+        if (key == loadedKey) return;
+        loadedKey = key; await Load();
+    }
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await Library.RefilePlanAsync(KindId, SenderId); chosen.Clear(); chosen.UnionWith(Movable.Select(x => x.EntryId)); }
+        catch (Exception ex) { Logger.LogError(ex, "Refile plan failed"); Workspace.Notify("The list could not be worked out. Check storage and try again.", true); }
+        finally { loading = false; }
+    }
+    private void Toggle(RefileItem item, bool on) { if (on) chosen.Add(item.EntryId); else chosen.Remove(item.EntryId); }
+    private void All(bool on) { chosen.Clear(); if (on) chosen.UnionWith(Movable.Select(x => x.EntryId)); }
+    private async Task Move()
+    {
+        if (busy) return; busy = true;
+        try
+        {
+            var result = await Library.RefileManyAsync(items.Where(x => chosen.Contains(x.EntryId)).ToList(), await Workspace.ActorAsync());
+            await Workspace.RefreshAsync(); await Load(); await Moved.InvokeAsync();
+            Workspace.Notify(result.Failed.Count == 0 ? $"Moved {result.Moved} {(result.Moved == 1 ? "document" : "documents")}." : $"Moved {result.Moved}. Not moved: {string.Join("; ", result.Failed.Take(3))}{(result.Failed.Count > 3 ? "…" : "")}", result.Failed.Count > 0);
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Refile failed"); Workspace.Notify(ex is StorageException ? ex.Message : "Moving could not finish. Check History and Recovery.", true); }
+        finally { busy = false; }
+    }
+}

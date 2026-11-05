@@ -90,7 +90,7 @@ else
         {
             <DocumentPreviewPanel Entry="selected" @key="selected.Id" />
             <div class="doc-meta">
-                <DetailsCard EntryId="selected.Id" @key="@($"details-{selected.Id}")" />
+                <DetailsCard EntryId="selected.Id" Moved="DocumentMoved" @key="@($"details-{selected.Id}")" />
                 <DescriptionCard Entry="selected" @key="@($"description-{selected.Id}")" />
                 <dl class="metadata"><div><dt>Where</dt><dd>@Workspace.FolderLabel(selected.ParentId ?? Guid.Empty)</dd></div><div><dt>Size</dt><dd>@WorkspaceState.FormatSize(selected.Size)</dd></div><div><dt>Modified</dt><dd>@selected.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div><div><dt>Text</dt><dd>@selected.TextStatus</dd></div></dl>
                 <div class="doc-actions">
@@ -160,6 +160,13 @@ else
         var key = FolderParameter + "|" + Q;
         if (key != loadedKey) { loadedKey = key; offset = 0; await Load(); }
         await SelectFromQuery();
+    }
+    // A document re-filed from its details panel: follow it to its new folder.
+    private async Task DocumentMoved()
+    {
+        if (selected == null) return;
+        var moved = await Library.EntryAsync(selected.Id);
+        if (moved != null) Navigation.NavigateTo(searching ? Address(current?.Id, moved.Id) : Address(moved.ParentId, moved.Id));
     }
     private async Task Load()
     {

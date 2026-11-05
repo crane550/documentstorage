@@ -17,6 +17,14 @@
                 @foreach (var field in details.Fields) { <div><dt>@field.Key.Replace('_', ' ')</dt><dd>@field.Value</dd></div> }
             </dl>
             @if (details.Tags.Length > 0) { <p class="tag-line">@foreach (var tag in details.Tags) { <a class="tag-chip" href="@Search("tag", tag)">#@tag</a> }</p> }
+            <label class="check follows"><input type="checkbox" checked="@(details.FollowsFolder && details.FollowsName)" disabled="@busy" @onchange="e => Follow((bool)e.Value!)" /> Keep it where its kind puts it</label>
+            @if (move != null)
+            {
+                <div class="details-move">
+                    @if (move.Problem != null) { <span class="destination-problem"><Icon Name="alert" Size="13" />@move.Problem</span> }
+                    else { <span>Its kind now puts it at <span class="mono">@move.ToPath</span></span><button type="button" class="button small" disabled="@busy" @onclick="MoveIt"><Icon Name="move" Size="14" />Move it</button> }
+                </div>
+            }
             <button type="button" class="text-button" @onclick="StartEdit"><Icon Name="edit" Size="14" />Edit details</button>
         }
     }
@@ -38,7 +46,9 @@
 
 @code {
     [Parameter, EditorRequired] public Guid EntryId { get; set; }
+    [Parameter] public EventCallback Moved { get; set; }
     private DocumentDetailView? details;
+    private RefileItem? move;
     private SortVocabulary vocabulary = new([], [], [], [], [], []);
     private bool editing, busy;
     private string kind = "", from = "", title = "", tags = "";
@@ -49,7 +59,31 @@
     {
         if (loaded == EntryId) return;
         loaded = EntryId; editing = false;
+        await Reload();
+    }
+    private async Task Reload()
+    {
         details = await Library.DocumentDetailsAsync(EntryId);
+        move = details == null ? null : (await Library.RefilePlanAsync(entryId: EntryId)).FirstOrDefault();
+    }
+    private async Task Follow(bool on)
+    {
+        if (busy) return; busy = true;
+        try { await Library.SetFollowsPatternsAsync(EntryId, on, await Workspace.ActorAsync()); await Reload(); }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
+        finally { busy = false; }
+    }
+    private async Task MoveIt()
+    {
+        if (busy || move == null) return; busy = true;
+        try
+        {
+            await Library.RefileAsync(EntryId, move.FromPath, move.ToPath, await Workspace.ActorAsync());
+            Workspace.Notify("Moved to " + move.ToPath + ".");
+            await Workspace.RefreshAsync(); await Moved.InvokeAsync(); await Reload();
+        }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
+        finally { busy = false; }
     }
     private static string Search(string prefix, string value) => "/library?q=" + Uri.EscapeDataString(prefix + ":" + value.Replace(' ', '_'));
     private async Task StartEdit()
@@ -65,7 +99,7 @@
         {
             var choice = new SortChoice(kind, from, date, title, tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), details?.Fields ?? new());
             await Library.SaveDocumentDetailsAsync(EntryId, choice, await Workspace.ActorAsync());
-            details = await Library.DocumentDetailsAsync(EntryId); editing = false;
+            await Reload(); editing = false;
             Workspace.Notify("Details saved.");
         }
         catch (StorageException ex) { Workspace.Notify(ex.Message, true); }
