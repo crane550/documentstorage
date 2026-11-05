@@ -35,7 +35,9 @@ Leave **Remember this approved filing as an example** checked to teach future su
 
 Approving a filename and destination does not attest that every AI fact is human-verified. The manual **Use rules or enter facts manually** section remains available. Its **Read facts only with AI** uses configured types, their recognition guidance, enabled-rule hints and fact names (up to 31 types plus `unknown`, 64 fact names and 16,000 serialized context characters). **Use suggestion**, fact editing and **Confirm & file** retain the original deterministic-rule workflow. Existing fact-only proposals are preserved when upgrading.
 
-**Read new inbox documents automatically** queues ready, indexed, unreviewed intake files in rotating batches. It only creates proposals. It does not overwrite manual reviews, approve facts or enable unattended filing. Cancelled/failed jobs are not repeatedly requeued with identical source, review and guidance; use an explicit retry. Changed inputs can produce a new job.
+**Read new inbox documents automatically** queues ready, indexed, unreviewed intake files in rotating batches, once per document ID and content fingerprint. A saved attempt in either reading mode prevents another automatic reading of those same bytes, including completed, declined, cancelled, failed or superseded attempts. Folder, guidance, model/settings and review edits do not trigger another reading; use **Read again with AI / Try again** explicitly. A genuinely changed file version can receive a new automatic reading after any active job finishes. Temporary-error retries within an existing job retain their bounded retry policy.
+
+Opening or returning to Inbox loads the saved result from PostgreSQL without requesting inference. Saved summaries, facts, evidence, proposed names/destinations and input snapshots survive navigation and app restarts. Changed context may require a fresh reading before approving a move; this validation does not erase the historical result or automatically spend another model call. Automatic reading only creates proposals and never overwrites manual reviews, approves facts or enables unattended filing.
 
 ## Durability and boundaries
 

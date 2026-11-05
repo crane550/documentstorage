@@ -158,6 +158,42 @@ internal static class IdentificationChecks
         await library.CancelIdentificationAsync(after.First().Id, "owner");
         await library.QueueAutomaticIdentificationAsync(0);
         check((await library.IdentificationOverviewAsync()).Jobs.Count == after.Count, "automatic identification respects a cancelled job until explicitly retried");
+        await library.CreateFolderAsync(folder.Id, "A new destination");
+        await library.SaveInstructionsAsync(intake, "Updated guidance for future readings.");
+        await library.SaveReviewAsync(autoDoc.Id, 0, "bank_statement", new() { ["institution"] = "User draft" }, false, "owner");
+        settings.Instructions = "Use updated general guidance for future documents.";
+        settings = await library.SaveOllamaSettingsAsync(settings, settings.Revision, "owner");
+        await library.QueueAutomaticIdentificationAsync(0);
+        check((await library.IdentificationOverviewAsync()).Jobs.Count == after.Count,
+            "folder, guidance, settings and review changes do not automatically reread unchanged documents");
+        clock.Advance(1);
+        var explicitRead = await library.QueueIdentificationAsync(autoDoc.Id, "owner", true);
+        await library.ProcessNextIdentificationAsync(new Fake((_, _) => Task.FromResult(Good())));
+        var savedRead = await new LibraryService(factory, new DocumentTextReader(), clock).LatestIdentificationAsync(autoDoc.Id);
+        check(savedRead?.Id == explicitRead && savedRead.State == "Succeeded" && savedRead.Summary.Length > 0 && savedRead.InputText.Length > 0,
+            "an explicit reread persists its result and exact input across service recreation");
+        var savedCount = (await library.IdentificationOverviewAsync()).Jobs.Count;
+        await library.CreateFolderAsync(folder.Id, "Another new destination");
+        for (var cycle = 0; cycle < 3; cycle++) await library.QueueAutomaticIdentificationAsync(0);
+        check((await library.IdentificationOverviewAsync()).Jobs.Count == savedCount && (await library.LatestIdentificationAsync(autoDoc.Id))!.Id == explicitRead,
+            "repeated automatic cycles retain the completed reading after folder context changes");
+        await library.RescanDocumentAsync(autoDoc.Id, "owner", "Incoming/automatic.txt");
+        await library.QueueAutomaticIdentificationAsync(0);
+        check((await library.IdentificationOverviewAsync()).Jobs.Count == savedCount,
+            "forced text extraction does not silently start another model reading");
+        clock.Advance(1);
+        var reread = await library.QueueIdentificationAsync(autoDoc.Id, "owner", true);
+        check(reread != explicitRead, "explicit Read again still creates a fresh attempt after text rescan");
+        await File.AppendAllTextAsync(Path.Combine(scratch, "Incoming/automatic.txt"), " New document version.");
+        await library.ScanAsync(); clock.Advance(6); await library.ScanAsync();
+        savedCount = (await library.IdentificationOverviewAsync()).Jobs.Count;
+        await library.QueueAutomaticIdentificationAsync(0);
+        check((await library.IdentificationOverviewAsync()).Jobs.Count == savedCount,
+            "an active older reading prevents duplicate automatic jobs for a changed document");
+        await library.CancelIdentificationAsync(reread, "owner");
+        clock.Advance(1); await library.QueueAutomaticIdentificationAsync(0);
+        check((await library.IdentificationOverviewAsync()).Jobs.Count == savedCount + 1,
+            "a genuinely changed document version remains eligible for one automatic reading");
         settings.Enabled = false; settings = await library.SaveOllamaSettingsAsync(settings, settings.Revision, "owner");
         check(!settings.AutoIdentify && !await library.ProcessNextIdentificationAsync(client), "turning local AI off also stops automatic identification");
         await library.SetIntakeAsync(intake, false);

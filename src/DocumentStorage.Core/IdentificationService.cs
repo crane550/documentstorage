@@ -169,6 +169,12 @@ public sealed partial class LibraryService
                 var root = await db.Roots.AsNoTracking().SingleAsync(x => x.Id == entry.RootId);
                 var review = await db.Reviews.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id);
                 if (!root.IsOnline || (review?.Reviewed == true && review.ContentHash == entry.ContentHash)) continue;
+                // Automatic intake is once per document version, not once per workspace context.
+                // Folder/guidance/settings edits can invalidate approval without buying another
+                // model reading. Keep saved results and require an explicit retry in that case.
+                // Also let an existing active job settle before scheduling a changed version.
+                if (await db.IdentificationJobs.AnyAsync(x => x.EntryId == entry.Id &&
+                    (x.ContentHash == entry.ContentHash || x.State == "Queued" || x.State == "Running" || x.State == "Retry"))) continue;
                 await EnqueueIdentificationAsync(db, entry, settings, await OrganizationContextAsync(db, entry, settings), "automatic", false);
             }
             return offset + entries.Count >= total ? 0 : offset + entries.Count;
