@@ -101,3 +101,7 @@ The additive `AddAssistantInstructionsAndOAuth` migration creates conversation/v
 Run the real PostgreSQL/filesystem checks, `tests/DocumentStorage.AuthenticationChecks`, and `tests/DocumentStorage.McpChecks`. The latter drives real consent, PKCE/code/refresh replay, the official client, current/older HTTP protocols, scoped discovery/calls, actual journaled filing, origin/body/rate limits and account/connection revocation. `node tests/browser/instructions-mcp.mjs` covers instruction drafts/clarification/history, one-time client setup, real browser OAuth, external proposals, browser acceptance and revocation using synthetic files and a protocol-compatible model fixture. The model fixture validates integration, not summary quality.
 
 Use the existing Windows deployment process and protected instance key directory. Actual Windows installation/ACL behavior, real-model quality and connections from your external AI accounts still need verification on your server.
+
+## Sorting tools
+
+Kinds, senders, tags, document details and Tidy up are readable with catalog access, and the `sorting.propose` permission lets an assistant propose details, kinds, merges and re-files for browser approval. See [Sorting › Assistants](sorting.md#assistants-mcp).

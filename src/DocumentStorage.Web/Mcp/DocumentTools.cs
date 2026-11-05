@@ -13,7 +13,7 @@ using OpenIddict.Abstractions;
 namespace DocumentStorage.Web.Mcp;
 
 [McpServerToolType, Authorize(Policy = "catalog.read")]
-public sealed class DocumentTools(LibraryService library, IDbContextFactory<CatalogDb> factory, IHttpContextAccessor accessor)
+public sealed partial class DocumentTools(LibraryService library, IDbContextFactory<CatalogDb> factory, IHttpContextAccessor accessor)
 {
     private AssistantCaller Caller()
     {

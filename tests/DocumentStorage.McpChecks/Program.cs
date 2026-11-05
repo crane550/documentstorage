@@ -188,6 +188,21 @@ try
     Check(version.StructuredContent!.Value.GetProperty("data").GetProperty("source_messages").EnumerateArray().Any(x=>x.GetGuid()==sourceId),"paginated MCP instruction history preserves links back to the accepted source request");
     var originalMessage = await client.CallToolAsync("get_instruction_message",new Dictionary<string,object?> { ["message_id"]=sourceId });
     Check(originalMessage.StructuredContent!.Value.GetProperty("data").GetProperty("text").GetString()=="Use only supported document facts.","a historical source message can be retrieved completely through MCP");
+    // Sorting: kinds, details and tidy-up are readable with catalog access; proposals need the sorting permission.
+    var kinds = await client.CallToolAsync("list_kinds");
+    Check(kinds.IsError != true && kinds.StructuredContent!.Value.GetProperty("data").GetProperty("items").EnumerateArray().Any(x => x.GetProperty("name").GetString() == "Bank statement" && x.GetProperty("folder_pattern").GetString()!.Contains("{from}")),
+        "MCP lists the kinds Stash files by, with their folder and name patterns");
+    Check(readTools.Any(x => x.Name == "list_kinds") && !readTools.Any(x => x.Name is "propose_document_details" or "propose_kind" or "propose_refile"), "sorting proposals are hidden without the sorting permission; reading kinds is not");
+    var found = await client.CallToolAsync("find_documents", new Dictionary<string,object?> { ["kind"]="Invoice" });
+    Check(found.IsError != true && found.StructuredContent!.Value.GetProperty("data").TryGetProperty("total", out _), "documents can be found by their details through MCP");
+    var noFilter = await readClient.CallToolAsync("find_documents", new Dictionary<string,object?> { ["words"]="statement" });
+    Check(noFilter.IsError == true && noFilter.StructuredContent!.Value.GetProperty("error").GetProperty("code").GetString() == "documents_read_required", "searching document words needs the document-read permission");
+    var sortingHash = (await client.CallToolAsync("get_context")).StructuredContent!.Value.GetProperty("data").GetProperty("context_hash").GetString();
+    var badKind = await client.CallToolAsync("propose_kind", new Dictionary<string,object?> { ["kind_id"]=null, ["name"]="Escape", ["description"]="", ["folder_pattern"]="../{from}", ["name_pattern"]="{date}", ["fields"]=Array.Empty<string>(), ["source_request"]="synthetic", ["context_hash"]=sortingHash, ["idempotency_key"]="sorting-kind-escape-01" });
+    Check(badKind.IsError == true, "a proposed pattern that leaves storage is refused through MCP");
+    var newKind = await client.CallToolAsync("propose_kind", new Dictionary<string,object?> { ["kind_id"]=null, ["name"]="Recipe", ["description"]="Cooking recipes.", ["folder_pattern"]="Recipes", ["name_pattern"]="{title}", ["fields"]=Array.Empty<string>(), ["source_request"]="synthetic", ["context_hash"]=sortingHash, ["idempotency_key"]="sorting-kind-recipe-01" });
+    Check(newKind.IsError != true && newKind.StructuredContent!.Value.GetProperty("data").GetProperty("state").GetString() == "Pending"
+        && !(await app.Services.GetRequiredService<LibraryService>().SortVocabularyAsync()).Kinds.Any(x => x.Name == "Recipe"), "a kind proposal waits for the person and changes nothing yet");
     using (var request = new HttpRequestMessage(HttpMethod.Post,"/mcp"))
     {
         request.Headers.Add("Origin","https://attacker.example.test"); request.Content=JsonContent.Create(new {jsonrpc="2.0",id=1,method="tools/list"});

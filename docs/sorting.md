@@ -93,16 +93,57 @@ sender and tags, the kind's record, a learned spelling and the remembered exampl
   card only when its kind is switched on, the card is sure and nobody has touched its details;
   the actor is `automatic`. New kinds, new senders and guesses always wait.
 
+## The fluid tree: Tidy up
+
+Each document's details record whether its folder and its name **follow its kind's patterns**
+(`DocumentDetail.FollowsFolder` / `FollowsName`). Filing from the Inbox sets them: the folder
+follows unless you picked one by hand; the name follows unless it was kept or typed. Documents
+filed before this existed are marked by the `AddRefiling` migration.
+
+When a kind's pattern changes, a sender is renamed or merged, or details are corrected, documents
+that follow their kind may now belong somewhere else. `RefilePlanAsync` works that out fresh (only
+the parts that follow; inbox documents are left to the Inbox; two headed for one name get a
+number) and **Tidy up** (Kinds & tags › Tidy up) lists each with its from and to paths and the
+folders it would make. Nothing moves until you choose **Move**. `RefileAsync` checks the
+destination is still the one shown (a different " (n)" is allowed), creates missing folders, and
+moves through the journal. Saving a kind or sender says how many documents are affected; a merge
+opens Tidy up for that sender. In the Library, **Keep it where its kind puts it** switches one
+document to follow and offers **Move it**.
+
+## Back-fill: the existing Library
+
+Tidy up also lists Library documents without details. **Read N with AI** queues sorting readings
+for up to 100 at a time (`QueueBackfillAsync`, optionally one folder); these jobs are marked
+`Backfill`, run outside the inbox rules, and never file anything, even for a kind that files
+itself. Each reading waits as an editable row: **Save here** saves the details where the file is,
+**Save & move** also makes it follow its kind and re-files it, **Skip** leaves it out for good.
+Accepting counts toward the kind's record and learns sender spellings, like an Inbox approval.
+Documents read by the older organizing reader keep their saved description (title, tags,
+organizations), which now pre-fills an Inbox card where plain matching found nothing.
+
+## Assistants (MCP)
+
+With catalog access: `list_kinds`, `list_senders`, `list_tags`, `find_documents` (by kind, sender,
+tag; words need document-read permission), `get_document_details`, `list_tidy_up`. With the new
+**sorting.propose** permission ("Suggest document details, kinds, merges and tidy-ups"):
+`propose_document_details`, `propose_kind`, `propose_merge`, `propose_refile`. Each is an ordinary
+`AssistantProposal` (context hash, idempotency key, source request), checked with the same rules
+the pages use when proposed, and shown in the Inbox under **From your assistants** with exactly
+what it would do. Accepting runs the same services (`DecideSortingProposalAsync`: claimed as
+Applying, applied, then Applied; a failure returns it to Pending). An assistant can't approve,
+can't switch a kind to file by itself (a kind proposal keeps that switch as it was), and moves
+files only through an accepted re-file of documents Tidy up already lists.
+
 ## Not yet
 
-Refiling when a kind's pattern changes or two senders merge (the fluid tree), back-filling details
-for documents already in the Library, MCP tools for kinds, senders, tags and details, and other
-file formats beyond PDF, Word and plain text.
+Other file formats beyond PDF, Word and plain text; one set of tags (older descriptions only
+pre-fill cards); measuring the real model on the server.
 
 ## Checks
 
 `tests/DocumentStorage.Checks/SortingChecks.cs` (patterns, hints, Word text, the narrow prompt,
 mapping, plans, filing, corrections, new kinds, undo, automatic filing and its switches, Library
-details, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
-stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Library search
-and phone width. Neither proves model accuracy: try it on real documents on the server.
+details, merge, re-filing, back-fill, assistant proposals). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
+stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Tidy up (a pattern change and its moves),
+back-fill (read, Save & move), Library search and phone width. `DocumentStorage.McpChecks` covers
+the sorting tools over the real protocol. Neither proves model accuracy: try it on real documents on the server.

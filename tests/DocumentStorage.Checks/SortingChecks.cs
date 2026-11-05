@@ -250,6 +250,39 @@ internal static class SortingChecks
         status = await library.BackfillStatusAsync();
         check(status.Candidates == baseline && status.Ready == 0 && !(await library.BackfillSuggestionsAsync()).Any(x => ours.Contains(x.Document.Id)), "skipped and accepted documents are not read or suggested again");
         await refuses(() => library.AcceptBackfillAsync(invoiceSuggestion.JobId, invoiceSuggestion.Choice, false, actor), "a suggestion cannot be accepted twice");
+
+        // ---- Assistants propose; the person decides ----
+        var assistant = new AssistantConnection { OwnerId = actor, ClientId = "sorting-client", Name = "Synthetic sorter", ScopesJson = "[\"catalog.read\",\"sorting.propose\"]", CreatedAt = DateTimeOffset.UtcNow };
+        var readOnly = new AssistantConnection { OwnerId = actor, ClientId = "sorting-reader", Name = "Read only sorter", ScopesJson = "[\"catalog.read\"]", CreatedAt = DateTimeOffset.UtcNow };
+        await using (var db = await factory.CreateDbContextAsync()) { db.AssistantConnections.AddRange(assistant, readOnly); await db.SaveChangesAsync(); }
+        var caller = new AssistantCaller(actor, assistant.Id);
+        var context = (await library.AssistantContextAsync()).Hash;
+        var flyerDetails = JsonSerializer.Serialize(new DetailsProposal(flyer.Id, "Flyer", "Synthetic Pizza", "", "Pizza menu", ["food"], new()));
+        await refuses(() => library.ProposeAssistantAsync("Details", flyerDetails, context, "details-no-scope", new(actor, readOnly.Id)), "a connection without the sorting permission cannot propose");
+        await refuses(() => library.ProposeAssistantAsync("Details", JsonSerializer.Serialize(new DetailsProposal(flyer.Id, "Flyer", "", "next tuesday", "", [], new())), context, "details-bad-date", caller), "a proposal with an unreadable date is refused");
+        await refuses(() => library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(null, "Escape", "", "../{from}", "{date}", [])), context, "kind-escape", caller), "a proposed pattern that steps outside storage is refused");
+        var detailsProposal = await library.ProposeAssistantAsync("Details", flyerDetails, context, "details-flyer-1", caller, "Tag the pizza flyer");
+        check(detailsProposal.State == "Pending" && (await library.DocumentDetailsAsync(flyer.Id)) == null, "a details proposal changes nothing until the person accepts it");
+        check((await library.ProposeAssistantAsync("Details", flyerDetails, context, "details-flyer-1", caller, "Tag the pizza flyer")).Id == detailsProposal.Id, "proposals are idempotent");
+        await library.DecideAssistantProposalAsync(detailsProposal.Id, detailsProposal.Revision, true, actor);
+        var flyerSaved = await library.DocumentDetailsAsync(flyer.Id);
+        check(flyerSaved!.Kind == "Flyer" && flyerSaved.Tags.SequenceEqual(["food"]) && File.Exists(Path.Combine(scratch, "Archive/Scan 99.txt")), "accepting saves the details and leaves the file where it is");
+        var kindProposal = await library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(null, "Flyers", "Menus and adverts.", "Flyers/{from}", "{from} {title}", [])), context, "kind-flyers-1", caller);
+        await library.DecideAssistantProposalAsync(kindProposal.Id, kindProposal.Revision, false, actor);
+        check(!(await library.SortVocabularyAsync()).Kinds.Any(x => x.Name == "Flyers"), "a rejected kind is not made");
+        vocab = await library.SortVocabularyAsync();
+        var invoiceKind = vocab.Kinds.Single(x => x.Name == "Invoice");
+        var editInvoice = await library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(invoiceKind.Id, "Invoice", invoiceKind.Description, "Bills to pay/{from}", invoiceKind.NamePattern, LibraryService.KindFields(invoiceKind))), context, "kind-invoice-1", caller);
+        await library.DecideAssistantProposalAsync(editInvoice.Id, editInvoice.Revision, true, actor);
+        invoiceKind = (await library.SortVocabularyAsync()).Kinds.Single(x => x.Name == "Invoice");
+        check(invoiceKind.FolderPattern == "Bills to pay/{from}" && invoiceKind.AutoFile, "an accepted kind change keeps the person's file-by-itself switch as it was");
+        await library.SetFollowsPatternsAsync(oldInvoice.Id, true, actor);
+        var tidy = await library.RefilePlanAsync(kindId: invoiceKind.Id);
+        var refile = await library.ProposeAssistantAsync("Refile", JsonSerializer.Serialize(new RefileProposal(tidy.Select(x => x.EntryId).ToArray())), context, "refile-invoices-1", caller);
+        check(File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")) && refile.ResultJson.Contains("Bills to pay/Acme Supply Co"), "a re-file proposal shows each move and moves nothing yet");
+        await library.DecideAssistantProposalAsync(refile.Id, refile.Revision, true, actor);
+        check(File.Exists(Path.Combine(scratch, "Bills to pay/Acme Supply Co/2025-03-02 Acme Supply Co invoice INV-777.txt")) && !File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")), "accepting a re-file moves the documents, named by the kind's pattern once they follow it");
+        await refuses(() => library.ProposeAssistantAsync("Refile", JsonSerializer.Serialize(new RefileProposal([oldInvoice.Id])), context, "refile-invoices-2", caller), "documents already in place can't be proposed for a move");
         await library.SetIntakeAsync(inbox, false);
     }
 

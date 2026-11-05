@@ -24,6 +24,41 @@
         </dl>
         <p class="hint">Accepting adds this rule switched off. Turn it on in Rules when you are happy with it.</p>
     }
+    else if (Proposal.Kind == "Details" && details != null)
+    {
+        <dl class="ai-facts rule-facts">
+            <div><dt>Document</dt><dd>@Summary("document") <span class="mono hint">@Summary("path")</span></dd></div>
+            <div><dt>Kind</dt><dd>@details.Kind</dd></div>
+            <div><dt>From</dt><dd>@(details.From.Length > 0 ? details.From : "(none)")</dd></div>
+            <div><dt>Date</dt><dd>@(details.Date.Length > 0 ? details.Date : "(none)")</dd></div>
+            @if (details.Title.Length > 0) { <div><dt>Title</dt><dd>@details.Title</dd></div> }
+            @if (details.Tags.Length > 0) { <div><dt>Tags</dt><dd>@string.Join(", ", details.Tags.Select(x => "#" + x))</dd></div> }
+            @foreach (var field in details.Fields) { <div><dt>@field.Key.Replace('_', ' ')</dt><dd>@field.Value</dd></div> }
+        </dl>
+        <p class="hint">Accepting saves these details on the document. The file stays where it is; if its kind would put it elsewhere, it shows under Kinds › Tidy up.</p>
+    }
+    else if (Proposal.Kind == "Kind" && kind != null)
+    {
+        <dl class="ai-facts rule-facts">
+            <div><dt>Kind</dt><dd>@kind.Name@(kind.KindId == null ? " (new)" : "")</dd></div>
+            @if (kind.Description.Length > 0) { <div><dt>Covers</dt><dd>@kind.Description</dd></div> }
+            <div><dt>Folder</dt><dd class="mono">@kind.FolderPattern</dd></div>
+            <div><dt>Name</dt><dd class="mono">@kind.NamePattern</dd></div>
+            @if (kind.Fields.Length > 0) { <div><dt>Fields</dt><dd>@string.Join(", ", kind.Fields)</dd></div> }
+            <div><dt>Example</dt><dd class="mono">@Summary("example")</dd></div>
+        </dl>
+        <p class="hint">Accepting saves the kind. It doesn't change whether the kind files itself, and moves nothing: documents that now belong elsewhere show under Tidy up.</p>
+    }
+    else if (Proposal.Kind == "Merge" && merge != null)
+    {
+        <p class="lede">Merge the @merge.What <strong>@Summary("from")</strong> into <strong>@Summary("into")</strong>.</p>
+        <p class="hint">@Summary("into") keeps its name; @Summary("from") becomes one of its spellings and its documents move over. Nothing moves on disk until you choose to under Tidy up.</p>
+    }
+    else if (Proposal.Kind == "Refile")
+    {
+        <ul class="proposal-moves">@foreach (var move in Moves) { <li><strong>@move.Name</strong><span class="mono tidy-from">@move.From</span><span class="mono tidy-to">→ @move.To</span></li> }</ul>
+        <p class="hint">Accepting moves these through the recoverable journal. Each is checked again first; nothing is overwritten.</p>
+    }
     else if (preview != null)
     {
         <div class="compare move-compare"><div><h3>Now</h3><code>@preview.SourcePath</code></div><div><h3>Would move to</h3><code>@preview.DestinationPath</code></div></div>
@@ -34,7 +69,7 @@
     {
         <div class="form-actions">
             <button type="button" class="button" disabled="@busy" @onclick="() => Decide(false)">Reject</button>
-            <button type="button" class="button primary" disabled="@busy" @onclick="() => Decide(true)">@(Proposal.Kind == "Filing" ? "Approve this move" : Proposal.Kind == "Rule" ? "Add paused rule" : "Use this version")</button>
+            <button type="button" class="button primary" disabled="@busy" @onclick="() => Decide(true)">@(Proposal.Kind switch { "Filing" => "Approve this move", "Rule" => "Add paused rule", "Details" => "Save these details", "Kind" => "Save this kind", "Merge" => "Merge", "Refile" => $"Move {Moves.Count}", _ => "Use this version" })</button>
         </div>
     }
 </Modal>
@@ -54,9 +89,24 @@
     {
         "Guidance" => "Guidance update",
         "Rule" => "New rule: " + (JsonSerializer.Deserialize<RuleInput>(item.PayloadJson)?.Name ?? ""),
+        "Details" => "Document details",
+        "Kind" => "Kind: " + (JsonSerializer.Deserialize<KindProposal>(item.PayloadJson)?.Name ?? ""),
+        "Merge" => "Merge " + (JsonSerializer.Deserialize<MergeProposal>(item.PayloadJson)?.What ?? "") + "s",
+        "Refile" => "Tidy up: move " + (JsonSerializer.Deserialize<RefileProposal>(item.PayloadJson)?.DocumentIds.Length ?? 0) + " documents",
         _ => "File one document"
     };
-    public static string KindIcon(string kind) => kind switch { "Guidance" => "note", "Rule" => "signpost", _ => "move" };
+    private DetailsProposal? details;
+    private KindProposal? kind;
+    private MergeProposal? merge;
+    private sealed record MoveRow(string Name, string From, string To);
+    private List<MoveRow> Moves => Proposal.Kind != "Refile" ? [] : (JsonSerializer.Deserialize<List<JsonElement>>(Proposal.ResultJson) ?? [])
+        .Select(x => new MoveRow(x.GetProperty("name").GetString() ?? "", x.GetProperty("from").GetString() ?? "", x.GetProperty("to").GetString() ?? "")).ToList();
+    private string Summary(string key)
+    {
+        try { using var json = JsonDocument.Parse(Proposal.ResultJson); return json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty(key, out var v) ? v.ToString() : ""; }
+        catch (JsonException) { return ""; }
+    }
+    public static string KindIcon(string kind) => kind switch { "Guidance" => "note", "Rule" => "signpost", "Details" or "Kind" or "Merge" => "tag", _ => "move" };
     public static string StateTone(string state) => state switch { "Pending" => "attention", "Applied" or "Approved" or "Executed" => "ready", "Rejected" or "Expired" or "Blocked" => "muted", _ => "muted" };
     private string TargetName(InstructionTarget target) => target.Kind switch
     {
@@ -70,6 +120,9 @@
         {
             if (Proposal.Kind == "Guidance") { guidance = JsonSerializer.Deserialize<GuidanceChange>(Proposal.PayloadJson); if (guidance != null) current = (await Library.InstructionThreadAsync(guidance.Target)).Text; }
             else if (Proposal.Kind == "Rule") rule = JsonSerializer.Deserialize<RuleInput>(Proposal.PayloadJson);
+            else if (Proposal.Kind == "Details") details = JsonSerializer.Deserialize<DetailsProposal>(Proposal.PayloadJson);
+            else if (Proposal.Kind == "Kind") kind = JsonSerializer.Deserialize<KindProposal>(Proposal.PayloadJson);
+            else if (Proposal.Kind == "Merge") merge = JsonSerializer.Deserialize<MergeProposal>(Proposal.PayloadJson);
             else if (Proposal.FilingPreviewId != null)
             {
                 await using var scope = Scopes.CreateAsyncScope();

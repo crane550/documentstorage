@@ -17,7 +17,7 @@ public sealed record AssistantPage(List<AssistantProposal> Proposals, List<Assis
 public sealed partial class LibraryService
 {
     private static readonly JsonSerializerOptions AssistantJson = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-    public static readonly string[] AssistantScopes = ["catalog.read", "documents.read", "instructions.propose", "rules.propose", "filing.execute"];
+    public static readonly string[] AssistantScopes = ["catalog.read", "documents.read", "instructions.propose", "rules.propose", "filing.execute", "sorting.propose"];
     private static string Digest(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private static InstructionTarget Target(InstructionTarget target)
     {
@@ -133,7 +133,7 @@ public sealed partial class LibraryService
         if (action.Length > 100 || outcome.Length > 100) throw new StorageException("Audit label too long.");
         await using var db = await factory.CreateDbContextAsync(); Audit(db, caller, action, outcome); await db.SaveChangesAsync();
     }
-    private static string ProposalScope(string kind) => kind switch { "Guidance" => "instructions.propose", "Rule" => "rules.propose", "Filing" => "filing.execute", _ => throw new StorageException("Unsupported proposal kind.") };
+    private static string ProposalScope(string kind) => kind switch { "Guidance" => "instructions.propose", "Rule" => "rules.propose", "Filing" => "filing.execute", "Details" or "Kind" or "Merge" or "Refile" => "sorting.propose", _ => throw new StorageException("Unsupported proposal kind.") };
     public async Task<AssistantProposal> ProposeAssistantAsync(string kind, string payloadJson, string contextHash, string idempotencyKey, AssistantCaller caller, string sourceRequest = "")
     {
         if (sourceRequest.Length > 4000) throw new StorageException("Keep the original source request under 4,000 characters.");
@@ -175,6 +175,7 @@ public sealed partial class LibraryService
                 await using var validation = await db.Database.BeginTransactionAsync();
                 await SaveRuleLockedAsync(db, input, caller.Actor); await validation.RollbackAsync(); db.ChangeTracker.Clear();
             }
+            else if (SortingProposalKinds.Contains(kind)) proposal.ResultJson = await ValidateSortingProposalAsync(db, kind, payloadJson);
             else
             {
                 var request = JsonSerializer.Deserialize<FilingRequest>(payloadJson) ?? throw new StorageException("Document ID required.");
@@ -210,7 +211,13 @@ public sealed partial class LibraryService
     }
     public async Task DecideAssistantProposalAsync(Guid id, int expectedRevision, bool accept, string actor)
     {
-        Actor(actor); await writer.WaitAsync();
+        Actor(actor);
+        await using (var peek = await factory.CreateDbContextAsync())
+        {
+            var peekedKind = await peek.AssistantProposals.Where(x => x.Id == id && x.OwnerId == actor).Select(x => x.Kind).SingleOrDefaultAsync() ?? "";
+            if (SortingProposalKinds.Contains(peekedKind)) { await DecideSortingProposalAsync(id, expectedRevision, accept, actor); return; }
+        }
+        await writer.WaitAsync();
         try
         {
             await using var db = await factory.CreateDbContextAsync();

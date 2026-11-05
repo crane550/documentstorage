@@ -24,6 +24,7 @@
                     <label class="check"><input type="checkbox" @bind="readDocuments" /><span>Read indexed document text and reviewed facts</span></label>
                     <label class="check"><input type="checkbox" @bind="proposeInstructions" /><span>Suggest guidance for you to review</span></label>
                     <label class="check"><input type="checkbox" @bind="proposeRules" /><span>Suggest rules for you to review</span></label>
+                    <label class="check"><input type="checkbox" @bind="proposeSorting" /><span>Suggest document details, kinds, merges and tidy-ups for you to review</span></label>
                     <label class="check"><input type="checkbox" @bind="execute" /><span>File documents you approve one at a time</span></label>
                 </fieldset>
                 <details class="advanced"><summary>Desktop client options</summary><label class="check"><input type="checkbox" @bind="publicClient" /><span>Public client with PKCE and no client secret</span></label><p class="hint">Leave this off when your client asks for a client ID and secret.</p></details>
@@ -80,13 +81,13 @@
 
 @code {
     private string name = "", callbacks = "";
-    private bool readDocuments, proposeInstructions = true, proposeRules = true, execute, publicClient, busy;
+    private bool readDocuments, proposeInstructions = true, proposeRules = true, proposeSorting = true, execute, publicClient, busy;
     private RegisteredAssistant? registered;
     private List<AssistantConnection> connections = [];
     private AssistantPage changes = new([], []);
     private AssistantProposal? reviewing;
     private string ConnectionName(Guid? id) => id == null ? "This workspace" : connections.FirstOrDefault(x => x.Id == id)?.Name ?? "Assistant";
-    private static string ScopeName(string scope) => scope switch { "catalog.read" => "folders", "documents.read" => "document text", "instructions.propose" => "guidance", "rules.propose" => "rules", "filing.execute" => "approved filing", _ => scope };
+    private static string ScopeName(string scope) => scope switch { "catalog.read" => "folders", "documents.read" => "document text", "instructions.propose" => "guidance", "rules.propose" => "rules", "filing.execute" => "approved filing", "sorting.propose" => "sorting", _ => scope };
     protected override async Task OnInitializedAsync() => await Load();
     private async Task Load()
     {
@@ -98,7 +99,7 @@
     private async Task Register() => await Run(async () =>
     {
         var permissions = new List<string> { "catalog.read" };
-        if (readDocuments || execute) permissions.Add("documents.read"); if (proposeInstructions) permissions.Add("instructions.propose"); if (proposeRules) permissions.Add("rules.propose"); if (execute) permissions.Add("filing.execute");
+        if (readDocuments || execute) permissions.Add("documents.read"); if (proposeInstructions) permissions.Add("instructions.propose"); if (proposeRules) permissions.Add("rules.propose"); if (proposeSorting) permissions.Add("sorting.propose"); if (execute) permissions.Add("filing.execute");
         await using var scope = Scopes.CreateAsyncScope();
         registered = await scope.ServiceProvider.GetRequiredService<AssistantConnections>().CreateAsync(name, callbacks.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), permissions.ToArray(), publicClient, await Workspace.ActorAsync());
         name = callbacks = ""; await Load();

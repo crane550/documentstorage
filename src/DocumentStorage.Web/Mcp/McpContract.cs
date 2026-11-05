@@ -33,6 +33,10 @@ public static class McpContract
         {
             "Guidance" => JsonSerializer.Deserialize<GuidanceChange>(value.PayloadJson),
             "Rule" => JsonSerializer.Deserialize<RuleInput>(value.PayloadJson),
+            "Details" => JsonSerializer.Deserialize<DetailsProposal>(value.PayloadJson),
+            "Kind" => JsonSerializer.Deserialize<KindProposal>(value.PayloadJson),
+            "Merge" => JsonSerializer.Deserialize<MergeProposal>(value.PayloadJson),
+            "Refile" => JsonSerializer.Deserialize<RefileProposal>(value.PayloadJson),
             _ => JsonSerializer.Deserialize<FilingRequest>(value.PayloadJson)
         };
         object? result = value.Kind == "Filing" && value.State != "Executed"

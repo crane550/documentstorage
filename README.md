@@ -14,6 +14,8 @@ Working now:
 - An approval list in the Inbox with live destinations, new folders made as needed, Enter to file, batch approval, and a Filed list with Undo.
 - Per-kind automatic filing once you switch it on, with a master switch; undoing one it filed switches its kind back to asking.
 - Word (.docx) text extraction.
+- Tidy up: documents re-file when a kind's patterns or a sender change (after you approve each move), and documents already in the Library can be read and given details.
+- Assistant tools for kinds, senders, tags and details, with proposals you approve in the browser.
 - Register existing local directories or mounted NAS shares; browse a nested folder tree.
 - Discover existing files in place, rescan every minute or on demand, and retain indexed text when a root is offline.
 - One **Library** for folders and files: a sidebar folder tree, breadcrumbs, folder tools in the header, rename/move with path previews, and folder notes.
@@ -53,7 +55,7 @@ See [Intake and deterministic filing](docs/intake-and-rules.md) for the filing w
 
 See [Instruction conversations and MCP](docs/assistants-and-mcp.md) for connection setup, permissions and protocol boundaries.
 
-**Not implemented yet:** refiling when patterns change, arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, and document backups. See [the product plan](docs/product-plan.md).
+**Not implemented yet:** arbitrary filesystem/bulk MCP operations, per-folder client grants, permanent deletion, cross-root transfer/migration, and document backups. See [the product plan](docs/product-plan.md).
 
 The app uses its own ASP.NET Identity username/password login, matching the accounting app's stack. Users and password hashes live in PostgreSQL; cookies are isolated per application/database. Cloudflare Tunnel routes traffic and supplies HTTPS. Cloudflare Access and Audience tags are not required. The origin always binds to loopback. See [Windows server and Cloudflare deployment](tools/deploy/README.md) for the separate service/database, protected instance configuration, first install, updates and tunnel setup. Production hosting is prepared; it still needs installation and verification on the actual server.
 

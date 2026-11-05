@@ -130,7 +130,7 @@ try{
     const rule=await tool('propose_rule',{input:{id:null,expected_revision:0,name:ruleName,document_type:'browser_statement_'+stamp,destination_folder_id:folder.id,match:{},filename_template:'{document_date:yyyy-MM-dd}.{extension}',required_facts:['document_date'],enabled:false},source_request:'File these synthetic statements by document date in the selected folder.',context_hash:(await tool('get_context')).context_hash,idempotency_key:'browser-rule-'+stamp});
     await page.getByRole('button',{name:'Refresh assistant activity',exact:true}).click();await page.locator('.proposal-row').filter({hasText:ruleName}).click();
     await page.getByRole('dialog').getByRole('button',{name:'Add paused rule',exact:true}).click();await toast(page,'Rule added');
-    await nav(page,'Rules');await page.locator('.rule-card').filter({hasText:ruleName}).locator('.stamp').filter({hasText:'Paused'}).waitFor();
+    await page.goto(base+'/rules');await ready(page);await page.locator('.rule-card').filter({hasText:ruleName}).locator('.stamp').filter({hasText:'Paused'}).waitFor();
     await check((await tool('get_proposal',{proposal_id:rule.id})).state==='Applied','an MCP rule proposal becomes a paused versioned rule only after browser acceptance');
     await assistants();await page.locator('.connection-row').filter({hasText:connectionName}).getByRole('button',{name:'Revoke connection',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Connection revoked'}).waitFor();
