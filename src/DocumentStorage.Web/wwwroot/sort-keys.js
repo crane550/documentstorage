@@ -29,3 +29,9 @@ export function detach() {
     if (handler) document.removeEventListener("keydown", handler);
     handler = null;
 }
+
+// Puts the cursor in a box Blazor just rendered, such as a field added on the slip.
+export function focusById(id) {
+    const element = document.getElementById(id);
+    if (element instanceof HTMLElement) element.focus();
+}

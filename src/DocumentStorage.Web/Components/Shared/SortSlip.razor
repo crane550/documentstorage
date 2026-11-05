@@ -1,6 +1,8 @@
 @inject LibraryService Library
 @inject WorkspaceState Workspace
 @inject ILogger<SortSlip> Logger
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @*
     The filing slip: what the document is, who it's from, its date, title and tags. You correct
@@ -102,7 +104,11 @@
                     </div>
                 </div>
             }
-            <input class="field-add" form="@fieldFormId" @bind="newField" placeholder="+ Add a field, like Statement end date" maxlength="64" autocomplete="off" aria-label="Add a field" />
+            <div class="field-add-row">
+                @* A new @key after each add gives a fresh, empty box (Blazor won't clear text it thinks is already empty). *@
+                <input class="field-add" @key="addFieldVersion" form="@fieldFormId" @bind="newField" @bind:event="oninput" placeholder="+ Add a field, like Statement end date" maxlength="64" autocomplete="off" aria-label="Add a field" />
+                @if (newField.Trim().Length > 0) { <button type="submit" form="@fieldFormId" class="button small">Add</button> }
+            </div>
             @if (CurrentKind == null && kind.Trim().Length > 0 && FieldRows.Any()) { <p class="hint">These fields travel with this document; approving makes the kind with them.</p> }
         </div>
     </div>
@@ -218,21 +224,39 @@
     private DocumentKind? CurrentKind => Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase));
     // The kind's own fields first, then any added on this document.
     private IEnumerable<string> FieldRows => (CurrentKind is { } k ? LibraryService.KindFields(k) : []).Concat(fields.Keys).Distinct();
+    private int addFieldVersion;
+    private IJSObjectReference? keys;
+    private string? focusField;
     private async Task AddField()
     {
-        var label = newField.Trim(); newField = "";
+        var label = newField.Trim(); newField = ""; addFieldVersion++;
         if (label.Length == 0) return;
         string key;
         try { key = LibraryService.FieldKey(label); }
         catch (StorageException ex) { Workspace.Notify(ex.Message, true); return; }
+        // Already on the slip (perhaps under a slightly different spelling): go to it rather than doing nothing.
+        var existing = FieldRows.Contains(key);
         if (!fields.ContainsKey(key)) fields[key] = "";
-        await Changed();
+        focusField = key;
+        if (!existing) await Changed();
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (keys == null) return;
+        try { await keys.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException) { }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusField is not string key) return;
+        focusField = null;
+        // The cursor goes straight to the new field's value.
+        try { keys ??= await JS.InvokeAsync<IJSObjectReference>("import", "./sort-keys.js"); await keys.InvokeVoidAsync("focusById", "sort-field-" + key); }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException) { }
     }
     private Task RemoveField(string name) { fields.Remove(name); return Changed(); }
     private async Task Keep(string name) => await KindChange(async actor =>
     {
-        var updated = await Library.AddKindFieldAsync(kind, name, actor);
-        Workspace.Notify($"{updated.Name} now asks for {LibraryService.FieldLabel(name).ToLowerInvariant()}. Use Name or Folder to put it in where files go.");
+        await Library.AddKindFieldAsync(kind, name, actor); // The button turning into Name / Folder says it worked.
     });
     private async Task Toggle(string name, bool folder) => await KindChange(async actor =>
     {
@@ -240,7 +264,8 @@
         var on = !LibraryService.FieldInPattern(current, name, folder);
         var updated = await Library.SetFieldInPatternAsync(kind, name, folder, on, actor);
         var moving = (await Library.RefilePlanAsync(kindId: updated.Id)).Count(x => x.Problem == null);
-        Workspace.Notify($"{updated.Name}: {(folder ? "folders" : "names")} {(on ? "now use" : "no longer use")} {LibraryService.FieldLabel(name).ToLowerInvariant()}.{(moving > 0 ? $" {moving} filed documents could move: see Tidy up." : "")}");
+        // The button and the path below show the change; speak up only when filed documents are affected.
+        if (moving > 0) Workspace.Notify($"{updated.Name}: {moving} filed documents could move. See Kinds › Tidy up.");
     });
     private void EditKind()
     {

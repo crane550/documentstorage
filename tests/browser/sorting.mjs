@@ -101,9 +101,21 @@ try {
     await check(exists('Inbox/Acme_Invoice_INV-20391_2026-10-14.txt'), 'Enter in the tag box adds a tag without filing');
     // Configure by using: a field typed on this slip, kept for the kind, used as a folder.
     await page.getByLabel('Add a field', { exact: true }).fill('Order number'); await page.getByLabel('Add a field', { exact: true }).press('Enter');
-    await page.locator('#sort-field-order_number').fill('PO-77'); await page.locator('#sort-field-order_number').press('Tab');
+    await check(page.waitForFunction(() => document.activeElement?.id === 'sort-field-order_number', null, { timeout: 5000 }).then(() => true), 'after adding a field the cursor is in its value box');
+    await page.keyboard.type('PO-77'); await page.keyboard.press('Tab');
     await check(exists('Inbox/Acme_Invoice_INV-20391_2026-10-14.txt'), 'Enter in the add-a-field box adds a field without filing');
-    await page.getByRole('button', { name: 'Keep for Invoice' }).click(); await toast(page, 'Invoice now asks for order number');
+    await page.getByRole('button', { name: 'Keep for Invoice' }).click();
+    await page.locator('.field-row').filter({ hasText: 'Order number' }).getByRole('button', { name: 'Folder' }).waitFor();
+    // A second field right after the first, added with the Add button this time.
+    await page.getByLabel('Add a field', { exact: true }).fill('Job number');
+    await page.locator('.field-add-row').getByRole('button', { name: 'Add' }).click();
+    await page.locator('#sort-field-job_number').waitFor();
+    await check(page.waitForFunction(() => document.activeElement?.id === 'sort-field-job_number', null, { timeout: 5000 }).then(() => true) && page.getByLabel('Add a field', { exact: true }).inputValue().then(v => v === ''),
+        'a second field can be added straight after keeping the first, and the add box is empty again');
+    await page.keyboard.type('J-9'); await page.keyboard.press('Tab');
+    await page.getByLabel('Add a field', { exact: true }).fill('order number'); await page.getByLabel('Add a field', { exact: true }).press('Enter');
+    await check(page.waitForFunction(() => document.activeElement?.id === 'sort-field-order_number', null, { timeout: 5000 }).then(() => true) && page.locator('.field-row').filter({ hasText: 'Order number' }).count().then(n => n === 1),
+        'adding a field that is already there goes to it instead of adding it twice');
     await page.locator('.field-row').filter({ hasText: 'Order number' }).getByRole('button', { name: 'Folder' }).click();
     await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.includes('PO-77'));
     await check(page.locator('[data-sort-path]').textContent().then(t => t.includes('PO-77')), 'putting the field in the folder pattern updates where it goes on the spot');

@@ -379,14 +379,17 @@ fieldset.permissions .check { margin: 6px 0; }
 .folder-picker { min-height: 180px; }
 
 /* ---------- Toast ----------------------------------------------------------- */
+/* Bottom centre, and clicks pass through to whatever is underneath (only its × takes them):
+   a message must never sit on top of a box someone is about to type in. */
 .toast {
-    position: fixed; right: 22px; bottom: 22px; z-index: 300; display: flex; align-items: center; gap: 10px;
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; z-index: 300; pointer-events: none; display: flex; align-items: center; gap: 10px;
     max-width: min(460px, calc(100vw - 32px)); padding: 11px 10px 11px 14px; border-radius: 8px;
     background: #2f2822; color: #f6ecdb; box-shadow: var(--shadow-lift); font-size: 13.5px; line-height: 1.45;
-    border-left: 4px solid var(--kraft); animation: rise .18s ease-out;
+    border-left: 4px solid var(--kraft); animation: toast-rise .18s ease-out;
 }
+@keyframes toast-rise { from { opacity: 0; transform: translate(-50%, 8px); } }
 .toast .icon:first-child { color: #c9dcb8; }
-.toast .icon-button { color: #e9dcc5; }
+.toast .icon-button { color: #e9dcc5; pointer-events: auto; }
 .toast .icon-button:hover { background: rgba(255, 255, 255, .1); color: #fff; }
 .toast.error { background: #fbeeea; color: #6e1f18; border-left-color: var(--red); box-shadow: 0 0 0 1px #ecc6bf, var(--shadow-lift); }
 .toast.error .icon:first-child { color: var(--red); }
@@ -820,7 +823,7 @@ button.note-empty:hover { color: #3a3216; }
     .activity-row .button { grid-column: 2; justify-self: start; }
     .modal-backdrop { padding: 8px; place-items: end center; }
     .modal { max-height: calc(100dvh - 16px); }
-    .toast { left: 12px; right: 12px; bottom: 12px; }
+    .toast { left: 12px; right: 12px; bottom: 12px; transform: none; animation: none; }
     .setup { padding: 18px; }
     .steps li { grid-template-columns: 28px 1fr; gap: 10px; }
     .step-choices select { min-width: 0; width: 100%; }
@@ -1042,6 +1045,8 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .field-remove:hover { background: var(--paper-3); color: var(--ink); }
 .field-add { margin: 6px 0 2px; min-height: 30px; height: 30px; padding: 0 6px; border: 0; border-radius: 3px; background: transparent; box-shadow: none; font-size: 13px; }
 .field-add:focus { background: rgba(252, 240, 168, .45); box-shadow: inset 0 -2px 0 var(--brown); }
+.field-add-row { display: flex; align-items: center; gap: 6px; }
+.field-add-row .field-add { flex: 1; min-width: 0; }
 .slip-label-action { margin-left: auto; padding: 2px 6px; color: var(--brown); background: transparent; }
 .slip-label-action:hover { background: var(--paper-3); }
 .nudges { padding: 8px 12px; margin-bottom: 12px; border-color: #a9c0a8; background: var(--green-bg); }
