@@ -9,11 +9,18 @@
 
 <PageTitle>Inbox · @Workspace.DisplayName</PageTitle>
 
-<header class="page-head">
-    <div>
+<header class="page-head inbox-head">
+    <div class="head-title">
         <h1>Inbox</h1>
-        @if (queue.Total > 0) { <p class="page-sub">@Summary</p> }
+        @if (loaded && SetUp)
+        {
+            <nav class="inbox-tabs" aria-label="Inbox views">
+                <button type="button" class="@(view == "waiting" ? "active" : "")" aria-pressed="@(view == "waiting" ? "true" : "false")" @onclick="ShowWaiting">Waiting<span class="count">@queue.Total</span></button>
+                <button type="button" class="@(view == "filed" ? "active" : "")" aria-pressed="@(view == "filed" ? "true" : "false")" @onclick="ShowFiled">Filed</button>
+            </nav>
+        }
     </div>
+    @if (loaded && SetUp) { <a class="text-button" href="/kinds"><Icon Name="signpost" Size="14" />Kinds, senders and tags</a> }
 </header>
 
 @if (proposals.Count > 0)
@@ -70,12 +77,6 @@ else if (!SetUp)
 }
 else
 {
-    <nav class="inbox-tabs" aria-label="Inbox views">
-        <button type="button" class="@(view == "waiting" ? "active" : "")" aria-pressed="@(view == "waiting" ? "true" : "false")" @onclick="ShowWaiting">Waiting<span class="count">@queue.Total</span></button>
-        <button type="button" class="@(view == "filed" ? "active" : "")" aria-pressed="@(view == "filed" ? "true" : "false")" @onclick="ShowFiled">Filed</button>
-        <span class="inbox-tabs-gap"></span>
-        <a class="text-button" href="/kinds"><Icon Name="signpost" Size="14" />Kinds, senders and tags</a>
-    </nav>
     @if (nudges.Count > 0)
     {
         <section class="sheet nudges" aria-label="Regulars ready to file themselves">
@@ -128,7 +129,7 @@ else
         <div class="inbox @(selected != null ? "has-selection" : "")" data-sort-inbox>
             <section class="tray" aria-label="Inbox documents">
                 <header class="tray-head sort-tray-head">
-                    <span>@queue.Total @(queue.Total == 1 ? "document" : "documents")</span>
+                    <span>@queue.Total @(queue.Total == 1 ? "document" : "documents")<span class="tray-summary">@Summary</span></span>
                     @if (checkedIds.Count > 0) { <button type="button" class="button small primary" disabled="@busy" @onclick="ApproveChecked">Approve @checkedIds.Count</button> }
                     else if (SureCount > 0) { <button type="button" class="button small" disabled="@busy" @onclick="ApproveSure" title="File every card the reader is sure of, as suggested">Approve @SureCount sure</button> }
                 </header>

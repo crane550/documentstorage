@@ -16,6 +16,8 @@ The sidebar also holds the folder tree for every connected storage location. **R
 
 ## Filing a document
 
+The Inbox reads top to bottom. The waiting documents are listed on the left. On the right, the selected document's preview sits on top, showing the top of the page, where a document says what it is (drag the viewer's corner for more, or use Expand). Below it is the filing slip. On a wide screen the slip splits in two: **what it is** on the left (kind, sender, title, date, tags and any fields) and **where it goes** on the right (the folder path, the new name and the arranging tools). Fields sit on their own underlines; the slip has no ruled background. The **Approve & file** bar stays at the bottom of the screen while the slip is in view, with Skip and "Remember as an example" beside it. A phone shows the same order in one column.
+
 1. **Arrive.** A scanner writes into an inbox folder, or you drop files on the page. A file shows **Arriving** until it has stayed unchanged for a few seconds.
 2. **Read it.** The filing slip reports server text readiness. With the reader enabled, **Read with AI** queues one document at a time and returns a summary, filename, folder and reason. An unfamiliar category does not require setup.
 3. **Check the suggestion.** Edit the filename or folder, inspect evidence under **Document category and suggested facts**, and optionally add a filing preference. A proposed new subfolder is explicit. **Remember this approved filing as an example** is checked by default; remembered choices can be forgotten in Settings › AI reader.

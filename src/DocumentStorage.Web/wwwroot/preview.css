@@ -41,7 +41,6 @@
 .preview-expanded .document-preview-heading { flex-shrink: 0; }
 
 /* Where the viewer sits in each page. */
-.inbox-preview .preview-surface { height: calc(100dvh - 190px); min-height: 460px; max-height: 1100px; }
 .details .preview-surface { height: calc(100dvh - 330px); min-height: 380px; max-height: 1000px; }
 .inbox-preview .document-preview.preview-expanded { position: fixed; }
 
