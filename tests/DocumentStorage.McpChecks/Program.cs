@@ -80,16 +80,16 @@ try
         Check(native.Secret==null,"public desktop clients support loopback HTTP callbacks with PKCE in production");
     }
 
-    string Authorization(RegisteredAssistant client, string verifier, string? callback = null, string? challenge = null, string? target = null) => QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string,string?>
-    { ["client_id"]=client.Connection.ClientId, ["redirect_uri"]=callback ?? redirect, ["response_type"]="code", ["scope"]=string.Join(' ',JsonSerializer.Deserialize<string[]>(client.Connection.ScopesJson)!) + " offline_access", ["resource"]=target ?? resource, ["state"]="synthetic-state", ["code_challenge"]=challenge ?? WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(verifier))), ["code_challenge_method"]="S256" });
+    string Authorization(RegisteredAssistant client, string verifier, string? callback = null, string? challenge = null, string? target = null, string? requestedScopes = null) => QueryHelpers.AddQueryString("/connect/authorize", new Dictionary<string,string?>
+    { ["client_id"]=client.Connection.ClientId, ["redirect_uri"]=callback ?? redirect, ["response_type"]="code", ["scope"]=requestedScopes ?? string.Join(' ',JsonSerializer.Deserialize<string[]>(client.Connection.ScopesJson)!) + " offline_access", ["resource"]=target ?? resource, ["state"]="synthetic-state", ["code_challenge"]=challenge ?? WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(verifier))), ["code_challenge_method"]="S256" });
     Dictionary<string,string> Consent(string path, string token, string decision)
     {
         var fields = QueryHelpers.ParseQuery(new Uri(new Uri(origin),path).Query).ToDictionary(x => x.Key,x => x.Value.ToString());
         fields["decision"] = decision; fields["__RequestVerificationToken"] = token; return fields;
     }
-    async Task<(string Code,string Verifier)> Code(RegisteredAssistant client)
+    async Task<(string Code,string Verifier)> Code(RegisteredAssistant client,string? requestedScopes=null)
     {
-        var verifier = Random(); var path = Authorization(client,verifier);
+        var verifier = Random(); var path = Authorization(client,verifier,requestedScopes:requestedScopes);
         var page = await browser.GetAsync(path); if (page.StatusCode != HttpStatusCode.OK) throw new Exception("OAuth consent did not open: " + page.StatusCode + " " + await page.Content.ReadAsStringAsync());
         var response = await browser.PostAsync(path,new FormUrlEncodedContent(Consent(path, Field(await page.Content.ReadAsStringAsync()), "allow")));
         if (response.StatusCode != HttpStatusCode.Redirect || response.Headers.Location == null) throw new Exception("OAuth consent did not return a code: " + response.StatusCode);
@@ -138,6 +138,30 @@ try
     Check(!(await Exchange(full,wrongTarget.Code,wrongTarget.Verifier,"https://another-resource.example.test/mcp")).IsSuccessStatusCode, "token exchange cannot redirect the authorization to another resource");
     var confidentialTokens = await Tokens(confidential);
     Check(confidentialTokens.TryGetProperty("access_token",out _), "confidential OAuth clients complete the code flow using their secret");
+    // Reproduce ChatGPT's request shape: generic openid + every advertised MCP scope,
+    // against a confidential connection deliberately granted only catalog access.
+    var chatgpt=await Register("Synthetic broad-scope MCP client",["catalog.read"],false);
+    var advertisedRequest="openid offline_access "+string.Join(' ',LibraryService.AssistantScopes);
+    var broadVerifier=Random();var broadPath=Authorization(chatgpt,broadVerifier,requestedScopes:advertisedRequest);
+    var narrowedConsent=await browser.GetAsync(broadPath);
+    var narrowedHtml=await narrowedConsent.Content.ReadAsStringAsync();
+    Check(narrowedConsent.IsSuccessStatusCode&&narrowedHtml.Contains("Read folder names")&&!narrowedHtml.Contains("Apply document corrections, kinds"),"a ChatGPT-style broad request reaches consent showing only this connection's allowed permissions");
+    var broadConsent=await browser.PostAsync(broadPath,new FormUrlEncodedContent(Consent(broadPath,Field(narrowedHtml),"allow")));
+    var broadCode=QueryHelpers.ParseQuery(broadConsent.Headers.Location!.Query)["code"].ToString();
+    var narrowedResponse=await Exchange(chatgpt,broadCode,broadVerifier);
+    var narrowedTokens=JsonDocument.Parse(await narrowedResponse.Content.ReadAsStringAsync()).RootElement;
+    Check(narrowedResponse.IsSuccessStatusCode&&narrowedTokens.GetProperty("scope").GetString()!.Split(' ').ToHashSet().SetEquals(new[]{"catalog.read","offline_access"})&&!narrowedTokens.TryGetProperty("id_token",out _),"broad-scope authorization issues only the narrowed OAuth grant and no OpenID identity token");
+    using var narrowedHttp=Http();narrowedHttp.DefaultRequestHeaders.Authorization=new("Bearer",narrowedTokens.GetProperty("access_token").GetString());
+    await using(var narrowedTransport=new HttpClientTransport(new(){Endpoint=new Uri(resource),TransportMode=HttpTransportMode.StreamableHttp},narrowedHttp))
+    await using(var narrowedClient=await McpClient.CreateAsync(narrowedTransport))
+    {
+        var narrowedTools=await narrowedClient.ListToolsAsync();
+        Check(narrowedTools.Any(x=>x.Name=="list_storage")&&!narrowedTools.Any(x=>x.Name is "read_document_text" or "update_document_details" or "execute_filing"),"a narrowed token remains usable for MCP without gaining unapproved reading, editing or filing tools");
+    }
+    var unknownScope=await browser.GetAsync(Authorization(chatgpt,Random(),requestedScopes:"catalog.read unknown.permission"));
+    Check(!unknownScope.IsSuccessStatusCode||unknownScope.Headers.Location!=null,"unknown scopes remain rejected instead of being silently granted");
+    var insufficientScope=await browser.GetAsync(Authorization(chatgpt,Random(),requestedScopes:"openid documents.read"));
+    Check(!insufficientScope.IsSuccessStatusCode||insufficientScope.Headers.Location!=null,"scope normalization never adds the required catalog.read permission when it was not requested");
     var tokens = await Tokens(full); var readerTokens = await Tokens(reader);
     using var authorized = Http(); authorized.DefaultRequestHeaders.Authorization = new("Bearer",tokens.GetProperty("access_token").GetString());
     Check((await authorized.GetAsync("/updates/status")).StatusCode == HttpStatusCode.Redirect, "MCP bearer credentials cannot read browser updater status");

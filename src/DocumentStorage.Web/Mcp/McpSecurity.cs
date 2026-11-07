@@ -124,6 +124,7 @@ public static class McpSecurity
     public static void AddDocumentMcpSecurity(this IServiceCollection services, McpAddress address, bool development)
     {
         services.AddSingleton(address);
+        services.AddScoped<NormalizeAssistantScopes>();
         services.AddHttpContextAccessor(); services.AddScoped<AssistantConnections>();
         services.AddSingleton<IConfigureOptions<OpenIddictServerOptions>, McpSigningKeys>();
         services.AddOpenIddict().AddCore(options => options.UseEntityFrameworkCore().UseDbContext<CatalogDb>())
@@ -133,6 +134,9 @@ public static class McpSecurity
                     .SetConfigurationEndpointUris("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration");
                 options.AllowAuthorizationCodeFlow().AllowRefreshTokenFlow().RequireProofKeyForCodeExchange();
                 options.RegisterScopes(LibraryService.AssistantScopes);
+                options.AddEventHandler<OpenIddictServerEvents.ValidateAuthorizationRequestContext>(handler=>handler
+                    .SetOrder(OpenIddictServerHandlers.Authentication.ValidateScopes.Descriptor.Order-1000)
+                    .UseScopedHandler<NormalizeAssistantScopes>());
                 options.RegisterResources(address.Resource);
                 options.SetAuthorizationCodeLifetime(TimeSpan.FromMinutes(2)).SetAccessTokenLifetime(TimeSpan.FromMinutes(10)).SetRefreshTokenLifetime(TimeSpan.FromDays(7)).SetRefreshTokenReuseLeeway(TimeSpan.Zero);
                 options.Configure(o => o.CodeChallengeMethods.Remove(CodeChallengeMethods.Plain));

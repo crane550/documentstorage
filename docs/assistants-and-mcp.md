@@ -145,3 +145,9 @@ Correct a one-off document with `update_document_details`; do not invent a reusa
 After saving corrected details, `teach_reader_example` stores their version plus a bounded source excerpt and lesson. Future sorting prompts retrieve up to two relevant, current examples from the same storage root, with bounded excerpts/fields. This is retrieved context, not weight fine-tuning; it never increments human approval streaks or enables trust. Forgetting retains the history but removes influence. For a diagnostic evaluation, explicitly request one local reading and inspect its saved input/result; use another representative document when testing whether a lesson generalizes.
 
 Tests use synthetic documents and the official MCP client plus real browser OAuth. They verify plumbing, permissions, state and prompt contents, not actual Claude/ChatGPT account integration or the accuracy of the deployed local model.
+
+## ChatGPT scope negotiation
+
+ChatGPT may request `openid offline_access` plus every scope advertised by the MCP resource, including permissions not selected for its Stash connection. Stash narrows recognized requests to the intersection of the connection's permissions and its OAuth client's registered permissions before normal validation. Consent and the issued access token contain only that subset. `openid` is removed: this endpoint supplies OAuth access to MCP, not OpenID identity tokens. Unknown permissions remain errors, required `catalog.read` is never added implicitly, and refresh tokens cannot expand access.
+
+If connecting reports OpenIddict ID2051 (client not allowed to use a scope), update Stash and start a fresh connection attempt from ChatGPT. Existing client IDs/secrets and selected permissions can be kept. Do not enable unneeded permissions merely to match ChatGPT's broad request. For corrections/training, the connection still needs the corresponding explicit grant.
