@@ -5,14 +5,14 @@ let handler = null;
 
 function typing(target) {
     if (!(target instanceof Element)) return false;
-    return target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], .document-preview, [role='menu'], dialog") !== null;
+    return target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], .document-preview, [role='menu'], [role='dialog'], dialog") !== null;
 }
 
 export function attach() {
     if (handler) document.removeEventListener("keydown", handler);
     handler = (event) => {
         if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-        if (!document.querySelector("[data-sort-inbox]") || typing(event.target)) return;
+        if (!document.querySelector("[data-sort-inbox]") || document.querySelector('[role="dialog"], dialog[open]') || typing(event.target)) return;
         const key = event.key;
         let target = null;
         if (key === "j" || key === "J" || key === "ArrowDown") target = document.querySelector("[data-sort-next]");

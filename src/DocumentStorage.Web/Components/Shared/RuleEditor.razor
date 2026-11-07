@@ -27,10 +27,7 @@
                 <div class="step-body">
                     <h3>Where they go</h3>
                     <label for="rule-destination">Destination folder</label>
-                    <select id="rule-destination" @bind="destination" @bind:after="Edited">
-                        <option value="@Guid.Empty">Choose a folder…</option>
-                        @foreach (var folder in Destinations) { <option value="@folder.Id">@Workspace.FolderLabel(folder)</option> }
-                    </select>
+                    <FolderSelect Id="rule-destination" Value="@(destination == Guid.Empty ? null : destination)" Disabled="busy" OnOpen="() => pickerOpen = true" />
                 </div>
             </div>
             <div class="rule-step">
@@ -85,6 +82,10 @@
         }
     </form>
 </Modal>
+@if (pickerOpen)
+{
+    <FolderPickerDialog SelectedId="destination" ExcludeInbox="true" OnSelected="PickFolder" OnClose="() => pickerOpen = false" />
+}
 
 @code {
     [Parameter] public FilingRuleDefinition? Rule { get; set; }
@@ -95,7 +96,7 @@
     [Parameter] public EventCallback<FilingRuleDefinition> OnSaved { get; set; }
     private string name = "", documentType = "", template = "", required = "";
     private Guid destination;
-    private bool enabled = true, dirty, busy;
+    private bool enabled = true, dirty, busy, pickerOpen;
     private string? error;
     private int revision;
     private List<FactField> conditions = [];
@@ -105,7 +106,7 @@
     private DocumentTypeProfile? Profile => Types.FirstOrDefault(x => x.Key == documentType.Trim().ToLowerInvariant());
     private string[] ProfileFacts => Profile == null ? [] : JsonSerializer.Deserialize<string[]>(Profile.FactNamesJson) ?? [];
     private string FactHint => ProfileFacts.FirstOrDefault() ?? "institution";
-    private IEnumerable<CatalogEntry> Destinations => Workspace.Overview.Folders.Where(x => !Workspace.InInbox(x)).OrderBy(x => Workspace.FolderLabel(x), StringComparer.OrdinalIgnoreCase);
+    private void PickFolder(FolderSelection folder) { destination = folder.Id; pickerOpen = false; Edited(); }
     private static bool DateLike(string fact) => fact.Contains("date") || fact.EndsWith("_end") || fact.EndsWith("_start") || fact.EndsWith("_on");
     private IEnumerable<(string Label, string Value)> Tokens
     {

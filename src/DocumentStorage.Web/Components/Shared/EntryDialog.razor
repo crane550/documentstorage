@@ -14,17 +14,10 @@
         {
             <label for="entry-name">@(Mode == "new-folder" ? "Folder name" : "Name")</label>
             <input id="entry-name" required maxlength="180" @bind="name" @bind:event="oninput" autofocus />
-            @if (Mode == "move")
-            {
-                <label for="entry-destination-search">Find a folder</label>
-                <input id="entry-destination-search" type="search" @bind="filter" @bind:event="oninput" placeholder="Filter folders…" />
-                <label for="entry-destination">Destination folder</label>
-                <select id="entry-destination" size="7" class="folder-picker" @bind="destination">
-                    @foreach (var folder in Destinations) { <option value="@folder.Id">@Workspace.FolderLabel(folder)@(folder.Id == snapshotParent?.Id ? "  (current)" : "")</option> }
-                </select>
-            }
+            <label for="entry-destination">@(Mode == "new-folder" ? "Parent folder" : "Destination folder")</label>
+            <FolderSelect Id="entry-destination" Label="@(Mode == "new-folder" ? "Parent folder" : "Destination folder")" Value="destination" Disabled="busy" OnOpen="() => pickerOpen = true" />
             <div class="path-preview">
-                <span>@(Mode == "new-folder" ? "Inside" : "From")</span><code>@Workspace.FolderLabel(Entry)</code>
+                <span>@(Mode == "new-folder" ? "Inside" : "From")</span><code>@(Mode == "new-folder" ? DestinationLabel : Workspace.FolderLabel(Entry))</code>
                 <span>@(Mode == "new-folder" ? "Creates" : "To")</span><code>@Preview</code>
             </div>
         }
@@ -35,37 +28,35 @@
         </div>
     </form>
 </Modal>
+@if (pickerOpen)
+{
+    <FolderPickerDialog RootId="Entry.RootId" SelectedId="destination" ExcludedBranchId="@(Mode == "move" && Entry.IsFolder ? Entry.Id : null)" OnSelected="PickFolder" OnClose="() => pickerOpen = false" />
+}
 @code {
     /// <summary>"new-folder" (Entry is the parent), "move" (rename and/or move Entry) or "trash".</summary>
     [Parameter, EditorRequired] public string Mode { get; set; } = "move";
     [Parameter, EditorRequired] public CatalogEntry Entry { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<Guid> OnDone { get; set; }
-    private string name = "", filter = "", sourcePath = "";
+    private string name = "", sourcePath = "", destinationPath = "";
     private Guid destination;
-    private bool busy;
+    private bool busy, pickerOpen;
     private string? error;
-    private List<CatalogEntry> snapshot = [];
-    private CatalogEntry? snapshotParent;
     private string Title => Mode switch { "trash" => "Move to trash?", "new-folder" => "New folder", _ => "Rename or move" };
     protected override void OnInitialized()
     {
-        snapshot = Workspace.Overview.Folders.ToList(); sourcePath = Entry.RelativePath;
+        sourcePath = Entry.RelativePath;
         name = Mode == "new-folder" ? "" : Entry.Name;
-        snapshotParent = snapshot.FirstOrDefault(x => x.Id == Entry.ParentId);
-        destination = snapshotParent?.Id ?? Guid.Empty;
+        var parent = Mode == "new-folder" ? Entry : Workspace.Folder(Entry.ParentId);
+        destination = parent?.Id ?? Guid.Empty; destinationPath = parent?.RelativePath ?? "";
     }
-    private IEnumerable<CatalogEntry> Destinations => snapshot.Where(x => x.RootId == Entry.RootId && x.Id != Entry.Id
-            && !(Entry.IsFolder && x.RelativePath.StartsWith(Entry.RelativePath + "/", StringComparison.Ordinal))
-            && (x.Id == destination || filter.Length == 0 || Workspace.FolderLabel(x).Contains(filter, StringComparison.OrdinalIgnoreCase)))
-        .OrderBy(x => Workspace.FolderLabel(x), StringComparer.OrdinalIgnoreCase);
+    private string DestinationLabel => Workspace.RootName(Entry.RootId) + (destinationPath.Length > 0 ? " / " + destinationPath : "");
+    private void PickFolder(FolderSelection folder) { destination = folder.Id; destinationPath = folder.Path; pickerOpen = false; }
     private string Preview
     {
         get
         {
-            if (Mode == "new-folder") return Workspace.FolderLabel(Entry) + " / " + (name.Length > 0 ? name : "…");
-            var target = snapshot.FirstOrDefault(x => x.Id == destination);
-            return target == null ? "Choose a destination" : Workspace.FolderLabel(target) + " / " + (name.Length > 0 ? name : "…");
+            return destination == Guid.Empty ? "Choose a destination" : DestinationLabel + " / " + (name.Length > 0 ? name : "…");
         }
     }
     private async Task Save()
@@ -74,12 +65,12 @@
         try
         {
             var result = Entry.Id;
-            if (Mode == "new-folder") result = await Library.CreateFolderAsync(Entry.Id, name, sourcePath);
+            if (Mode == "new-folder") result = await Library.CreateFolderAsync(destination, name, destinationPath);
             else if (Mode == "trash") await Library.TrashEntryAsync(Entry.Id, sourcePath);
             else
             {
-                var parent = snapshot.SingleOrDefault(x => x.Id == destination) ?? throw new StorageException("Choose a destination folder.");
-                await Library.MoveAsync(Entry.Id, parent.Id, name, sourcePath, parent.RelativePath);
+                if (destination == Guid.Empty) throw new StorageException("Choose a destination folder.");
+                await Library.MoveAsync(Entry.Id, destination, name, sourcePath, destinationPath);
             }
             await Workspace.RefreshAsync();
             await OnDone.InvokeAsync(result);

@@ -1,0 +1,12 @@
+@inject WorkspaceState Workspace
+<button id="@Id" type="button" class="folder-select-button" aria-haspopup="dialog" aria-label="@Label" disabled="@Disabled" @onclick="OnOpen">
+    <Icon Name="folder" Size="17" /><span>@(Value is { } id && Workspace.Folder(id) is { } folder ? Workspace.FolderLabel(folder) : Placeholder)</span><Icon Name="chevron-down" Size="14" />
+</button>
+@code {
+    [Parameter] public string Id { get; set; } = "folder-select-" + Guid.NewGuid().ToString("N");
+    [Parameter] public string Label { get; set; } = "Destination folder";
+    [Parameter] public string Placeholder { get; set; } = "Choose a folder…";
+    [Parameter] public Guid? Value { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnOpen { get; set; }
+}

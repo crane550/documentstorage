@@ -79,6 +79,16 @@ export async function settleAndRescan(page) {
 }
 
 export const noOverflow = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+export const folderPicker = page => page.getByRole('dialog', { name: 'Choose a folder', exact: true });
+
+/** Selects a folder in the shared picker; the caller opens it from its current editor. */
+export async function chooseFolder(page, search, name) {
+    const dialog = folderPicker(page);
+    await dialog.getByLabel('Find a folder', { exact: true }).fill(search);
+    await dialog.getByRole('treeitem').filter({ has: page.locator('strong', { hasText: new RegExp('^' + escape(name) + '$') }) }).click();
+    await dialog.getByRole('button', { name: 'Use this folder', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+}
 const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Opens an inbox document and waits until its own filing slip is showing. */

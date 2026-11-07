@@ -168,7 +168,7 @@
                     <span class="slip-label">Folder</span>
                     <div class="seg" role="group" aria-label="How the folder is chosen">
                         <button type="button" aria-pressed="@(FolderMode == "built" ? "true" : "false")" @onclick='() => SetFolderMode("built")'>Built from details</button>
-                        <button type="button" aria-pressed="@(FolderMode == "pick" ? "true" : "false")" @onclick='() => SetFolderMode("pick")'>Choose a folder</button>
+                        <button type="button" aria-pressed="@(FolderMode == "pick" ? "true" : "false")" @onclick="OpenFolderPicker">Choose a folder</button>
                     </div>
                 </div>
                 @if (plan == null) { <p class="hint">Working out where it goes…</p> }
@@ -199,15 +199,12 @@
                 }
                 @if (FolderMode == "pick")
                 {
-                    <label class="sr-only" for="sort-folder">Folder inside @Card.Document.RootName</label>
-                    <input id="sort-folder" class="slip-field mono" @bind="folderOverride" @bind:event="oninput" @bind:after="Typed" placeholder="Type or pick a folder, like Banking/Cedar Bank" autocomplete="off" />
-                    <ul class="folder-matches" aria-label="Folders">
-                        @foreach (var folder in FolderMatches)
-                        {
-                            <li @key="folder.Id"><button type="button" class="@(string.Equals(folder.RelativePath, folderOverride.Trim().Trim('/'), StringComparison.OrdinalIgnoreCase) ? "chosen" : "")" @onclick="() => PickFolder(folder.RelativePath)"><Icon Name="folder" Size="13" /><span>@folder.RelativePath</span></button></li>
-                        }
-                    </ul>
-                    <p class="hint">Pick one, or type a path; folders that don't exist yet are made when you approve. Used for this document only.</p>
+                    <button type="button" class="button small" @onclick="OpenFolderPicker"><Icon Name="folder-open" Size="14" />Browse folders…</button>
+                    <details class="advanced"><summary>Type a folder path</summary>
+                        <label class="sr-only" for="sort-folder">Folder inside @Card.Document.RootName</label>
+                        <input id="sort-folder" class="slip-field mono" @bind="folderOverride" @bind:event="oninput" @bind:after="Typed" placeholder="Type a path, like Banking/Cedar Bank" autocomplete="off" />
+                        <p class="hint">Folders in a typed path are made when you approve. Used for this document only.</p>
+                    </details>
                 }
                 else
                 {
@@ -269,6 +266,11 @@
     </Modal>
 }
 
+@if (folderPickerOpen)
+{
+    <FolderPickerDialog RootId="Card.Document.RootId" SelectedId="pickerFolder" ExcludeInbox="true" AllowRootSelection="false" OnSelected="FolderPicked" OnClose="() => folderPickerOpen = false" />
+}
+
 @code {
     [Parameter, EditorRequired] public SortCard Card { get; set; } = default!;
     [Parameter, EditorRequired] public SortVocabulary Vocabulary { get; set; } = default!;
@@ -297,7 +299,8 @@
     private string? loadedKey;
     private int planVersion;
 
-    private bool pickingFolder, customName;
+    private bool pickingFolder, customName, folderPickerOpen;
+    private Guid? pickerFolder;
     // Set when the person says this copy should be filed anyway.
     private bool keepBoth;
     private static string CopyLink(DuplicateMatch copy) => copy.InTrash ? "/trash" : copy.InInbox ? $"/?open={copy.EntryId}" : $"/library?folder={copy.FolderId}&doc={copy.EntryId}";
@@ -337,29 +340,15 @@
     private CancellationTokenSource? typingPause;
     private string FolderMode => pickingFolder || folderOverride.Trim().Length > 0 ? "pick" : "built";
     private string NameMode => customName || nameOverride.Trim().Length > 0 ? "custom" : keepName ? "original" : "built";
-    // Folders to pick from: those matching what's typed; when nothing matches yet (a path still to be made),
-    // the deepest folder that exists along it and what's inside, so you see what is already there.
-    private IEnumerable<CatalogEntry> FolderMatches
+    private void OpenFolderPicker()
     {
-        get
-        {
-            var typed = folderOverride.Trim().Trim('/');
-            var folders = Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && x.RelativePath.Length > 0 && !Workspace.InInbox(x)).ToList();
-            var matching = folders.Where(x => typed.Length == 0 || x.RelativePath.Contains(typed, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (matching.Count == 0 && typed.Length > 0)
-            {
-                var parts = typed.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                for (var depth = parts.Length - 1; depth > 0 && matching.Count == 0; depth--)
-                {
-                    var prefix = string.Join("/", parts[..depth]);
-                    matching = folders.Where(x => string.Equals(x.RelativePath, prefix, StringComparison.OrdinalIgnoreCase)
-                        || x.RelativePath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)).ToList();
-                }
-            }
-            return matching.OrderBy(x => string.Equals(x.RelativePath, typed, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase).Take(10);
-        }
+        var path = (folderOverride.Trim().Length > 0 ? folderOverride : plan?.FolderPath ?? "").Trim().Trim('/');
+        pickerFolder = Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && !Workspace.InInbox(x) &&
+            (x.RelativePath.Length == 0 || SamePath(x.RelativePath, path) || path.StartsWith(x.RelativePath + "/", StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(x => x.RelativePath.Length).FirstOrDefault()?.Id;
+        folderPickerOpen = true;
     }
+    private async Task FolderPicked(FolderSelection folder) { await PickFolder(folder.Path); folderPickerOpen = false; }
     private string? MemoryNote => Card.Notes.FirstOrDefault(x => x.StartsWith("Filled in from", StringComparison.Ordinal));
     private IEnumerable<string> Warnings => Card.Notes.Where(x => !x.StartsWith("Filled in from", StringComparison.Ordinal));
     private bool Reading => Card.ReaderState is "Waiting to be read" or "Reading" or "Will try again";

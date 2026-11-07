@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath } from './ui.mjs';
+import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, folderPicker, chooseFolder } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5250';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
@@ -96,10 +96,9 @@ try {
     // Choosing a folder starts from the suggested one, offers what exists, and can go back to the built one.
     const folderChoice = page.getByRole('group', { name: 'How the folder is chosen' });
     await folderChoice.getByRole('button', { name: 'Choose a folder', exact: true }).click();
-    await check(page.locator('#sort-folder').inputValue().then(v => v.startsWith('Banking/')), 'choosing a folder starts from the suggested path');
-    await check(page.locator('.folder-matches').getByRole('button', { name: 'Banking', exact: true }).count().then(n => n === 1), 'a path still to be made lists the folders that already exist along it');
-    await page.locator('#sort-folder').fill('Arch');
-    await page.locator('.folder-matches').getByRole('button', { name: 'Archive', exact: true }).click();
+    await check(folderPicker(page).getByRole('treeitem', { selected: true }).textContent().then(v => v.includes('Banking')), 'choosing a folder starts from the existing parent of the suggested path');
+    await check(folderPicker(page).getByRole('treeitem').filter({ has: page.locator('strong', { hasText: /^Banking$/ }) }).count().then(n => n === 1), 'a path still to be made opens its existing parent in the tree');
+    await chooseFolder(page, 'Arch', 'Archive');
     await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.replace(/\s+/g, '').endsWith('/Archive'));
     await check(Promise.resolve(true), 'picking an existing folder sends it there');
     await folderChoice.getByRole('button', { name: 'Built from details', exact: true }).click();

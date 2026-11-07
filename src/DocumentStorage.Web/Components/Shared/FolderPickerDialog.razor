@@ -1,0 +1,185 @@
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@inject IJSRuntime JS
+@inject ILogger<FolderPickerDialog> Logger
+@implements IAsyncDisposable
+
+<Modal Title="@Title" IconName="folder-open" OnClose="Close" Busy="busy" Wide="true" Class="folder-dialog">
+    <div class="folder-dialog-content" @ref="element" @onkeydown="Key" @onkeydown:stopPropagation="true">
+        <label for="@searchId">Find a folder</label>
+        <div class="input-row folder-dialog-search">
+            <input id="@searchId" data-folder-search type="search" @bind="query" @bind:event="oninput" @bind:after="SearchChanged" disabled="@busy" placeholder="Search folder names or paths…" autocomplete="off" />
+            <button type="button" class="icon-button" aria-label="Refresh folders" title="Refresh folders" disabled="@busy" @onclick="Refresh"><Icon Name="refresh" Size="17" /></button>
+        </div>
+        @if (tree == null) { <p class="hint">Loading folders…</p> }
+        else
+        {
+            @if (query.Trim().Length > 0) { <p class="hint" role="status">@tree.MatchCount matching @(tree.MatchCount == 1 ? "folder" : "folders")@(tree.Shortened ? " · showing the first 200; narrow your search" : "")</p> }
+            <div class="folder-dialog-tree" role="tree" aria-label="Folders" aria-busy="@busy">
+                @foreach (var row in rows)
+                {
+                    var folder = row.Folder;
+                    var open = query.Trim().Length > 0 || tree.Expanded.Contains(folder.Id);
+                    <div class="folder-dialog-row @(folder.Id == selected ? "selected" : "") @(row.Match ? "match" : "") @(!tree.Writable(folder) ? "unavailable" : "")" style="--level:@row.Depth" @key="folder.Id">
+                        <button type="button" class="folder-dialog-toggle @(open ? "open" : "")" tabindex="-1" disabled="@(busy || !row.HasChildren || query.Trim().Length > 0)" aria-label="@((open ? "Collapse " : "Expand ") + folder.Name)" @onclick="() => Toggle(folder.Id)"><Icon Name="arrow" Size="12" /></button>
+                        <button type="button" class="folder-dialog-choice" role="treeitem" data-folder-id="@folder.Id" aria-level="@(row.Depth + 1)" aria-selected="@(folder.Id == selected ? "true" : "false")" aria-expanded="@(row.HasChildren ? open ? "true" : "false" : null)" tabindex="@(folder.Id == focusId ? 0 : -1)" disabled="@busy" @onclick="() => Choose(folder.Id)" @onkeydown="e => TreeKey(folder.Id, e)" title="@tree.Label(folder)">
+                            <Icon Name="@(folder.ParentId == null ? "drive" : folder.IsIntake ? "inbox" : open && row.HasChildren ? "folder-open" : "folder")" Size="17" />
+                            <span class="folder-dialog-name"><strong>@(folder.ParentId == null ? tree.Roots.GetValueOrDefault(folder.RootId)?.Name ?? folder.Name : folder.Name)</strong>@if (query.Trim().Length > 0 && folder.ParentId != null) { <small>@tree.Label(folder)</small> }</span>
+                            @if (tree.Roots.GetValueOrDefault(folder.RootId)?.IsOnline != true) { <span class="folder-dialog-badge">Offline</span> }
+                            else if (tree.BlockedRoots.Contains(folder.RootId)) { <span class="folder-dialog-badge">Paused</span> }
+                            @if (folder.IsIntake) { <span class="folder-dialog-badge">Inbox</span> }
+                        </button>
+                    </div>
+                }
+                @if (rows.Count == 0) { <p class="folder-dialog-empty">@(query.Trim().Length > 0 ? "No matching folders. Try part of a name, or clear search to browse and create a folder." : "No folders are available here.")</p> }
+            </div>
+            <div class="folder-dialog-location">
+                <span class="slip-label">Selected folder</span>
+                @if (Current is { } current)
+                {
+                    <nav aria-label="Selected folder path">@foreach (var ancestor in tree.Ancestors(current.Id)) { <button type="button" disabled="@busy" @onclick="() => Navigate(ancestor.Id)">@(ancestor.ParentId == null ? tree.Roots.GetValueOrDefault(ancestor.RootId)?.Name ?? ancestor.Name : ancestor.Name)</button><span aria-hidden="true">/</span> }</nav>
+                    @if (!tree.Writable(current)) { <p class="hint">@(tree.BlockedRoots.Contains(current.RootId) ? "Changes are paused on this storage." : "This storage is offline.")</p> }
+                    else if (!AllowRootSelection && current.ParentId == null) { <p class="hint">Choose a subfolder, or create one here.</p> }
+                }
+                else { <p class="hint">Choose a folder in the tree.</p> }
+            </div>
+            @if (creating && Current is { } createParent)
+            {
+                <div class="folder-dialog-create" role="group" aria-label="Create a subfolder">
+                    <p class="hint">Create inside <strong>@tree.Label(createParent)</strong></p>
+                    <label for="@nameId">New folder name</label>
+                    <div class="input-row"><input id="@nameId" data-folder-name @bind="newName" @bind:event="oninput" @onkeydown="CreateKey" @onkeydown:stopPropagation="true" maxlength="180" disabled="@busy" placeholder="Folder name" autocomplete="off" /><button type="button" class="button primary" disabled="@(busy || newName.Trim().Length == 0)" @onclick="Create">Create folder</button><button type="button" class="text-button" disabled="@busy" @onclick="CancelCreate">Cancel new folder</button></div>
+                </div>
+            }
+            @if (message != null) { <p class="connection-state ok" role="status">@message</p> }
+        }
+        @if (error != null) { <p class="form-error" role="alert">@error</p> }
+        <div class="folder-dialog-actions">
+            @if (AllowCreate) { <button type="button" class="button" disabled="@(busy || Current == null || tree?.Writable(Current) != true || creating)" @onclick="StartCreate"><Icon Name="folder-plus" Size="16" />New folder</button> }
+            <div><button type="button" class="button" disabled="@busy" @onclick="Close">Cancel</button><button type="button" class="button primary" disabled="@(busy || !CanUse || creating)" @onclick="Confirm">Use this folder</button></div>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Choose a folder";
+    [Parameter] public Guid? RootId { get; set; }
+    [Parameter] public Guid? SelectedId { get; set; }
+    [Parameter] public Guid? ExcludedBranchId { get; set; }
+    [Parameter] public bool ExcludeInbox { get; set; }
+    [Parameter] public bool AllowRootSelection { get; set; } = true;
+    [Parameter] public bool AllowCreate { get; set; } = true;
+    [Parameter] public EventCallback<FolderSelection> OnSelected { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private FolderPickerTree? tree;
+    private List<FolderPickerRow> rows = [];
+    private Guid? selected, focusId;
+    private string query = "", newName = "";
+    private string? error, message, pendingFocus = "search";
+    private bool busy, creating, disposed;
+    private readonly string searchId = "folder-search-" + Guid.NewGuid().ToString("N");
+    private readonly string nameId = "folder-name-" + Guid.NewGuid().ToString("N");
+    private ElementReference element;
+    private IJSObjectReference? module, handle;
+    private Task? initialize;
+    private CatalogEntry? Current => selected is { } id ? tree?.Folders.GetValueOrDefault(id) : null;
+    private bool CanUse => Current is { } current && tree!.Writable(current) && (AllowRootSelection || current.ParentId != null);
+
+    protected override async Task OnInitializedAsync() { selected = SelectedId; await Load(); }
+    private async Task Load()
+    {
+        tree = new(await Library.OverviewAsync(), RootId, ExcludedBranchId, ExcludeInbox);
+        if (selected == null || !tree.Folders.ContainsKey(selected.Value)) selected = tree.Folders.Values.Where(x => x.ParentId == null).OrderBy(tree.Label, StringComparer.CurrentCultureIgnoreCase).FirstOrDefault()?.Id;
+        if (selected is { } id) tree.Reveal(id);
+        focusId = selected; rows = tree.Rows(query);
+    }
+    private async Task Refresh()
+    {
+        if (busy) return; busy = true; error = null;
+        try { await Load(); pendingFocus = "search"; }
+        catch { error = "Folders could not be refreshed. Try again."; }
+        finally { busy = false; }
+    }
+    private void SearchChanged() { if (tree == null) return; rows = tree.Rows(query); focusId = rows.FirstOrDefault(x => x.Match)?.Folder.Id ?? rows.FirstOrDefault()?.Folder.Id; }
+    private void Choose(Guid id) { if (busy || tree == null) return; selected = focusId = id; tree.Expanded.Add(id); rows = tree.Rows(query); error = null; message = null; }
+    private void Navigate(Guid id) { query = ""; Choose(id); tree?.Reveal(id); rows = tree?.Rows(query) ?? []; pendingFocus = id.ToString(); }
+    private void Toggle(Guid id) { if (tree == null || busy) return; if (!tree.Expanded.Remove(id)) tree.Expanded.Add(id); rows = tree.Rows(query); }
+    private void StartCreate() { if (Current == null || !AllowCreate || tree?.Writable(Current) != true) return; creating = true; newName = ""; error = message = null; pendingFocus = "name"; }
+    private void CancelCreate() { creating = false; newName = ""; error = null; pendingFocus = selected?.ToString() ?? "search"; }
+    private async Task Create()
+    {
+        if (busy || !creating || Current is not { } parent || tree?.Writable(parent) != true || !AllowCreate) return;
+        busy = true; error = message = null;
+        try
+        {
+            var id = await Library.CreateFolderAsync(parent.Id, newName, parent.RelativePath);
+            await Workspace.RefreshAsync();
+            query = ""; selected = id; creating = false; newName = "";
+            await Load(); pendingFocus = id.ToString(); message = "Folder created and selected.";
+        }
+        catch (Exception ex) { Logger.LogWarning("Folder picker creation failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The folder could not be created. Refresh folders before trying again."; }
+        finally { busy = false; }
+    }
+    private async Task Confirm()
+    {
+        if (busy || !CanUse || creating || Current is not { } chosen) return;
+        busy = true; error = null;
+        try
+        {
+            var current = await Library.EntryAsync(chosen.Id);
+            if (current == null || !current.IsFolder || current.IsMissing || current.TrashBatchId != null || current.RootId != chosen.RootId || current.RelativePath != chosen.RelativePath)
+                throw new StorageException("That folder changed while this dialog was open. Refresh folders and choose it again.");
+            var latest = new FolderPickerTree(await Library.OverviewAsync(), RootId, ExcludedBranchId, ExcludeInbox);
+            if (!latest.Folders.ContainsKey(chosen.Id) || !latest.Writable(current)) throw new StorageException("That folder is no longer an available destination. Refresh folders and choose again.");
+            await OnSelected.InvokeAsync(new(chosen.Id, chosen.RootId, chosen.RelativePath));
+        }
+        catch (Exception ex) { Logger.LogWarning("Folder picker selection failed: {Kind}", ex.GetType().Name); error = ex is StorageException ? ex.Message : "The folder could not be selected. Refresh and try again."; }
+        finally { busy = false; }
+    }
+    private Task Close() => busy ? Task.CompletedTask : OnClose.InvokeAsync();
+    private async Task Key(KeyboardEventArgs e)
+    {
+        if (busy) return;
+        if (e.Key == "Escape") { if (creating) CancelCreate(); else await Close(); }
+    }
+    private async Task CreateKey(KeyboardEventArgs e) { if (busy) return; if (e.Key == "Enter") await Create(); else if (e.Key == "Escape") CancelCreate(); }
+    private async Task TreeKey(Guid id, KeyboardEventArgs e)
+    {
+        if (busy || tree == null) return;
+        var index = rows.FindIndex(x => x.Folder.Id == id);
+        if (index < 0) return;
+        Guid? next = null;
+        switch (e.Key)
+        {
+            case "ArrowDown": next = rows[Math.Min(index + 1, rows.Count - 1)].Folder.Id; break;
+            case "ArrowUp": next = rows[Math.Max(0, index - 1)].Folder.Id; break;
+            case "Home": next = rows[0].Folder.Id; break;
+            case "End": next = rows[^1].Folder.Id; break;
+            case "ArrowRight": if (!tree.HasChildren(id)) break; if (!tree.Expanded.Contains(id)) { tree.Expanded.Add(id); rows = tree.Rows(query); } else next = rows.Skip(index + 1).FirstOrDefault(x => x.Folder.ParentId == id)?.Folder.Id; break;
+            case "ArrowLeft": if (query.Trim().Length == 0 && tree.HasChildren(id) && tree.Expanded.Remove(id)) rows = tree.Rows(query); else next = tree.Folders[id].ParentId; break;
+            case "Enter": Choose(id); await Confirm(); break;
+            case " ": Choose(id); break;
+        }
+        if (next is { } target && rows.Any(x => x.Folder.Id == target)) { focusId = target; pendingFocus = target.ToString(); }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await (initialize ??= InitializeFocus());
+            if (!disposed && handle != null && pendingFocus is { } target) { pendingFocus = null; await handle.InvokeVoidAsync("focus", target); }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException || disposed) { }
+    }
+    private async Task InitializeFocus()
+    {
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./folder-picker.js");
+        if (!disposed) handle = await module.InvokeAsync<IJSObjectReference>("attach", element);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        try { if (initialize != null) await initialize; if (handle != null) { await handle.InvokeVoidAsync("dispose"); await handle.DisposeAsync(); } if (module != null) await module.DisposeAsync(); }
+        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException or JSException) { }
+    }
+}
