@@ -51,6 +51,7 @@ public sealed partial class LibraryService
     public async Task<OllamaSettings> SaveOllamaSettingsAsync(OllamaSettings input, int expectedRevision, string actor)
     {
         Actor(actor);
+        var fallbackReaders = ValidateReaders(input);
         var endpoint = OllamaClient.ValidateEndpoint(input.Endpoint);
         var model = input.Model.Trim();
         if (model.Length > 128 || model.Any(char.IsControl) || (input.Enabled && model.Length == 0)) throw new StorageException("Choose a local installed model before enabling identification.");
@@ -67,6 +68,7 @@ public sealed partial class LibraryService
             var settings = await AiDefaultsAsync(db);
             if (settings.Revision != expectedRevision) throw new StorageException("Local AI settings changed in another tab. Reload before saving.");
             settings.Endpoint = endpoint; settings.Model = model; settings.Enabled = input.Enabled;
+            settings.ReaderName = input.ReaderName.Trim(); settings.FallbackReadersJson = fallbackReaders; settings.KeepAliveSeconds = input.KeepAliveSeconds;
             settings.AutoIdentify = input.Enabled && input.AutoIdentify; settings.TimeoutSeconds = input.TimeoutSeconds;
             settings.MaxInputCharacters = input.MaxInputCharacters; settings.Instructions = input.Instructions.Trim(); settings.Revision++;
             foreach (var job in await db.IdentificationJobs.Where(x => x.State == "Queued" || x.State == "Retry" || x.State == "Running").ToListAsync())
@@ -236,12 +238,14 @@ public sealed partial class LibraryService
         LiveIdentification? live = null;
         SortRequest? sortInput = null;
         SortReply? sortReply = null;
+        OllamaSettings? readerSettings = null;
         var sorted = false;
         await writer.WaitAsync(stoppingToken);
         try
         {
             await using var db = await factory.CreateDbContextAsync(stoppingToken); var settings = await AiDefaultsAsync(db);
             if (!settings.Enabled) return false;
+            readerSettings = settings;
             foreach (var stale in await db.IdentificationJobs.Where(x => x.State == "Running" && x.LeaseUntil < time.GetUtcNow()).ToListAsync(stoppingToken))
             { stale.State = stale.Attempts < 3 ? "Retry" : "Failed"; stale.RunId = null; stale.LeaseUntil = null; stale.NotBefore = time.GetUtcNow(); if (stale.State == "Failed") stale.CompletedAt = time.GetUtcNow(); stale.LastError = "The previous worker lease expired. Retry is limited to three attempts."; }
             await db.SaveChangesAsync(stoppingToken);
@@ -285,7 +289,7 @@ public sealed partial class LibraryService
             claimed.ContextJson = context.Json;
             claimed.InputText = text;
             claimed.InputTruncated = input.Truncated;
-            claimed.State = "Running"; claimed.Attempts++; claimed.RunId = Guid.NewGuid(); claimed.LeaseUntil = time.GetUtcNow().AddSeconds(settings.TimeoutSeconds + 60); claimed.LastError = null;
+            claimed.State = "Running"; claimed.RunId = Guid.NewGuid(); claimed.LeaseUntil = time.GetUtcNow().AddSeconds(settings.TimeoutSeconds + 60); claimed.LastError = null;
             live = new(claimed.RunId.Value, CancellationTokenSource.CreateLinkedTokenSource(stoppingToken));
             identificationRequests[claimed.Id] = live;
             await db.SaveChangesAsync(stoppingToken);
@@ -302,10 +306,32 @@ public sealed partial class LibraryService
         finally { writer.Release(); }
 
         if (input == null || claimed == null || live == null) return false;
-        IdentificationResult? result = null; string? failure = null; var transient = false;
+        IdentificationResult? result = null; string? failure = null; var transient = false; var unavailable = false; var counted = false;
+        async Task Selected(OllamaReader reader)
+        {
+            await writer.WaitAsync(live.Cancellation.Token);
+            try
+            {
+                await using var db = await factory.CreateDbContextAsync(live.Cancellation.Token);
+                var saved = await db.IdentificationJobs.SingleAsync(x => x.Id == claimed.Id, live.Cancellation.Token);
+                if (saved.State != "Running" || saved.RunId != live.RunId) throw new OperationCanceledException();
+                saved.ReaderName = reader.Name; saved.Endpoint = reader.Endpoint; saved.Model = reader.Model;
+                if (!counted) saved.Attempts++;
+                await db.SaveChangesAsync(live.Cancellation.Token);
+                counted = true;
+            }
+            finally { writer.Release(); }
+        }
         try
         {
-            try { if (sortInput != null) sortReply = await client.SortAsync(sortInput, live.Cancellation.Token); else result = await client.IdentifyAsync(input, live.Cancellation.Token); }
+            try
+            {
+                if (sortInput != null) sortReply = await WithReaderAsync(readerSettings!, client,
+                    (reader, seconds, token) => client.SortAsync(sortInput with { Endpoint = reader.Endpoint, Model = reader.Model, TimeoutSeconds = seconds, KeepAliveSeconds = readerSettings!.KeepAliveSeconds }, token), live.Cancellation.Token, Selected);
+                else result = await WithReaderAsync(readerSettings!, client,
+                    (reader, seconds, token) => client.IdentifyAsync(input with { Endpoint = reader.Endpoint, Model = reader.Model, TimeoutSeconds = seconds, KeepAliveSeconds = readerSettings!.KeepAliveSeconds }, token), live.Cancellation.Token, Selected);
+            }
+            catch (ReaderUnavailableException ex) { failure = ex.Message; transient = true; unavailable = true; }
             catch (OperationCanceledException) { failure = stoppingToken.IsCancellationRequested ? "Server stopping. The saved job will retry." : "Identification was cancelled."; transient = stoppingToken.IsCancellationRequested; }
             catch (OllamaException ex) { failure = ex.Message; transient = ex.Transient; }
             catch (Exception) { failure = "Identification failed unexpectedly. Check the local model connection and retry."; }
@@ -319,7 +345,7 @@ public sealed partial class LibraryService
                 if (failure != null)
                 {
                     job.State = transient && job.Attempts < 3 ? "Retry" : "Failed";
-                    job.NotBefore = time.GetUtcNow().AddSeconds(job.Attempts == 1 ? 30 : 120); job.LastError = failure;
+                    job.NotBefore = time.GetUtcNow().AddSeconds(unavailable || job.Attempts == 1 ? 30 : 120); job.LastError = failure;
                     if (job.State == "Failed") job.CompletedAt = time.GetUtcNow();
                     await db.SaveChangesAsync(); return true;
                 }

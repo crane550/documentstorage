@@ -333,7 +333,7 @@ public sealed partial class LibraryService
             text = excerpt
         });
         var reply = await AskReaderAsync(entry.Id, entry.ContentHash, settings.Revision, settings.TimeoutSeconds,
-            token => client.FindFieldsAsync(new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, prompt, missing.ToArray()), token), cancellationToken);
+            token => WithReaderAsync(settings, client, (reader, seconds, ct) => client.FindFieldsAsync(new(reader.Endpoint, reader.Model, seconds, prompt, missing.ToArray(), settings.KeepAliveSeconds), ct), token), cancellationToken);
         foreach (var field in reply.Fields)
         {
             var key = missing.FirstOrDefault(k => k == field.Name.Trim().ToLowerInvariant().Replace(' ', '_'));
@@ -366,7 +366,7 @@ public sealed partial class LibraryService
             text = FieldExcerpt(entry.ExtractedText, existing.Values.SelectMany(x => x.Labels), budget)
         });
         var reply = await AskReaderAsync(entry.Id, entry.ContentHash, settings.Revision, settings.TimeoutSeconds,
-            token => client.DraftKindAsync(new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, prompt), token), cancellationToken);
+            token => WithReaderAsync(settings, client, (reader, seconds, ct) => client.DraftKindAsync(new(reader.Endpoint, reader.Model, seconds, prompt, settings.KeepAliveSeconds), ct), token), cancellationToken);
         var drafted = new Dictionary<string, FieldDraft>();
         foreach (var field in reply.Fields)
         {

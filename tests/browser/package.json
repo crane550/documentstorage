@@ -12,6 +12,7 @@
     "test:updates": "node updates.mjs",
     "test:desk": "node desk.mjs",
     "test:coaching": "node coaching.mjs",
+    "test:readers": "node readers.mjs",
     "test:assistants": "node instructions-mcp.mjs",
     "test:sorting": "node sorting.mjs",
     "test:regulars": "node regulars.mjs"

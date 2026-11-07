@@ -42,6 +42,10 @@ internal static class MigrationChecks
             VALUES ({legacyJob},{legacyDocument.Id},{legacyDocument.ContentHash},{legacyDocument.RelativePath},{0},{1},{"context"},{"{}"},{"http://127.0.0.1:11434/"},{"synthetic:latest"},{false},{"Succeeded"},{1},{DateTimeOffset.UtcNow},{"owner"},{DateTimeOffset.UtcNow},{"training_guide"},{"{}"},{"{}"},{"Synthetic saved guide summary."},{false})
             """);
         await migrator.MigrateAsync();
+        var readerSettings = await db.OllamaConfigurations.AsNoTracking().SingleAsync();
+        check(readerSettings.FallbackReadersJson == "[]" && readerSettings.KeepAliveSeconds == 120 && readerSettings.ReaderName == "Primary reader" &&
+            (await db.IdentificationJobs.AsNoTracking().SingleAsync(x => x.Id == legacyJob)).State == "Succeeded",
+            "reader priority migration keeps the original connection and saved readings, with no added fallback and a two-minute idle limit");
         check((await db.Entries.AsNoTracking().SingleAsync(x => x.Id == legacyDocument.Id)).TextHash == DocumentStorage.Core.LibraryService.TextHash("Synthetic legacy guide text, café"),
             "the duplicate migration gives documents already read the same text fingerprint the scanner does");
         var imported=await db.DocumentDescriptions.SingleAsync(x=>x.EntryId==legacyDocument.Id);

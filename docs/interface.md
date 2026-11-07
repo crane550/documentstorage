@@ -41,6 +41,8 @@ Each rule card shows its switch (on or paused), what it takes, where it files an
 
 ## Notes for the reader
 
+**Settings › AI reader** lists named server/model pairs in priority order, with connection/model checks, Up/Down, disable and remove controls for fallbacks. Last runtime checks and Recent reading show availability and the actual reader/model used. Idle unloading lives under Limits. Offline computers are skipped; document work waits durably when no reader is available. See [desktop setup](ollama-windows.md) and [routing behavior](local-ai.md).
+
 Guidance is written on sticky notes where it applies: **Folder notes** on each folder in the Library, and **General guidance** in Settings › AI reader. Type descriptions live with the type in Rules. With the reader on, a note can also be changed by asking (“Tell the reader what to change…”). The reader drafts a new version, and you choose **Use this version** or **Discard**. Every saved version and the conversation behind it stay under the note.
 
 ## Assistants

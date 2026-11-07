@@ -50,7 +50,7 @@ public sealed partial class DocumentTools
         var entry=await db.Entries.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==document_id&&!x.IsFolder&&!x.IsMissing&&x.TrashBatchId==null,cancellationToken)??throw new StorageException("document_not_found: Document not found.");
         var query=db.IdentificationJobs.AsNoTracking().Where(x=>x.EntryId==document_id);var total=await query.CountAsync(cancellationToken);
         var jobs=await query.OrderByDescending(x=>x.CreatedAt).ThenByDescending(x=>x.Id).Skip(offset).Take(limit).ToListAsync(cancellationToken);
-        return new {items=jobs.Select(x=>new {x.Id,x.Model,x.State,x.Attempts,x.CreatedAt,x.CompletedAt,x.InputTruncated,x.NeedsReview,mode=x.Sorting?"sorting":x.FromSavedDescription?"placement":x.Organizing?"organizing":"facts",x.Backfill,
+        return new {items=jobs.Select(x=>new {x.Id,x.ReaderName,x.Model,x.State,x.Attempts,x.CreatedAt,x.CompletedAt,x.InputTruncated,x.NeedsReview,mode=x.Sorting?"sorting":x.FromSavedDescription?"placement":x.Organizing?"organizing":"facts",x.Backfill,
             current_source=x.ContentHash==entry.ContentHash&&x.SourcePath==entry.RelativePath,input_characters=x.InputText.Length,context_characters=x.ContextJson.Length}),total,next_offset=offset+jobs.Count<total?(int?)(offset+jobs.Count):null};
     },cancellationToken);
 
@@ -62,7 +62,7 @@ public sealed partial class DocumentTools
         var entry=await db.Entries.AsNoTracking().SingleOrDefaultAsync(x=>x.Id==job.EntryId&&!x.IsFolder&&!x.IsMissing&&x.TrashBatchId==null,cancellationToken)??throw new StorageException("document_not_found: Document unavailable.");
         var value=section switch {"input"=>job.InputText,"context"=>job.ContextJson,"result"=>JsonSerializer.Serialize(new {job.DocumentType,job.Summary,facts=JsonSerializer.Deserialize<JsonElement>(job.FactsJson),evidence=JsonSerializer.Deserialize<JsonElement>(job.EvidenceJson),interpretation=job.OrganizationJson,job.NeedsReview,error=job.LastError},McpContract.Json),_=>throw new StorageException("invalid_section: Choose input, context or result.")};
         offset=Math.Min(offset,value.Length);var count=Math.Min(length,value.Length-offset);
-        return new {attempt_id,document_id=entry.Id,job.Model,job.State,section,text=value.Substring(offset,count),total_characters=value.Length,next_offset=offset+count<value.Length?(int?)(offset+count):null,current_source=job.ContentHash==entry.ContentHash&&job.SourcePath==entry.RelativePath,untrusted=true};
+        return new {attempt_id,document_id=entry.Id,job.ReaderName,job.Model,job.State,section,text=value.Substring(offset,count),total_characters=value.Length,next_offset=offset+count<value.Length?(int?)(offset+count):null,current_source=job.ContentHash==entry.ContentHash&&job.SourcePath==entry.RelativePath,untrusted=true};
     },cancellationToken);
 
     [McpServerTool(Name="preview_document_sort",ReadOnly=true,OpenWorld=false),Authorize(Policy="documents.read"),Description("Test proposed kind/from/date/title/tags/fields against Stash's current patterns. Returns folders, filename, new vocabulary and validation/collision warnings. Never calls AI, creates folders or moves files.")]

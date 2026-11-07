@@ -127,6 +127,7 @@ try
     await IntakeChecks.RunAsync(factory, Path.Combine(scratch, "filing"), Check, Refuses);
     await InboxChecks.RunAsync(factory, Path.Combine(scratch, "inbox"), Check, Refuses);
     await IdentificationChecks.RunAsync(factory, Path.Combine(scratch, "identification"), Check, Refuses);
+    await ReaderRoutingChecks.RunAsync(factory, Path.Combine(scratch, "reader-routing"), Check, Refuses);
     await DescriptionChecks.RunAsync(factory, Path.Combine(scratch, "descriptions"), Check, Refuses);
     await AssistantChecks.RunAsync(factory, Path.Combine(scratch, "assistants"), Check, Refuses);
     await AssistantCoachingChecks.RunAsync(factory, Path.Combine(scratch, "coaching"), Check, Refuses);

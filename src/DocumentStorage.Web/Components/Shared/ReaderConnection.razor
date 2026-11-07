@@ -1,0 +1,54 @@
+@inject IOllamaClient Ollama
+@inject WorkspaceState Workspace
+@implements IDisposable
+
+<label for="@NameId">Reader name</label>
+<input id="@NameId" @bind="Reader.Name" maxlength="80" disabled="@Disabled" placeholder="Desktop or Dell server" />
+<label for="@EndpointId">Ollama server address</label>
+<div class="input-row">
+    <input id="@EndpointId" class="mono" @bind="Reader.Endpoint" @bind:after="ConnectionChanged" disabled="@Disabled" placeholder="http://127.0.0.1:11434" spellcheck="false" />
+    <button type="button" class="button" disabled="@(Disabled || checking)" @onclick="TestConnection">Check connection &amp; list models</button>
+</div>
+@if (connection != null) { <p class="connection-state">@connection</p> }
+<label for="@ModelId">Installed model</label>
+<input id="@ModelId" class="mono" @bind="Reader.Model" list="@ListId" disabled="@Disabled" maxlength="128" placeholder="Choose an installed chat model" spellcheck="false" />
+<datalist id="@ListId">@foreach (var model in models) { <option value="@model.Name" /> }</datalist>
+@if (models.Count > 0)
+{
+    <div class="token-buttons">@foreach (var model in models) { <button type="button" disabled="@Disabled" class="token @(Reader.Model == model.Name ? "chosen" : "")" @onclick="() => Reader.Model = model.Name">@model.Name</button> }</div>
+}
+@if (!Primary) { <label class="switch"><input type="checkbox" @bind="Reader.Enabled" disabled="@Disabled" /><span class="switch-track"></span><span>Use this fallback</span></label> }
+
+@code {
+    [Parameter, EditorRequired] public OllamaReader Reader { get; set; } = new();
+    [Parameter] public bool Primary { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    private readonly string suffix = Guid.NewGuid().ToString("N");
+    private string NameId => "ai-reader-name-" + suffix;
+    private string EndpointId => Primary ? "ai-endpoint" : "ai-endpoint-" + suffix;
+    private string ModelId => Primary ? "ai-model" : "ai-model-" + suffix;
+    private string ListId => "ai-models-" + suffix;
+    private List<LocalModel> models = [];
+    private string? connection;
+    private bool checking;
+    private readonly CancellationTokenSource lifetime = new();
+    private void ConnectionChanged() { models = []; connection = null; }
+    private async Task TestConnection()
+    {
+        if (checking) return;
+        checking = true;
+        var endpoint = Reader.Endpoint;
+        try
+        {
+            var found = await Ollama.ModelsAsync(endpoint, lifetime.Token);
+            if (endpoint != Reader.Endpoint) return;
+            models = found;
+            connection = found.Count == 0 ? "Connected, but no local models are installed." : $"Connected. {found.Count} local model(s) available. Choose the model this reader should use.";
+            Workspace.Notify(found.Count == 0 ? "Connected. No local models are installed on this reader." : $"Connected. {found.Count} local model(s) available.");
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { connection = ex is StorageException or OllamaException ? ex.Message : "Could not check this reader. Try again."; }
+        finally { checking = false; }
+    }
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+}

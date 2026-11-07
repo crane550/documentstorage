@@ -20,7 +20,7 @@ papers, homework, letters, recipes. PDF and Word first; other formats later.
 
 ## What to expect from this machine
 
-The server is a Dell OptiPlex 7090 (11th-gen Core i7, 16 GB, no graphics card) running
+The server is a Dell OptiPlex 7060 Micro (Core i5-8500T, 16 GB, integrated graphics) running
 `qwen3:4b-instruct` in Ollama on the CPU. That's a small model, and speed doesn't matter: it can
 chug through the inbox in the background. What matters is that every question it gets is **narrow,
 with short lists of answers**, because a 4B model is good at "which of these?" and poor at open
@@ -196,7 +196,7 @@ tools.
 - Everything goes in; mostly bank statements, invoices and purchase orders.
 - The tree is fluid; the machine may propose changes to it; outside assistants over MCP stay.
 - Approval for everything until a kind is trusted, then switchable per kind.
-- Hardware: OptiPlex 7090 mini tower, i7, ~16 GB, CPU only; `qwen3:4b-instruct`. Slow is fine.
+- Hardware (corrected by Alex, 7 Nov 2026): OptiPlex 7060 Micro, i5-8500T, 16 GB, CPU only; `qwen3:4b-instruct`. Slow is fine.
 
 ## Still open
 
@@ -209,3 +209,7 @@ tools.
 ## Outside assistant verification (7 Nov 2026)
 
 Alex clarified that stronger assistants should be able to make corrections and teach the smaller reader, with visibility into the decisions rather than mandatory approval of each edit. A granted editing connection can use review-first or apply-then-verify; an explicit go-ahead can override review-first. Direct changes are metadata/training only, retain before/after and source receipts, and never grant file-moving or unattended-filing trust. See assistants-and-mcp.md.
+
+## Prioritized local readers (7 Nov 2026)
+
+Keep the Dell available as a fallback while a LAN desktop or future dedicated AI computer handles preferred readings. Each priority entry has its own model. Sleeping computers are skipped; unavailable readers never cause completed documents to be reread. All readers share the existing inference slot. See [local-ai.md](local-ai.md) and [Windows setup](ollama-windows.md).

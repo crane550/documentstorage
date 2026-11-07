@@ -6,9 +6,9 @@ namespace DocumentStorage.Core;
 // Two narrow questions about one document whose kind is already known, asked from the slip while
 // the person waits: find these fields (and nothing else), or say which fields this kind of
 // document carries and how to spot each. Both answers are suggestions the person reviews.
-public sealed record FieldFindRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson, string[] Names);
+public sealed record FieldFindRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson, string[] Names, int KeepAliveSeconds = 120);
 public sealed record FieldReply(SortField[] Fields);
-public sealed record KindDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson);
+public sealed record KindDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson, int KeepAliveSeconds = 120);
 public sealed record DraftedField(string Name, string Type, string LookFor, string[] Labels, string Value, string Quote);
 public sealed record KindDraftReply(string Description, DraftedField[] Fields);
 
@@ -51,7 +51,7 @@ public sealed partial class OllamaClient
                 }
             }
         };
-        var content = await ChatJsonAsync(input.Endpoint, input.Model, input.TimeoutSeconds, FieldSystemPrompt, input.PromptJson, schema, 120 * input.Names.Length + 200, cancellationToken);
+        var content = await ChatJsonAsync(input.Endpoint, input.Model, input.TimeoutSeconds, FieldSystemPrompt, input.PromptJson, schema, 120 * input.Names.Length + 200, input.KeepAliveSeconds, cancellationToken);
         return new(ParseSortFields(content, "fields", input.Names.Length));
     }
 
@@ -82,7 +82,7 @@ public sealed partial class OllamaClient
                 }
             }
         };
-        var content = await ChatJsonAsync(input.Endpoint, input.Model, input.TimeoutSeconds, KindDraftSystemPrompt, input.PromptJson, schema, 2200, cancellationToken);
+        var content = await ChatJsonAsync(input.Endpoint, input.Model, input.TimeoutSeconds, KindDraftSystemPrompt, input.PromptJson, schema, 2200, input.KeepAliveSeconds, cancellationToken);
         return ParseKindDraft(content);
     }
 
@@ -133,7 +133,7 @@ public sealed partial class OllamaClient
     }
 
     // One structured chat with a local model, checked local first; returns the reply's content.
-    private async Task<string> ChatJsonAsync(string endpointText, string model, int timeoutSeconds, string system, string user, object schema, int predict, CancellationToken cancellationToken)
+    private async Task<string> ChatJsonAsync(string endpointText, string model, int timeoutSeconds, string system, string user, object schema, int predict, int keepAliveSeconds, CancellationToken cancellationToken)
     {
         var endpoint = ValidateEndpoint(endpointText);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -143,7 +143,7 @@ public sealed partial class OllamaClient
             await EnsureLocalChatAsync(endpoint, model, timeout.Token);
             var request = new
             {
-                model, stream = false, keep_alive = "10m", think = false,
+                model, stream = false, keep_alive = keepAliveSeconds, think = false,
                 options = new { temperature = 0, num_ctx = FieldContextTokens, num_predict = Math.Clamp(predict, 300, 3000) },
                 format = schema,
                 messages = new[] { new { role = "system", content = system }, new { role = "user", content = user } }

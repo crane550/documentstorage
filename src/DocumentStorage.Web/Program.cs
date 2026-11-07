@@ -89,7 +89,7 @@ builder.Services.AddSingleton(new DocumentTextReader(builder.Configuration["Docu
 builder.Services.AddSingleton<LibraryService>();
 builder.Services.AddHostedService<LibraryScanner>();
 builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, ConnectTimeout = TimeSpan.FromSeconds(3) });
 builder.Services.AddHostedService<IdentificationWorker>();
 builder.Services.AddHostedService<PassageIndexWorker>();
 builder.Services.AddScoped<WorkspaceState>();

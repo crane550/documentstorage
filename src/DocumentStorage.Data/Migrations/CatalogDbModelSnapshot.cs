@@ -1190,6 +1190,10 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<bool>("Organizing")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ReaderName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("ReviewRevision")
                         .HasColumnType("integer");
 
@@ -1409,14 +1413,25 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("FallbackReadersJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Instructions")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("KeepAliveSeconds")
+                        .HasColumnType("integer");
 
                     b.Property<int>("MaxInputCharacters")
                         .HasColumnType("integer");
 
                     b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReaderName")
                         .IsRequired()
                         .HasColumnType("text");
 

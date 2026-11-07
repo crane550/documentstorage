@@ -31,8 +31,8 @@ public sealed partial class LibraryService
             await modelWork.WaitAsync(cancellationToken);
             try
             {
-            result = await client.DraftGuidanceAsync(new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, target.Kind, thread.Text,
-            JsonSerializer.Serialize(messages.Select(x => new { x.Role, x.Text }))), cancellationToken);
+            result = await WithReaderAsync(settings, client, (reader, seconds, token) => client.DraftGuidanceAsync(new(reader.Endpoint, reader.Model, seconds, target.Kind, thread.Text,
+            JsonSerializer.Serialize(messages.Select(x => new { x.Role, x.Text })), settings.KeepAliveSeconds), token), cancellationToken);
             }
             finally { modelWork.Release(); }
         }

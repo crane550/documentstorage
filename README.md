@@ -10,6 +10,7 @@ The main loop is described in [Sorting](docs/sorting.md): the reader says what a
 
 Working now:
 
+- Prioritized Ollama servers/models, automatic fallback for sleeping computers, durable waiting when all readers are offline, and configurable idle model unloading.
 - Strong-assistant MCP coaching: inspect Inbox/reader attempts, correct metadata and field guides, teach source-bound examples, and review before applying or verify afterward.
 
 - Kinds, senders and tags (Kinds & tags page), details saved on every filed document and searchable (`kind:`, `from:`, `tag:`).

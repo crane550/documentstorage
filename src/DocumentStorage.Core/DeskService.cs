@@ -77,13 +77,14 @@ public sealed partial class LibraryService
     public async Task<bool> ProcessNextDeskAsync(IOllamaClient client,CancellationToken token=default)
     {
         if(!await modelWork.WaitAsync(0,token))return false;
-        DeskTurn? turn=null;DeskConversation? conversation=null;DeskModelRequest? input=null;CancellationTokenSource? live=null;
+        DeskTurn? turn=null;DeskConversation? conversation=null;DeskModelRequest? input=null;CancellationTokenSource? live=null;OllamaSettings? readerSettings=null;
         try
         {
             await writer.WaitAsync(token);
             try
             {
                 await using var db=await factory.CreateDbContextAsync(token);var settings=await AiDefaultsAsync(db);if(!settings.Enabled)return false;
+                readerSettings=settings;
                 turn=await db.DeskTurns.Where(x=>x.State=="Queued").OrderBy(x=>x.CreatedAt).ThenBy(x=>x.Id).FirstOrDefaultAsync(token);if(turn==null)return false;
                 conversation=await db.DeskConversations.AsNoTracking().SingleAsync(x=>x.Id==turn.ConversationId,token);
                 if(conversation.Mode=="ask"&&await db.Entries.AnyAsync(x=>!x.IsFolder&&!x.IsMissing&&x.TrashBatchId==null&&x.TextStatus=="Indexed"&&x.PassageRevision=="",token))return false;
@@ -106,7 +107,7 @@ public sealed partial class LibraryService
             {
                 using var evidence=JsonDocument.Parse(input.Context.EvidenceJson);
                 result=conversation.Mode=="ask"&&evidence.RootElement.GetProperty("sources").GetArrayLength()==0?
-                    new("I couldn’t find indexed passages that answer that question. Try a document name, a more specific phrase, or choose a narrower folder. Documents without OCR text cannot be searched yet.",true,[],[]):await client.ConverseAsync(input,live.Token);
+                    new("I couldn’t find indexed passages that answer that question. Try a document name, a more specific phrase, or choose a narrower folder. Documents without OCR text cannot be searched yet.",true,[],[]):await WithReaderAsync(readerSettings!,client,(reader,seconds,ct)=>client.ConverseAsync(input with {Endpoint=reader.Endpoint,Model=reader.Model,TimeoutSeconds=seconds,KeepAliveSeconds=readerSettings!.KeepAliveSeconds},ct),live.Token);
                 result=ValidateDeskResult(result,input.Context);
             }
             catch(OperationCanceledException){error="Reading stopped. Your message is saved.";}

@@ -7,18 +7,19 @@ using System.Text.RegularExpressions;
 namespace DocumentStorage.Core;
 
 public sealed record IdentificationRequest(string Endpoint, string Model, int TimeoutSeconds, string FileName,
-    string ContextJson, string SourceText, string InputText, bool Truncated, string[] DocumentTypes, string[] FactNames, bool Organizing = false);
+    string ContextJson, string SourceText, string InputText, bool Truncated, string[] DocumentTypes, string[] FactNames, bool Organizing = false, int KeepAliveSeconds = 120);
 public sealed record IdentificationResult(string DocumentType, Dictionary<string,string> Facts,
     Dictionary<string,string> Evidence, string Summary, bool NeedsReview, OrganizationSuggestion? Organization = null, DocumentUnderstanding? Description = null);
-public sealed record GuidanceDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string TargetKind, string CurrentGuidance, string ConversationJson);
+public sealed record GuidanceDraftRequest(string Endpoint, string Model, int TimeoutSeconds, string TargetKind, string CurrentGuidance, string ConversationJson, int KeepAliveSeconds = 120);
 public sealed record GuidanceDraftResult(string Reply, string Guidance, bool NeedsClarification);
 public sealed record LocalModel(string Name, long Size);
-public sealed class OllamaException(string message, bool transient = false) : Exception(message)
+public class OllamaException(string message, bool transient = false) : Exception(message)
 {
     public bool Transient { get; } = transient;
 }
 public interface IOllamaClient
 {
+    Task ProbeAsync(string endpoint, string model, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task<DeskResult> ConverseAsync(DeskModelRequest request, CancellationToken cancellationToken = default)
         => Task.FromException<DeskResult>(new OllamaException("This adapter does not support document conversations."));
     Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default);
@@ -35,6 +36,15 @@ public interface IOllamaClient
 
 public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
 {
+    public async Task ProbeAsync(string endpoint, string model, CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+        try { await EnsureLocalChatAsync(ValidateEndpoint(endpoint), model, timeout.Token); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new OllamaException("The Ollama reader did not respond within three seconds.", true); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException) { throw new OllamaException("Cannot reach this Ollama reader. It may be asleep or offline.", true); }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException) { throw new OllamaException("The reader returned invalid model metadata."); }
+    }
     public const int MaximumResponseBytes = 262144;
     public static string ValidateEndpoint(string endpoint)
     {
@@ -79,7 +89,7 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
             using var context = JsonDocument.Parse(input.ContextJson);
             var request = new
             {
-                model = input.Model, stream = false, keep_alive = "5m",
+                model = input.Model, stream = false, keep_alive = input.KeepAliveSeconds,
                 options = new { temperature = 0, num_ctx = 16384, num_predict = input.Organizing ? 4096 : 2048 },
                 format = input.Organizing ? OrganizationSchema(input) : Schema(input),
                 messages = new[]
@@ -134,7 +144,7 @@ public sealed partial class OllamaClient(HttpClient http) : IOllamaClient
             var limit = input.TargetKind switch { "folder" => 20000, "global" => 4000, _ => 2000 };
             var payload = new
             {
-                model = input.Model, stream = false, options = new { temperature = 0, num_ctx = 16384, num_predict = 6000 },
+                model = input.Model, stream = false, keep_alive = input.KeepAliveSeconds, options = new { temperature = 0, num_ctx = 16384, num_predict = 6000 },
                 format = new
                 {
                     type = "object", additionalProperties = false, required = new[] { "reply", "guidance", "needs_clarification" },

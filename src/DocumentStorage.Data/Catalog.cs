@@ -101,6 +101,9 @@ public sealed class OllamaSettings
     public int Id { get; set; } = 1;
     public string Endpoint { get; set; } = "http://127.0.0.1:11434/";
     public string Model { get; set; } = "";
+    public string ReaderName { get; set; } = "Primary reader";
+    public string FallbackReadersJson { get; set; } = "[]";
+    public int KeepAliveSeconds { get; set; } = 120;
     public bool Enabled { get; set; }
     public bool AutoIdentify { get; set; }
     public int TimeoutSeconds { get; set; } = 600;
@@ -122,6 +125,7 @@ public sealed class DocumentTypeProfile
 
 public sealed class IdentificationJob
 {
+    public string ReaderName { get; set; } = "";
     // Exact bounded excerpt sent to the local reader, available only in the authenticated inbox.
     public string InputText { get; set; } = "";
     public bool FromSavedDescription { get; set; }

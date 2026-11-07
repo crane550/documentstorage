@@ -712,6 +712,12 @@ button.note-empty:hover { color: #3a3216; }
 .assistant-audit small { grid-column: 2 / -1; }
 .connection-state { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted); font-size: 13px; }
 .connection-state.ok { color: var(--green); }
+.reader-target { display: grid; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.reader-target > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.reader-order { display: flex; gap: 12px; flex-wrap: wrap; }
+.reader-target .mono { min-width: 0; width: 100%; }
+.reader-target .hint { overflow-wrap: anywhere; }
+@media (max-width: 600px) { .reader-target .input-row { flex-direction: column; align-items: stretch; } }
 .server-address { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 14px; border-radius: 6px; background: var(--paper-2); border: 1px solid var(--line); font-size: 12.5px; }
 .server-address span { font: 700 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
 .server-address code { flex: 1; min-width: 0; overflow-wrap: anywhere; }

@@ -1,5 +1,4 @@
 @inject LibraryService Library
-@inject IOllamaClient Ollama
 @inject WorkspaceState Workspace
 @inject ILogger<ReaderSettings> Logger
 @implements IDisposable
@@ -7,15 +6,27 @@
 @* Reading proposes a filename and folder. Only an explicit filing approval moves bytes. *@
 <div class="settings-grid">
     <section class="sheet settings-card" aria-labelledby="reader-connection">
-        <h2 id="reader-connection">Connection</h2>
+        <h2 id="reader-connection">Readers in priority order</h2>
         <form class="form" @onsubmit="SaveSettings" @onsubmit:preventDefault>
-            <label for="ai-endpoint">Ollama server address</label>
-            <div class="input-row"><input id="ai-endpoint" class="mono" @bind="settings.Endpoint" @bind:after="ConnectionChanged" placeholder="http://127.0.0.1:11434" spellcheck="false" /><button type="button" class="button" disabled="@busy" @onclick="TestConnection">Check connection &amp; list models</button></div>
-            @if (connection != null) { <p class="connection-state @(models.Count > 0 ? "ok" : "")"><Icon Name="@(models.Count > 0 ? "check-circle" : "info")" Size="15" />@connection</p> }
-            <label for="ai-model">Installed model</label>
-            <input id="ai-model" class="mono" @bind="settings.Model" list="ai-models" maxlength="128" placeholder="Choose an installed chat model" spellcheck="false" />
-            <datalist id="ai-models">@foreach (var model in models) { <option value="@model.Name" /> }</datalist>
-            @if (models.Count > 0) { <div class="token-buttons">@foreach (var model in models) { <button type="button" class="token @(settings.Model == model.Name ? "chosen" : "")" @onclick="() => settings.Model = model.Name">@model.Name</button> }</div> }
+            <p class="hint">Try the first reader, then fall back when its computer is asleep, offline or temporarily unavailable. Each reader can use a different model. One document is read at a time.</p>
+            @for (var i = 0; i < readers.Count; i++)
+            {
+                var index = i;
+                var reader = readers[index];
+                var status = health.FirstOrDefault(x => x.Endpoint.TrimEnd('/') == reader.Endpoint.TrimEnd('/') && x.Model == reader.Model);
+                <section class="reader-target" aria-label="Reader @(index + 1)" @key="reader">
+                    <header><strong>@(index + 1). @(index == 0 ? "Preferred reader" : "Fallback reader")</strong>
+                        <span class="reader-order">
+                            <button type="button" class="text-button" aria-label="Move reader @(index + 1) up" disabled="@(busy || index == 0 || index == 1 && !reader.Enabled)" @onclick="() => MoveReader(index, -1)">Up</button>
+                            <button type="button" class="text-button" aria-label="Move reader @(index + 1) down" disabled="@(busy || index == readers.Count - 1 || !readers[index + 1].Enabled)" @onclick="() => MoveReader(index, 1)">Down</button>
+                            @if (index > 0) { <button type="button" class="text-button danger" disabled="@busy" @onclick="() => readers.RemoveAt(index)">Remove</button> }
+                        </span>
+                    </header>
+                    <ReaderConnection Reader="reader" Primary="@(index == 0)" Disabled="@busy" />
+                    <p class="hint">Last runtime check: @(reader.Enabled ? status?.State ?? "Not checked" : "Disabled")@if (status?.Error != null && reader.Enabled) { <span> · @status.Error</span> }</p>
+                </section>
+            }
+            <button type="button" class="button" disabled="@(busy || readers.Count >= LibraryService.MaximumReaders)" @onclick="AddReader">Add fallback reader</button>
 
             <label class="switch"><input type="checkbox" @bind="settings.Enabled" /><span class="switch-track"></span><span>Use the AI reader</span></label>
             <label class="switch @(settings.Enabled ? "" : "disabled")"><input type="checkbox" @bind="settings.AutoIdentify" disabled="@(!settings.Enabled)" /><span class="switch-track"></span><span>Read new inbox documents automatically</span></label>
@@ -24,11 +35,13 @@
                 <div class="field-pair">
                     <div><label for="ai-timeout">Time limit (seconds)</label><input id="ai-timeout" type="number" min="30" max="1800" @bind="settings.TimeoutSeconds" /></div>
                     <div><label for="ai-budget">Text sent (characters)</label><input id="ai-budget" type="number" min="2000" max="16000" @bind="settings.MaxInputCharacters" /></div>
+                    <div><label for="ai-keep-alive">Unload idle models after (seconds)</label><input id="ai-keep-alive" type="number" min="0" max="1800" @bind="settings.KeepAliveSeconds" /></div>
                 </div>
                 <p class="hint">Long documents send their beginning and end, and the suggestion is flagged for a closer look.</p>
+                <p class="hint">Idle unloading releases model memory. Use 120 for two minutes, or 0 to unload after every request. The next read takes longer to load.</p>
             </details>
             <div class="form-actions"><button type="submit" class="button primary" disabled="@busy">Save reader settings</button></div>
-            <p class="hint"><Icon Name="lock" Size="13" />Document text goes only to this address. Cloud-backed models are refused before anything is sent.</p>
+            <p class="hint"><Icon Name="lock" Size="13" />Text goes only to a configured reader. Cloud-backed models are refused before any text is sent. If all readers are unavailable, documents wait and retry automatically. Saving settings stops pending reads; completed readings stay saved.</p>
         </form>
     </section>
 
@@ -37,10 +50,11 @@
                       Placeholder="Anything the reader should know about all your documents." />
         <section class="sheet settings-card ai-jobs" aria-labelledby="reader-jobs">
             <h2 id="reader-jobs">Recent reading</h2>
+            <button type="button" class="text-button" disabled="@busy" @onclick="RefreshReading">Refresh reading status</button>
             @foreach (var job in jobs.Take(showAll ? 50 : 8))
             {
                 <div class="ai-job" @key="job.Id">
-                    <div><strong>@Path.GetFileName(job.SourcePath)</strong><small>@job.Model · @WorkspaceState.Ago(job.CreatedAt)@(job.State == "Succeeded" ? " · " + job.DocumentType : "")</small>@if (job.LastError != null) { <p class="hint">@job.LastError</p> }</div>
+                    <div><strong>@Path.GetFileName(job.SourcePath)</strong><small>@(job.ReaderName.Length > 0 ? job.ReaderName + " · " : "")@job.Model · @WorkspaceState.Ago(job.CreatedAt)@(job.State == "Succeeded" ? " · " + job.DocumentType : "")</small>@if (job.LastError != null) { <p class="hint">@job.LastError</p> }</div>
                     <Stamp Text="@JobLabel(job.State)" Tone="@(job.State == "Succeeded" ? "ready" : Active(job) ? "working" : job.State == "Failed" ? "danger" : "muted")" />
                     @if (Active(job)) { <button class="text-button" disabled="@busy" @onclick="() => Cancel(job.Id)">Cancel</button> }
                     else { <button class="icon-button small" title="Read again" aria-label="Read again" disabled="@busy" @onclick="() => Retry(job.EntryId)"><Icon Name="refresh" Size="14" /></button> }
@@ -56,10 +70,10 @@
 @code {
     private OllamaSettings settings = new();
     private List<IdentificationJob> jobs = [];
-    private List<LocalModel> models = [];
-    private string? connection;
+    private List<OllamaReader> readers = [];
+    private List<ReaderHealth> health = [];
     private int settingsRevision;
-    private bool busy, showAll;
+    private bool busy, showAll, disposed;
     private readonly CancellationTokenSource lifetime = new();
     private static bool Active(IdentificationJob job) => job.State is "Queued" or "Running" or "Retry";
     private static string JobLabel(string state) => state switch { "Succeeded" => "Proposed", "Retry" => "Retrying", "Queued" => "Waiting", "Running" => "Reading", _ => state };
@@ -67,17 +81,29 @@
     {
         var overview = await Library.IdentificationOverviewAsync();
         settings = overview.Settings; settingsRevision = settings.Revision; jobs = overview.Jobs;
+        readers = LibraryService.ConfiguredReaders(settings); health = Library.ReaderHealthSnapshot(settings);
+        Workspace.Changed += WorkspaceChanged;
     }
-    private void ConnectionChanged() { models = []; connection = null; }
-    private async Task TestConnection() => await Run(async () =>
+    private void AddReader() => readers.Add(new() { Name = "Fallback " + readers.Count });
+    private void MoveReader(int index, int direction)
     {
-        models = await Ollama.ModelsAsync(settings.Endpoint, lifetime.Token);
-        connection = models.Count == 0 ? "Connected, but no local chat models are installed." : $"Connected. {models.Count} local model{(models.Count == 1 ? "" : "s")} available.";
-        Workspace.Notify(models.Count == 0 ? "Connected. No local chat models are listed; install one in Ollama first." : $"Connected. {models.Count} local model(s) available.");
-    });
+        var other = index + direction;
+        if (other < 0 || other >= readers.Count || other == 0 && !readers[index].Enabled) return;
+        (readers[index], readers[other]) = (readers[other], readers[index]);
+    }
+    private async Task RefreshReading()
+    {
+        var overview = await Library.IdentificationOverviewAsync();
+        if (disposed) return;
+        jobs = overview.Jobs; health = Library.ReaderHealthSnapshot(overview.Settings);
+    }
+    private void WorkspaceChanged() => _ = InvokeAsync(async () => { if (!busy && !disposed) { await RefreshReading(); StateHasChanged(); } });
     private async Task SaveSettings() => await Run(async () =>
     {
+        settings.ReaderName = readers[0].Name; settings.Endpoint = readers[0].Endpoint; settings.Model = readers[0].Model;
+        settings.FallbackReadersJson = System.Text.Json.JsonSerializer.Serialize(readers.Skip(1));
         settings = await Library.SaveOllamaSettingsAsync(settings, settingsRevision, await Workspace.ActorAsync()); settingsRevision = settings.Revision;
+        readers = LibraryService.ConfiguredReaders(settings);
         jobs = (await Library.IdentificationOverviewAsync()).Jobs;
         await Workspace.RefreshAsync();
         Workspace.Notify(settings.Enabled ? "AI reader on. Its suggestions appear on each inbox document." : "AI reader off. You can still fill in facts yourself.");
@@ -98,5 +124,5 @@
         catch (Exception ex) { Logger.LogWarning("Reader action failed: {Kind}", ex.GetType().Name); Workspace.Notify(ex is StorageException or OllamaException ? ex.Message : "That could not finish. Try again.", true); }
         finally { busy = false; }
     }
-    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
+    public void Dispose() { disposed = true; Workspace.Changed -= WorkspaceChanged; lifetime.Cancel(); lifetime.Dispose(); }
 }

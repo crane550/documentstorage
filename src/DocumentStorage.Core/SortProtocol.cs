@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace DocumentStorage.Core;
 
-public sealed record SortRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson);
+public sealed record SortRequest(string Endpoint, string Model, int TimeoutSeconds, string PromptJson, int KeepAliveSeconds = 120);
 public sealed record SortField(string Name, string Value, string Quote);
 public sealed record SortReply(string Kind, string KindDescription, string From, string Date, string Title, string[] Tags, SortField[] Fields, string Confidence);
 
@@ -34,7 +34,7 @@ public sealed partial class OllamaClient
             await EnsureLocalChatAsync(endpoint, input.Model, timeout.Token);
             var request = new
             {
-                model = input.Model, stream = false, keep_alive = "10m", think = false,
+                model = input.Model, stream = false, keep_alive = input.KeepAliveSeconds, think = false,
                 options = new { temperature = 0, num_ctx = SortContextTokens, num_predict = 1100 },
                 format = SortSchema(),
                 messages = new[]
