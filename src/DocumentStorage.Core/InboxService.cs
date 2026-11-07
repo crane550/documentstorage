@@ -82,7 +82,7 @@ public sealed partial class LibraryService
                 entry.Readiness = "Ready";
             }
             entry.ContentHash = hash;
-            entry.ExtractedText = result.Text; entry.TextStatus = result.Status; entry.PassageRevision = "";
+            entry.ExtractedText = result.Text; entry.TextHash = TextHash(result.Text); entry.TextStatus = result.Status; entry.PassageRevision = "";
             // OCR can change while the PDF bytes stay identical. Old proposals must never survive that.
             foreach (var job in await db.IdentificationJobs.Where(x => x.EntryId == entry.Id &&
                 (x.State == "Queued" || x.State == "Running" || x.State == "Retry" || x.State == "Succeeded")).ToListAsync())

@@ -39,6 +39,27 @@
         @if (Warnings.Any() && !edited) { <ul class="sort-notes">@foreach (var note in Warnings) { <li>@note</li> }</ul> }
     </div>
 
+    @* Already in Stash: the same file or text is certain; the same details or name is likely. *@
+    @if (Card.Copies.Length > 0 && !keepBoth)
+    {
+        <div class="dup-banner @(Card.Duplicate ? "certain" : "")" role="alert" data-duplicates>
+            <Icon Name="alert" Size="16" />
+            <div class="dup-body">
+                <strong>@(Card.Duplicate ? "Already in Stash" : "Maybe already in Stash")</strong>
+                <ul>
+                    @foreach (var copy in Card.Copies)
+                    {
+                        <li @key="copy.EntryId"><a href="@CopyLink(copy)" title="@($"{copy.RootName}/{copy.Path}")">@copy.Path</a> <small>@CopyReason(copy)</small></li>
+                    }
+                </ul>
+                <div class="dup-actions">
+                    <button type="button" class="button small" data-delete-copy disabled="@(busy || !Card.Document.Online)" @onclick="() => RequestDelete.InvokeAsync(Card.Document.Id)"><Icon Name="trash" Size="14" />Delete this copy…</button>
+                    <button type="button" class="text-button small" data-keep-both @onclick="() => keepBoth = true">@(Card.Duplicate ? "Keep both" : "It's a different document")</button>
+                </div>
+            </div>
+        </div>
+    }
+
     <div class="slip-body">
         @* What it is: the details you check. The folder and name on the right follow them. *@
         <section class="slip-details sort-fields" aria-label="What it is">
@@ -277,6 +298,13 @@
     private int planVersion;
 
     private bool pickingFolder, customName;
+    // Set when the person says this copy should be filed anyway.
+    private bool keepBoth;
+    private static string CopyLink(DuplicateMatch copy) => copy.InTrash ? "/trash" : copy.InInbox ? $"/?open={copy.EntryId}" : $"/library?folder={copy.FolderId}&doc={copy.EntryId}";
+    private static string CopyReason(DuplicateMatch copy) => (copy.How switch
+    {
+        "file" => "the same file", "text" => "the same text, in a different file", "details" => "the same kind, sender, date and fields", _ => "already has the name this one would get"
+    }) + (copy.InTrash ? ", in Trash" : copy.InInbox ? ", also waiting in the inbox" : "");
     // Asking the reader from the slip: "find" (empty fields) or "setup" (the kind's fields).
     private string? asking;
     private int askingCount;
@@ -351,7 +379,7 @@
         kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
         folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; edited = false; plan = Card.Plan;
-        if (!sameDocument) { askCancel?.Cancel(); draft = null; }
+        if (!sameDocument) { askCancel?.Cancel(); draft = null; keepBoth = false; }
         fieldSources.Clear(); fieldQuotes.Clear(); findNotes = []; describing = null;
         draftKind = "\u0000"; SyncDraft();
         await LoadSuggestions();
@@ -520,6 +548,11 @@
     private async Task Approve()
     {
         if (busy) return;
+        if (Card.Duplicate && !keepBoth)
+        {
+            Workspace.Notify("This is a copy of a document already in Stash. Delete this copy, or choose Keep both to file it anyway.", true);
+            return;
+        }
         if (newTag.Trim().Length > 0) await AddTag();
         busy = true;
         try

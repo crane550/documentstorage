@@ -31,12 +31,19 @@ internal static class MigrationChecks
             """);
         await migrator.MigrateAsync("20261105001255_AddInboxProgressAndReaderInput");
         var legacyDocument=new CatalogEntry { RootId=root.Id,Name="legacy-guide.txt",RelativePath="legacy-guide.txt",ContentHash="synthetic-legacy-fingerprint" };
-        db.Entries.Add(legacyDocument);await db.SaveChangesAsync();var legacyJob=Guid.NewGuid();
+        // Seeded as that schema had it; the model has gained Entries columns since.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Entries" ("Id","RootId","RelativePath","Name","IsFolder","IsMissing","Size","ModifiedAt","Instructions","ExtractedText","TextStatus","ContentHash")
+            VALUES ({legacyDocument.Id},{root.Id},{legacyDocument.RelativePath},{legacyDocument.Name},{false},{false},{0L},{DateTimeOffset.UtcNow},{""},{"Synthetic legacy guide text, café"},{"Indexed"},{legacyDocument.ContentHash})
+            """);
+        var legacyJob=Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "IdentificationJobs" ("Id","EntryId","ContentHash","SourcePath","ReviewRevision","SettingsRevision","ContextHash","ContextJson","Endpoint","Model","InputTruncated","State","Attempts","CreatedAt","CreatedBy","NotBefore","DocumentType","FactsJson","EvidenceJson","Summary","NeedsReview")
             VALUES ({legacyJob},{legacyDocument.Id},{legacyDocument.ContentHash},{legacyDocument.RelativePath},{0},{1},{"context"},{"{}"},{"http://127.0.0.1:11434/"},{"synthetic:latest"},{false},{"Succeeded"},{1},{DateTimeOffset.UtcNow},{"owner"},{DateTimeOffset.UtcNow},{"training_guide"},{"{}"},{"{}"},{"Synthetic saved guide summary."},{false})
             """);
         await migrator.MigrateAsync();
+        check((await db.Entries.AsNoTracking().SingleAsync(x => x.Id == legacyDocument.Id)).TextHash == DocumentStorage.Core.LibraryService.TextHash("Synthetic legacy guide text, café"),
+            "the duplicate migration gives documents already read the same text fingerprint the scanner does");
         var imported=await db.DocumentDescriptions.SingleAsync(x=>x.EntryId==legacyDocument.Id);
         check(imported.SourceJobId==legacyJob&&imported.Summary=="Synthetic saved guide summary."&&imported.Tags.Contains("training guide"),"description migration reuses an existing saved reading without inference");
         db.DocumentDescriptions.Remove(imported);db.IdentificationJobs.Remove(await db.IdentificationJobs.SingleAsync(x=>x.Id==legacyJob));db.Entries.Remove(legacyDocument);

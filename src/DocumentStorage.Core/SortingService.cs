@@ -13,7 +13,8 @@ public sealed record SortChoice(string Kind, string From, DateOnly? Date, string
     // This document's own arrangement of folders and name (from the arranger); null means the kind's.
     // KeepPatterns saves it to the kind when the document is approved.
     string? FolderPattern = null, string? NamePattern = null, bool KeepPatterns = false);
-public sealed record SortPlan(string FolderPath, string[] NewFolders, string FileName, bool NewKind, bool NewSender, string[] NewTags, string? Problem)
+// TakenBy: the document already holding the name this one would have had (so it gets " (2)").
+public sealed record SortPlan(string FolderPath, string[] NewFolders, string FileName, bool NewKind, bool NewSender, string[] NewTags, string? Problem, Guid? TakenBy = null)
 {
     public string DestinationPath => FolderPath.Length == 0 ? FileName : FolderPath + "/" + FileName;
 }
@@ -21,7 +22,11 @@ public sealed record SortDocument(Guid Id, Guid RootId, string RootName, string 
     string ContentHash, DateTimeOffset ObservedAt, bool Online, DateTimeOffset ModifiedAt);
 // Sources say where each detail came from: "filename", "text", "reader", "person", "guess" or "".
 public sealed record SortCard(SortDocument Document, SortChoice Choice, Dictionary<string, string> Sources, SortPlan Plan, bool Sure, string[] Notes,
-    string ReaderState, Guid? JobId, string Confidence, string KindDescription, Dictionary<string, string> Quotes, bool DescriptiveName);
+    string ReaderState, Guid? JobId, string Confidence, string KindDescription, Dictionary<string, string> Quotes, bool DescriptiveName, DuplicateMatch[]? Duplicates = null)
+{
+    public DuplicateMatch[] Copies => Duplicates ?? [];
+    public bool Duplicate => Copies.Any(x => x.Certain);
+}
 public sealed record SortInbox(List<SortCard> Cards, int Total);
 public sealed record SortVocabulary(List<DocumentKind> Kinds, List<Correspondent> Senders, List<Tag> Tags,
     Dictionary<Guid, int> KindUse, Dictionary<Guid, int> SenderUse, Dictionary<Guid, int> TagUse);
@@ -472,7 +477,10 @@ public sealed partial class LibraryService
         }
         var plan = await PlanAsync(db, root, entry, choice, vocab, folders);
         if (plan.Problem != null) sure = false;
-        return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName);
+        // A copy of something already in Stash is never sure: it waits for a person, and never files itself.
+        var duplicates = entry.Readiness == "Ready" ? await DuplicatesAsync(db, entry, choice, vocab, plan) : [];
+        if (duplicates.Any(x => x.Certain)) sure = false;
+        return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName, duplicates);
     }
 
     private static async Task<IdentificationJob?> LatestSortJobAsync(CatalogDb db, Guid entryId) =>
@@ -588,6 +596,7 @@ public sealed partial class LibraryService
         }
         catch (StorageException ex) { return new(path, created.ToArray(), entry.Name, kind == null, sender == null && fromName.Length > 0, newTags, ex.Message); }
         // Never overwrite: a name already taken gets " (2)", " (3)"…
+        Guid? takenBy = null;
         if (created.Count == 0)
         {
             var stem = Path.GetFileNameWithoutExtension(name); var extension = Path.GetExtension(name);
@@ -596,11 +605,12 @@ public sealed partial class LibraryService
                 var target = StoragePaths.Join(path, name);
                 // The document's own current path is free for itself (re-filing a document already in place).
                 if (target == entry.RelativePath || (!StoragePaths.Exists(StoragePaths.Resolve(root.Location, target)) && !await db.Entries.AnyAsync(x => x.RootId == root.Id && x.RelativePath == target))) break;
+                if (i == 2) takenBy = await db.Entries.Where(x => x.RootId == root.Id && x.RelativePath == target && !x.IsFolder).Select(x => (Guid?)x.Id).FirstOrDefaultAsync();
                 if (i == 100) return new(path, [], name, kind == null, sender == null, newTags, "Too many documents already have this name here. Change the name.");
                 name = StoragePaths.ValidateName($"{stem} ({i}){extension}");
             }
         }
-        return new(path, created.ToArray(), name, kind == null, sender == null && fromName.Length > 0, newTags, null);
+        return new(path, created.ToArray(), name, kind == null, sender == null && fromName.Length > 0, newTags, null, takenBy);
     }
 
     // ---------- Reading (the model) ----------

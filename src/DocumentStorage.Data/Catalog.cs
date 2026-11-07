@@ -29,6 +29,8 @@ public sealed class CatalogEntry
     public DateTimeOffset ModifiedAt { get; set; }
     public string Instructions { get; set; } = "";
     public string ExtractedText { get; set; } = "";
+    // SHA-256 of the extracted text (empty for none): finds the same text in a different file.
+    public string TextHash { get; set; } = "";
     public string TextStatus { get; set; } = "Pending";
     public bool IsIntake { get; set; }
     public DateTimeOffset ObservedAt { get; set; }
@@ -205,6 +207,8 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => new { x.RootId, x.RelativePath }).IsUnique();
         model.Entity<CatalogEntry>().HasIndex(x => x.ParentId);
+        model.Entity<CatalogEntry>().HasIndex(x => x.TextHash);
+        model.Entity<CatalogEntry>().HasIndex(x => x.Size);
         model.Entity<CatalogEntry>().HasOne<StorageRoot>().WithMany().HasForeignKey(x => x.RootId).OnDelete(DeleteBehavior.Restrict);
         model.Entity<FileOperation>().HasIndex(x => new { x.RootId, x.State });
         model.Entity<DocumentReview>().HasKey(x => x.EntryId);

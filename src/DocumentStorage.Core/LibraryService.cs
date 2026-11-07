@@ -235,6 +235,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                     try { extracted = await textReader.ReadAsync(StoragePaths.Resolve(root.Location, file.Relative)); }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { extracted = new("", "Text unavailable"); }
                     entry.ExtractedText = extracted.Text;
+                    entry.TextHash = TextHash(extracted.Text);
                     entry.TextStatus = extracted.Status;
                     entry.PassageRevision = "";
                 }

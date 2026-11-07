@@ -233,6 +233,10 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("TextHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("TextStatus")
                         .IsRequired()
                         .HasColumnType("text");
@@ -243,6 +247,10 @@ namespace DocumentStorage.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ParentId");
+
+                    b.HasIndex("Size");
+
+                    b.HasIndex("TextHash");
 
                     b.HasIndex("RootId", "RelativePath")
                         .IsUnique();

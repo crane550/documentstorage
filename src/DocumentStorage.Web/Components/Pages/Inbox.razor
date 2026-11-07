@@ -295,6 +295,7 @@ else
         if (card.Document.Readiness != "Ready") return ("Arriving", "muted");
         if (card.ReaderState is "Waiting to be read" or "Will try again") return ("Queued", "muted");
         if (card.ReaderState == "Reading") return ("Reading", "working");
+        if (card.Duplicate) return ("Duplicate", "danger");
         if (card.Plan.Problem != null) return (card.Choice.Kind.Length == 0 ? "Needs a kind" : "Needs a look", "attention");
         if (card.Sure) return ("Sure", "ready");
         if (card.Sources.ContainsValue("person")) return ("Ready", "ready");
@@ -362,7 +363,10 @@ else
     private async Task ApproveMany(List<SortCard> cards) => await Run(async () =>
     {
         var actor = await Workspace.ActorAsync(); var done = 0; var failed = new List<string>();
-        foreach (var card in cards)
+        // A copy of something already in Stash is filed only from its own slip, after Keep both.
+        var copies = cards.Count(x => x.Duplicate);
+        if (copies > 0) failed.Add($"{copies} {(copies == 1 ? "is a copy" : "are copies")} of documents already in Stash; open {(copies == 1 ? "it" : "each")} to decide");
+        foreach (var card in cards.Where(x => !x.Duplicate))
         {
             try { await Library.FileSortedAsync(card.Document.Id, card.Choice, card.Document.ContentHash, actor); done++; }
             catch (StorageException ex) { failed.Add(card.Document.Name + ": " + ex.Message); }

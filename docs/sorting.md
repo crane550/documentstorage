@@ -164,6 +164,27 @@ operation (`EnsureOrganizationFolderAsync` creates nested segments). A taken nam
 On completion, in the same transaction (also when Recovery completes it): the details, new kind,
 sender and tags, the kind's record, a learned spelling and the remembered example.
 
+## Copies already in Stash
+
+Every Inbox card looks for other copies of its document (`DuplicatesAsync`, `SortCard.Copies`):
+
+- **The same file**: the same fingerprint. Files of the same size that never came through an inbox
+  (so have no fingerprint yet) are fingerprinted on the spot, and keep it, so the whole Library
+  counts, not just what Stash filed.
+- **The same text in a different file**: `CatalogEntry.TextHash` (SHA-256 of the extracted text, set
+  by the scanner; the `AddDuplicateDetection` migration fills it for documents already read). For
+  text of at least 80 characters, such as a PDF downloaded twice.
+- **The same details**: a filed document with the same kind, sender and date, and the same values
+  for every field the kind's folder or name uses (two accounts' statements on one day stay apart).
+- **The same name**: the built name is already taken in that folder (`SortPlan.TakenBy`; the new
+  one would get " (2)").
+
+The first two are certain. A certain copy is stamped **Duplicate**, is never sure (so it never files
+itself and never goes with **Approve N sure** or a ticked batch), and Enter on its slip says why
+instead of filing. The slip names each copy with a link to it (Library, Inbox, or Trash) and offers
+**Delete this copy…** (to Trash, recoverable) or **Keep both**, which lets it file. The likely ones
+show the same notice in amber, with **It's a different document**, and don't hold anything up.
+
 ## Trust and undo
 
 - **Filed** lists recent filings with Undo. Undo moves the document back to the inbox it came from
