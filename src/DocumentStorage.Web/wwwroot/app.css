@@ -454,11 +454,17 @@ fieldset.permissions .check { margin: 6px 0; }
 .step-choices .button { margin-top: 0; }
 .step-choices select { width: auto; min-width: 240px; }
 
-.inbox { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-areas: "tray preview" "tray slip"; gap: 14px 16px; align-items: start; }
-.inbox > .tray { grid-area: tray; }
+/* Side by side: the list, the document, a drag bar, the slip. inbox-layout.js sets the split (--preview-fr,
+   --slip-fr) and folds the list (data-tray); both are remembered per device. */
+.inbox { --tray-w: 250px; display: grid; grid-template-columns: var(--tray-w) minmax(300px, var(--preview-fr, 1fr)) 14px minmax(380px, var(--slip-fr, 1fr));
+    grid-template-areas: "tray preview split slip"; gap: 12px 0; align-items: start; }
+.inbox[data-tray=folded] { --tray-w: 54px; }
+.inbox > .tray { grid-area: tray; margin-right: 14px; }
 .inbox > .inbox-preview { grid-area: preview; }
+.inbox > .inbox-split { grid-area: split; }
 .inbox > .sort-slip { grid-area: slip; }
-.inbox:not(.has-selection) { grid-template-columns: minmax(0, 520px); }
+.inbox:not(.has-selection) { grid-template-columns: minmax(0, 520px); grid-template-areas: "tray"; }
+.inbox:not(.has-selection) > .tray { margin-right: 0; }
 .tray { position: sticky; top: 76px; max-height: calc(100dvh - 96px); display: flex; flex-direction: column; overflow: hidden; }
 .tray-head { padding: 12px 14px 10px; font: 700 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
 .tray-list { list-style: none; margin: 0; padding: 4px; overflow: auto; }
@@ -786,11 +792,14 @@ button.note-empty:hover { color: #3a3216; }
 
 /* ---------- Responsive ------------------------------------------------------- */
 @media (max-width: 1400px) {
-    .inbox { grid-template-columns: 250px minmax(0, 1fr); }
+    .inbox { --tray-w: 228px; }
     .library { grid-template-columns: minmax(0, 1fr) 340px; }
 }
 @media (max-width: 1180px) {
-    .inbox { grid-template-columns: 220px minmax(0, 1fr); }
+    /* Narrower desks: the list runs across the top; the document and slip keep the full height. */
+    .inbox.has-selection { grid-template-columns: minmax(260px, var(--preview-fr, 1fr)) 14px minmax(340px, var(--slip-fr, 1fr)); grid-template-areas: "tray tray tray" "preview split slip"; }
+    .inbox.has-selection > .tray { position: static; max-height: 180px; margin-right: 0; }
+    .inbox.has-selection[data-tray=folded] > .tray { max-height: none; }
     .settings-grid, .recovery-layout { grid-template-columns: 1fr; }
     .library.with-doc { grid-template-columns: 1fr; }
     .library.with-doc .file-panel { max-height: 300px; overflow: auto; }
@@ -806,6 +815,8 @@ button.note-empty:hover { color: #3a3216; }
     .banner { margin: 10px 14px 0; }
     .inbox, .inbox.has-selection { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tray" "preview" "slip"; }
     .inbox.has-selection .tray { max-height: 30vh; }
+    .inbox.has-selection > .inbox-preview, .inbox.has-selection > .sort-slip { position: static; max-height: none; overflow: visible; }
+    .inbox > .inbox-split { display: none; }
     .library, .rules-layout { grid-template-columns: minmax(0, 1fr); }
     .inbox-preview, .tray, .type-list { position: static; }
     .type-list { flex-direction: row; flex-wrap: wrap; }
@@ -1143,15 +1154,16 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .tray-head .tray-summary { display: block; margin-top: 4px; font: 500 12px/1.3 var(--font); letter-spacing: normal; text-transform: none; color: var(--ink-2); }
 
 /* The viewer shows the top of the page, where a document says what it is; drag its corner for more. */
-.inbox-preview .preview-surface { height: clamp(280px, 42vh, 560px); min-height: 220px; max-height: 85vh; resize: vertical; }
-.inbox-preview .document-preview { position: relative; }
-.inbox-preview .document-preview-heading { position: absolute; top: 5px; right: 6px; z-index: 2; padding: 0; border: 0; background: transparent; }
+.inbox-preview .preview-surface { height: calc(var(--desk-h, 100dvh) - 46px); min-height: 360px; max-height: none; }
+.inbox-preview .preview-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.inbox-preview .preview-toolbar > * { flex: none; }
+.inbox-preview .document-preview:not(.preview-expanded) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.inbox-preview .document-preview:not(.preview-expanded) > * { grid-column: 1 / -1; }
+.inbox-preview .document-preview:not(.preview-expanded) > .preview-toolbar { grid-column: 1; grid-row: 1; }
+.inbox-preview .document-preview:not(.preview-expanded) > .document-preview-heading { grid-column: 2; grid-row: 1; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--paper-2); }
 .inbox-preview .document-preview-heading > strong, .inbox-preview .document-preview-heading a[download] { display: none; }
-.inbox-preview .preview-toolbar, .inbox-preview .preview-unavailable { padding-right: 76px; }
-.inbox-preview .preview-toolbar input[type=search] { width: 120px; }
-.inbox-preview .preview-expanded .document-preview-heading { position: static; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.inbox-preview .preview-toolbar input[type=search] { width: 110px; }
 .inbox-preview .preview-expanded .document-preview-heading > strong { display: block; }
-.inbox-preview .preview-expanded .preview-toolbar { padding-right: 8px; }
 
 .sort-slip { container: slip / inline-size; gap: 10px; padding-bottom: 0; }
 .sort-slip .slip-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--rule-red); padding-bottom: 8px; }
@@ -1174,14 +1186,14 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .slip-where .sort-path { align-items: center; gap: 3px; font-size: 13.5px; }
 .slip-where .sort-path > .icon { margin-right: 3px; color: var(--manila-ink); }
 .slip-where .sort-name { font-size: 14px; }
-.slip-where .sort-arrange { padding-top: 10px; border-top: 1px dashed var(--manila-2); }
+.slip-where .sort-arrange { margin-top: 8px; }
 
-@container details (min-width: 400px) {
+@container details (min-width: 340px) {
     .slip-cell.half { grid-column: span 3; }
     .slip-cell.date { grid-column: span 2; }
     .slip-cell.rest { grid-column: span 4; }
 }
-@container slip (min-width: 680px) {
+@container slip (min-width: 760px) {
     .slip-body { grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: 18px; }
 }
 
@@ -1190,8 +1202,68 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
     margin: 0 -16px; padding: 10px 16px 12px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px;
     background: rgba(255, 253, 248, .97); box-shadow: 0 -8px 16px -14px rgba(70, 48, 24, .45);
 }
-.sort-slip .slip-actions .grow { flex: 1; }
+.sort-slip .slip-actions .grow { display: none; }
+.sort-slip .slip-actions { flex-wrap: nowrap; }
+.sort-slip .slip-actions .remember { flex: 1 1 auto; min-width: 0; }
+.sort-slip .slip-actions > .button, .sort-slip .slip-actions > .text-button { flex: none; }
 
-@media (max-height: 860px) {
-    .inbox-preview .preview-surface { height: clamp(240px, 36vh, 480px); }
+
+/* Each column holds its place while the page behind it scrolls; the slip scrolls on its own, approve bar pinned. */
+.inbox.has-selection > .tray, .inbox.has-selection > .inbox-preview, .inbox.has-selection > .sort-slip, .inbox > .inbox-split { position: sticky; top: 76px; }
+/* Sized to the window below the page header, so the approve bar shows without scrolling. */
+.inbox { --desk-h: calc(100dvh - 150px); }
+.inbox.has-selection > .tray { max-height: var(--desk-h); }
+.inbox.has-selection > .sort-slip { max-height: var(--desk-h); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.sort-slip::before { display: none; }
+.sort-slip .slip-head { padding-left: 0; }
+
+.inbox-split { display: flex; justify-content: center; height: var(--desk-h); cursor: col-resize; touch-action: none; outline: none; }
+.inbox-split::before { content: ""; align-self: center; width: 4px; height: 56px; border-radius: 3px; background: var(--line-2); transition: background .12s, height .12s; }
+.inbox-split:hover::before, .inbox-split:focus-visible::before, .inbox.resizing .inbox-split::before { height: 96px; background: var(--brown); }
+.inbox.resizing { cursor: col-resize; user-select: none; }
+.inbox.resizing .inbox-preview { pointer-events: none; }
+
+/* The list folds to a strip with its count, for more room to read and file. */
+.sort-tray-head { gap: 6px; }
+.sort-tray-head .tray-title { flex: 1; min-width: 0; }
+.tray-toggle .icon { transition: transform .15s; }
+.tray-folded-count { display: none; }
+.inbox[data-tray=folded] > .tray .tray-list, .inbox[data-tray=folded] > .tray .tray-pager, .inbox[data-tray=folded] > .tray .tray-keys,
+.inbox[data-tray=folded] > .tray .tray-title, .inbox[data-tray=folded] > .tray .sort-tray-head .button { display: none; }
+.inbox[data-tray=folded] > .tray { margin-right: 8px; }
+.inbox[data-tray=folded] > .tray .sort-tray-head { flex-direction: column; padding: 8px 4px; border-bottom: 0; }
+.inbox[data-tray=folded] > .tray .tray-toggle .icon { transform: rotate(180deg); }
+.inbox[data-tray=folded] > .tray .tray-folded-count { display: block; font: 700 12px/1 var(--mono); color: var(--ink-2); letter-spacing: 0; }
+
+/* Where it goes: a folder built or chosen, a name built, kept or typed. */
+.where-part + .where-part { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--manila-2); }
+.where-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.seg { display: inline-flex; padding: 2px; border-radius: 999px; background: rgba(255, 255, 255, .65); border: 1px solid var(--manila-2); }
+.seg button { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 640; color: var(--manila-ink); white-space: nowrap; }
+.seg button:hover { background: rgba(255, 255, 255, .8); }
+.seg button[aria-pressed=true] { background: var(--brown); color: #fff8ee; }
+.sort-path .path-part, .sort-path .path-root { overflow-wrap: anywhere; }
+.where-note { margin-top: 2px; }
+.slip-where .slip-field { margin-top: 6px; background: rgba(255, 255, 255, .75); }
+.folder-matches { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: 230px; overflow: auto; }
+.folder-matches button { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border-radius: 5px; text-align: left; font: 12.5px/1.35 var(--mono); color: var(--ink-2); }
+.folder-matches button .icon { flex: none; color: var(--manila-ink); }
+.folder-matches button span { overflow-wrap: anywhere; }
+.folder-matches button:hover { background: rgba(255, 255, 255, .75); }
+.folder-matches button.chosen { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--manila-2); }
+@media (max-width: 1180px) {
+    .inbox.has-selection > .tray { position: static; max-height: 180px; }
+    .inbox.has-selection > .inbox-preview, .inbox.has-selection > .sort-slip, .inbox > .inbox-split { top: 70px; }
+    .inbox { --desk-h: calc(100dvh - 86px); } /* The list sits above, so the page scrolls a little first. */
+}
+@media (max-width: 900px) {
+    /* A phone: one column, the page scrolls; the approve bar sticks to the bottom of the screen. */
+    .inbox.has-selection > .tray { max-height: 30vh; }
+    .inbox.has-selection > .inbox-preview, .inbox.has-selection > .sort-slip { position: static; max-height: none; overflow: visible; }
+    .inbox-preview .preview-surface { height: 40vh; min-height: 260px; }
+}
+@media (max-width: 600px) {
+    .sort-slip .slip-actions { flex-wrap: wrap; }
+    .sort-slip .slip-actions .remember { flex-basis: 100%; }
+    .sort-slip .slip-actions > .button { margin-left: auto; }
 }

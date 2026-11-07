@@ -44,7 +44,7 @@
             <div class="slip-cell half">
                 <label class="slip-label" for="sort-kind">Kind <SourceMark Source="@Source("kind")" />@if (CurrentKind != null) { <button type="button" class="slip-label-action" @onclick="EditKind">Edit kind…</button> }</label>
                 <div class="sort-field-row">
-                    <input id="sort-kind" class="slip-field @Guess("kind")" list="sort-kinds" @bind="kind" @bind:after="Changed" placeholder="What is it?" maxlength="60" autocomplete="off" />
+                    <input id="sort-kind" class="slip-field @Guess("kind")" list="sort-kinds" @bind="kind" @bind:event="oninput" @bind:after="Typed" placeholder="What is it?" maxlength="60" autocomplete="off" />
                     @if (plan?.NewKind == true && kind.Trim().Length > 0) { <span class="new-mark" title="Approving makes this a new kind">new</span> }
                 </div>
                 <datalist id="sort-kinds">@foreach (var k in Vocabulary.Kinds) { <option value="@k.Name">@k.Description</option> }</datalist>
@@ -52,7 +52,7 @@
             <div class="slip-cell half">
                 <label class="slip-label" for="sort-from">From <SourceMark Source="@Source("from")" /></label>
                 <div class="sort-field-row">
-                    <input id="sort-from" class="slip-field @Guess("from")" list="sort-senders" @bind="from" @bind:after="Changed" placeholder="Who sent it?" maxlength="80" autocomplete="off" />
+                    <input id="sort-from" class="slip-field @Guess("from")" list="sort-senders" @bind="from" @bind:event="oninput" @bind:after="Typed" placeholder="Who sent it?" maxlength="80" autocomplete="off" />
                     @if (plan?.NewSender == true) { <span class="new-mark" title="Approving adds this sender">new</span> }
                 </div>
                 <datalist id="sort-senders">@foreach (var s in Vocabulary.Senders) { <option value="@s.Name" /> }</datalist>
@@ -63,7 +63,7 @@
             }
             <div class="slip-cell full">
                 <label class="slip-label" for="sort-title">Title <SourceMark Source="@Source("title")" /></label>
-                <input id="sort-title" class="slip-field" @bind="title" @bind:after="Changed" placeholder="Short description" maxlength="80" autocomplete="off" />
+                <input id="sort-title" class="slip-field" @bind="title" @bind:event="oninput" @bind:after="Typed" placeholder="Short description" maxlength="80" autocomplete="off" />
             </div>
             <div class="slip-cell date">
                 <label class="slip-label" for="sort-date">Date <SourceMark Source="@Source("date")" /></label>
@@ -90,7 +90,7 @@
                             @if (LibraryService.IsDateField(name) && (fields.GetValueOrDefault(name, "").Length == 0 || DateOnly.TryParseExact(fields.GetValueOrDefault(name, ""), "yyyy-MM-dd", out _)))
                             { <input id="@($"sort-field-{name}")" type="date" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" /> }
                             else
-                            { <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" /> }
+                            { <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @oninput="e => TypeField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" /> }
                             @if (CurrentKind is { } current && !kept)
                             {
                                 <button type="button" class="field-keep" disabled="@busy" title="@($"Ask for this on every {current.Name}")" @onclick="() => Keep(name)"><Icon Name="plus" Size="12" />Keep for @current.Name</button>
@@ -110,54 +110,80 @@
             </div>
         </section>
 
-        @* Where it goes: worked out from the details, never typed as a path unless you choose to. *@
+        @* Where it goes: the folder is built from the details or chosen; the name is built, the original, or typed. *@
         <section class="slip-where destination sort-destination @(plan?.Problem == null ? "ready" : "pending")" aria-label="Where it goes" aria-live="polite">
-            <span class="slip-label">Goes to</span>
-            @if (plan == null) { <p class="hint">Working out where it goes…</p> }
-            else if (plan.Problem != null) { <p class="destination-problem"><Icon Name="alert" Size="14" />@plan.Problem</p> }
-            else
-            {
-                <p class="sort-path" data-sort-path>
-                    <Icon Name="folder" Size="15" />
-                    <span class="path-root">@Card.Document.RootName</span>
-                    @foreach (var part in ExistingParts) { <span class="path-sep">/</span><span>@part</span> }
-                    @foreach (var part in plan.NewFolders) { <span class="path-sep">/</span><span class="path-new" title="A new folder">@part</span> }
-                </p>
-                <p class="sort-name mono" data-sort-name><Icon Name="file" Size="14" />@plan.FileName</p>
-                @if (plan.NewFolders.Length > 0) { <p class="hint">Makes @(plan.NewFolders.Length == 1 ? "a new folder" : $"{plan.NewFolders.Length} new folders"), shown dashed.</p> }
-            }
-            <div class="sort-arrange">
-                <button type="button" class="button small" aria-expanded="@(showArranger ? "true" : "false")" @onclick="() => showArranger = !showArranger"><Icon Name="move" Size="13" />@(showArranger ? "Done arranging" : "Arrange name & folders")</button>
-                @if (touched && kind.Trim().Length > 0)
+            <div class="where-part">
+                <div class="where-head">
+                    <span class="slip-label">Folder</span>
+                    <div class="seg" role="group" aria-label="How the folder is chosen">
+                        <button type="button" aria-pressed="@(FolderMode == "built" ? "true" : "false")" @onclick='() => SetFolderMode("built")'>Built from details</button>
+                        <button type="button" aria-pressed="@(FolderMode == "pick" ? "true" : "false")" @onclick='() => SetFolderMode("pick")'>Choose a folder</button>
+                    </div>
+                </div>
+                @if (plan == null) { <p class="hint">Working out where it goes…</p> }
+                else if (plan.Problem != null) { <p class="destination-problem"><Icon Name="alert" Size="14" />@plan.Problem</p> }
+                else
                 {
-                    @if (CurrentKind != null) { <label class="check"><input type="checkbox" @bind="keepArrangement" /> Use for every @CurrentKind.Name</label> }
-                    else { <span class="hint">A new kind starts with this arrangement.</span> }
+                    <p class="sort-path" data-sort-path title="@($"{Card.Document.RootName}/{plan.FolderPath}")">
+                        <Icon Name="folder" Size="15" />
+                        <span class="path-root">@Card.Document.RootName</span>
+                        @foreach (var part in ExistingParts) { <span class="path-sep">/</span><span class="path-part">@part</span> }
+                        @foreach (var part in plan.NewFolders) { <span class="path-sep">/</span><span class="path-part path-new" title="A new folder">@part</span> }
+                    </p>
+                    @if (plan.NewFolders.Length > 0) { <p class="hint where-note">Makes @(plan.NewFolders.Length == 1 ? "a new folder" : $"{plan.NewFolders.Length} new folders") (dashed).</p> }
+                }
+                @if (FolderMode == "pick")
+                {
+                    <label class="sr-only" for="sort-folder">Folder inside @Card.Document.RootName</label>
+                    <input id="sort-folder" class="slip-field mono" @bind="folderOverride" @bind:event="oninput" @bind:after="Typed" placeholder="Type or pick a folder, like Banking/Cedar Bank" autocomplete="off" />
+                    <ul class="folder-matches" aria-label="Folders">
+                        @foreach (var folder in FolderMatches)
+                        {
+                            <li @key="folder.Id"><button type="button" class="@(string.Equals(folder.RelativePath, folderOverride.Trim().Trim('/'), StringComparison.OrdinalIgnoreCase) ? "chosen" : "")" @onclick="() => PickFolder(folder.RelativePath)"><Icon Name="folder" Size="13" /><span>@folder.RelativePath</span></button></li>
+                        }
+                    </ul>
+                    <p class="hint">Pick one, or type a path; folders that don't exist yet are made when you approve. Used for this document only.</p>
+                }
+                else
+                {
+                    <div class="sort-arrange">
+                        <button type="button" class="button small" aria-expanded="@(showArranger ? "true" : "false")" @onclick="() => showArranger = !showArranger"><Icon Name="move" Size="13" />@(showArranger ? "Done arranging" : "Arrange folders & name")</button>
+                        @if (touched && kind.Trim().Length > 0)
+                        {
+                            @if (CurrentKind != null) { <label class="check"><input type="checkbox" @bind="keepArrangement" /> Use for every @CurrentKind.Name</label> }
+                            else { <span class="hint">A new kind starts with this arrangement.</span> }
+                        }
+                    </div>
+                    @if (showArranger)
+                    {
+                        <PatternComposer FolderPattern="@draftFolder" NamePattern="@draftName" Fields="FieldRows" Values="SampleValues" Extension="@System.IO.Path.GetExtension(Card.Document.Name)"
+                                         NameKept="keepName" Changed="Arranged" />
+                    }
                 }
             </div>
-            @if (showArranger)
-            {
-                <PatternComposer FolderPattern="@draftFolder" NamePattern="@draftName" Fields="FieldRows" Values="SampleValues" Extension="@System.IO.Path.GetExtension(Card.Document.Name)"
-                                 NameKept="keepName" Changed="Arranged" />
-            }
-            <div class="sort-name-choice">
-                <label class="check"><input type="checkbox" checked="@keepName" @onchange="e => SetKeepName((bool)e.Value!)" /> Keep the original name</label>
-                <button type="button" class="text-button" @onclick="() => showOverrides = !showOverrides">@(showOverrides ? "Use the arrangement" : "Type a folder or name…")</button>
+            <div class="where-part">
+                <div class="where-head">
+                    <span class="slip-label">Name</span>
+                    <div class="seg" role="group" aria-label="How the name is chosen">
+                        <button type="button" aria-pressed="@(NameMode == "built" ? "true" : "false")" @onclick='() => SetNameMode("built")'>Built</button>
+                        <button type="button" aria-pressed="@(NameMode == "original" ? "true" : "false")" @onclick='() => SetNameMode("original")'>Original</button>
+                        <button type="button" aria-pressed="@(NameMode == "custom" ? "true" : "false")" @onclick='() => SetNameMode("custom")'>Type it</button>
+                    </div>
+                </div>
+                @if (plan != null && plan.Problem == null) { <p class="sort-name mono" data-sort-name><Icon Name="file" Size="14" />@plan.FileName</p> }
+                @if (NameMode == "custom")
+                {
+                    <label class="sr-only" for="sort-name">File name</label>
+                    <input id="sort-name" class="slip-field mono" @bind="nameOverride" @bind:event="oninput" @bind:after="Typed" placeholder="File name" autocomplete="off" />
+                    <p class="hint">Used for this document only. The extension is added for you.</p>
+                }
             </div>
-            @if (showOverrides)
-            {
-                <label class="slip-label" for="sort-folder">Folder (inside @Card.Document.RootName)</label>
-                <input id="sort-folder" class="slip-field" list="sort-folders" @bind="folderOverride" @bind:after="Changed" placeholder="@(plan?.FolderPath ?? "")" autocomplete="off" />
-                <datalist id="sort-folders">@foreach (var f in Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && x.RelativePath.Length > 0 && !Workspace.InInbox(x)).Take(400)) { <option value="@f.RelativePath" /> }</datalist>
-                <label class="slip-label" for="sort-name">Name</label>
-                <input id="sort-name" class="slip-field" @bind="nameOverride" @bind:after="Changed" placeholder="@(plan?.FileName ?? "")" autocomplete="off" />
-                <p class="hint">A folder or name typed here is used for this document only and wins over the arrangement. Leave either empty to use the arrangement.</p>
-            }
         </section>
     </div>
 
     @* Always in reach: the bar stays at the bottom of the screen while the slip is in view. *@
     <footer class="slip-actions">
-        <label class="check remember"><input type="checkbox" @bind="remember" /> Remember as an example for the reader</label>
+        <label class="check remember" title="The reader learns from documents you approve this way"><input type="checkbox" @bind="remember" /> Remember as an example</label>
         <span class="grow"></span>
         <button type="button" class="text-button" data-sort-next-button @onclick="() => Skip.InvokeAsync()">Skip</button>
         <button type="submit" class="button primary" data-sort-approve disabled="@(busy || plan?.Problem != null || plan == null || !Card.Document.Online)"><Icon Name="check" Size="16" />Approve &amp; file<kbd>Enter</kbd></button>
@@ -192,7 +218,7 @@
     private DateOnly? date;
     private List<string> tags = [];
     private Dictionary<string, string> fields = [];
-    private bool keepName, remember = true, showOverrides, busy, edited;
+    private bool keepName, remember = true, busy, edited;
     // The arrangement being worked on for this document: the kind's patterns until touched.
     private string draftFolder = LibraryService.DefaultKindFolder, draftName = LibraryService.DefaultKindName, draftKind = "";
     private bool touched, keepArrangement = true, showArranger;
@@ -200,6 +226,33 @@
     private string? loadedKey;
     private int planVersion;
 
+    private bool pickingFolder, customName;
+    private CancellationTokenSource? typingPause;
+    private string FolderMode => pickingFolder || folderOverride.Trim().Length > 0 ? "pick" : "built";
+    private string NameMode => customName || nameOverride.Trim().Length > 0 ? "custom" : keepName ? "original" : "built";
+    // Folders to pick from: those matching what's typed; when nothing matches yet (a path still to be made),
+    // the deepest folder that exists along it and what's inside, so you see what is already there.
+    private IEnumerable<CatalogEntry> FolderMatches
+    {
+        get
+        {
+            var typed = folderOverride.Trim().Trim('/');
+            var folders = Workspace.Overview.Folders.Where(x => x.RootId == Card.Document.RootId && x.RelativePath.Length > 0 && !Workspace.InInbox(x)).ToList();
+            var matching = folders.Where(x => typed.Length == 0 || x.RelativePath.Contains(typed, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matching.Count == 0 && typed.Length > 0)
+            {
+                var parts = typed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                for (var depth = parts.Length - 1; depth > 0 && matching.Count == 0; depth--)
+                {
+                    var prefix = string.Join("/", parts[..depth]);
+                    matching = folders.Where(x => string.Equals(x.RelativePath, prefix, StringComparison.OrdinalIgnoreCase)
+                        || x.RelativePath.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+            }
+            return matching.OrderBy(x => string.Equals(x.RelativePath, typed, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase).Take(10);
+        }
+    }
     private string? MemoryNote => Card.Notes.FirstOrDefault(x => x.StartsWith("Filled in from", StringComparison.Ordinal));
     private IEnumerable<string> Warnings => Card.Notes.Where(x => !x.StartsWith("Filled in from", StringComparison.Ordinal));
     private bool Reading => Card.ReaderState is "Waiting to be read" or "Reading" or "Will try again";
@@ -218,7 +271,7 @@
         if (sameDocument && edited) return;
         kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
-        folderOverride = ""; nameOverride = ""; showOverrides = false; edited = false; plan = Card.Plan;
+        folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; edited = false; plan = Card.Plan;
         draftKind = "\u0000"; SyncDraft();
         await Task.CompletedTask;
     }
@@ -240,7 +293,8 @@
     private async Task Arranged((string Folder, string Name) value)
     {
         // Rearranging the name means using it, not the original name.
-        if (value.Name != draftName) keepName = false;
+        if (value.Name != draftName) { keepName = false; customName = false; nameOverride = ""; }
+        if (value.Folder != draftFolder) { pickingFolder = false; folderOverride = ""; }
         draftFolder = value.Folder; draftName = value.Name; touched = true;
         await Changed();
     }
@@ -257,7 +311,33 @@
         catch (StorageException ex) { if (version == planVersion) plan = new("", [], Card.Document.Name, false, false, [], ex.Message); }
     }
     private Task PickKind(string name) { kind = name; return Changed(); }
-    private Task SetKeepName(bool value) { keepName = value; return Changed(); }
+    // Typing replans after a short pause, so the folder and name follow along without a request per key.
+    private async Task Typed()
+    {
+        edited = true;
+        typingPause?.Cancel();
+        var pause = typingPause = new CancellationTokenSource();
+        try { await Task.Delay(250, pause.Token); }
+        catch (TaskCanceledException) { return; }
+        await Changed();
+    }
+    private Task TypeField(string name, string? value) { fields[name] = value ?? ""; return Typed(); }
+    private Task SetFolderMode(string mode)
+    {
+        pickingFolder = mode == "pick";
+        // Choosing starts from where it would go now, so a small change is a small edit.
+        if (pickingFolder && folderOverride.Trim().Length == 0) folderOverride = plan?.Problem == null ? plan?.FolderPath ?? "" : "";
+        if (!pickingFolder) folderOverride = "";
+        return Changed();
+    }
+    private Task PickFolder(string path) { folderOverride = path; pickingFolder = true; return Changed(); }
+    private Task SetNameMode(string mode)
+    {
+        customName = mode == "custom"; keepName = mode == "original";
+        if (customName && nameOverride.Trim().Length == 0) nameOverride = plan?.Problem == null && plan != null ? System.IO.Path.GetFileNameWithoutExtension(plan.FileName) : "";
+        if (!customName) nameOverride = "";
+        return Changed();
+    }
     private Task SetField(string name, string? value) { fields[name] = value ?? ""; return Changed(); }
     private DocumentKind? CurrentKind => Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase));
     // The kind's own fields first, then any added on this document.
@@ -280,6 +360,7 @@
     }
     public async ValueTask DisposeAsync()
     {
+        typingPause?.Cancel();
         if (keys == null) return;
         try { await keys.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException) { }
     }
@@ -300,6 +381,7 @@
     private async Task Toggle(string name, bool folder)
     {
         var token = "{" + name + (folder && LibraryService.IsDateField(name) ? ":yyyy" : "") + "}";
+        if (folder) { pickingFolder = false; folderOverride = ""; } else { customName = false; nameOverride = ""; }
         if (folder)
         {
             var levels = PatternParts.ParseFolder(draftFolder);

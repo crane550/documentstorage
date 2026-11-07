@@ -129,7 +129,8 @@ else
         <div class="inbox @(selected != null ? "has-selection" : "")" data-sort-inbox>
             <section class="tray" aria-label="Inbox documents">
                 <header class="tray-head sort-tray-head">
-                    <span>@queue.Total @(queue.Total == 1 ? "document" : "documents")<span class="tray-summary">@Summary</span></span>
+                    <button type="button" class="icon-button small tray-toggle" data-tray-toggle aria-label="Show or hide the list" title="Show or hide the list"><Icon Name="arrow-left" Size="15" /></button>
+                    <span class="tray-folded-count" aria-hidden="true">@queue.Total</span><span class="tray-title">@queue.Total @(queue.Total == 1 ? "document" : "documents")<span class="tray-summary">@Summary</span></span>
                     @if (checkedIds.Count > 0) { <button type="button" class="button small primary" disabled="@busy" @onclick="ApproveChecked">Approve @checkedIds.Count</button> }
                     else if (SureCount > 0) { <button type="button" class="button small" disabled="@busy" @onclick="ApproveSure" title="File every card the reader is sure of, as suggested">Approve @SureCount sure</button> }
                 </header>
@@ -144,7 +145,7 @@ else
                                     <strong>@card.Document.Name</strong>
                                     @if (card.Choice.Kind.Length > 0) { <small class="sort-summary">@card.Choice.Kind@(card.Choice.From.Length > 0 ? " · " + card.Choice.From : "")@(card.Choice.Date is DateOnly d ? " · " + d.ToString("MMM d, yyyy") : "")</small> }
                                     else { <small>@WorkspaceState.Ago(card.Document.ObservedAt) · @WorkspaceState.FormatSize(card.Document.Size)</small> }
-                                    @if (card.Plan.Problem == null && card.Choice.Kind.Length > 0) { <small class="sort-goes mono">→ @card.Plan.DestinationPath</small> }
+                                    @if (card.Plan.Problem == null && card.Choice.Kind.Length > 0) { <small class="sort-goes mono" title="@card.Plan.DestinationPath">→ @FolderTail(card.Plan.FolderPath)</small> }
                                 </span>
                                 <Stamp Text="@status.Text" Tone="@status.Tone" />
                             </button>
@@ -157,6 +158,7 @@ else
             @if (selected != null)
             {
                 <div class="inbox-preview"><DocumentPreviewPanel Entry="PreviewEntry(selected)" @key="selected.Document.Id" /></div>
+                <div class="inbox-split" role="separator" aria-orientation="vertical" aria-label="Drag to resize the preview and the slip" title="Drag to resize · double-click to even out" tabindex="0" data-inbox-split></div>
                 <SortSlip @key="selected.Document.Id" Card="selected" Vocabulary="vocabulary" Filed="Filed" ReadingChanged="ReloadSelected" Skip="SelectNext"
                           RequestMove="RequestMove" RequestDelete="RequestDelete" RequestRescan="Rescan" VocabularyChanged="ReloadVocabulary" />
             }
@@ -195,7 +197,13 @@ else
     private int offset;
     private readonly CancellationTokenSource lifetime = new();
     private Task? polling;
-    private IJSObjectReference? keys;
+    private IJSObjectReference? keys, layout;
+    // The end of a path says the most: "…/Cedar Bank/2026".
+    private static string FolderTail(string path)
+    {
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length <= 2 ? path : "…/" + string.Join("/", parts[^2..]);
+    }
     private bool HasStorage => Workspace.Overview.Roots.Count > 0;
     private bool SetUp => HasStorage && Workspace.InboxFolders.Count > 0;
     private int SureCount => queue.Cards.Count(x => x.Sure && x.Plan.Problem == null);
@@ -233,8 +241,13 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try { keys = await JS.InvokeAsync<IJSObjectReference>("import", "./sort-keys.js"); await keys.InvokeVoidAsync("attach"); }
+        // The split and the folded list are remembered on this device; they go back on whenever the grid is drawn.
+        if (!firstRender) { if (layout != null) try { await layout.InvokeVoidAsync("apply"); } catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException) { } return; }
+        try
+        {
+            keys = await JS.InvokeAsync<IJSObjectReference>("import", "./sort-keys.js"); await keys.InvokeVoidAsync("attach");
+            layout = await JS.InvokeAsync<IJSObjectReference>("import", "./inbox-layout.js"); await layout.InvokeVoidAsync("attach");
+        }
         catch (Exception ex) when (ex is JSException or JSDisconnectedException or TaskCanceledException) { }
     }
 
@@ -440,5 +453,6 @@ else
         Workspace.Changed -= WorkspaceChanged;
         lifetime.Cancel(); if (polling != null) await polling; lifetime.Dispose();
         if (keys != null) { try { await keys.InvokeVoidAsync("detach"); await keys.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or JSException or TaskCanceledException) { } }
+        if (layout != null) { try { await layout.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or JSException or TaskCanceledException) { } }
     }
 }

@@ -78,7 +78,7 @@ try {
     await page.waitForFunction(() => document.querySelectorAll('.sort-row .stamp').length === 3 && [...document.querySelectorAll('.sort-row .stamp')].every(x => !/Queued|Reading|Arriving/.test(x.textContent)), null, { timeout: 60000 });
     await check(reads === 3 && !sawFolders, 'automatic reading asks the narrow question once per document, with no folders or server paths');
     await check(row('20261105_143022.txt').locator('.stamp').textContent().then(t => t.includes('Check')), 'a sender Stash has never seen keeps even a confident reading waiting for a look');
-    await check(row('20261105_143022.txt').locator('.sort-goes').textContent().then(t => t.includes('Banking/CEDAR BANK N.A./2026/2026-10 CEDAR BANK N.A. statement 1234.txt') || t.includes('Banking/')), 'each row shows where it will go');
+    await check(row('20261105_143022.txt').locator('.sort-goes').getAttribute('title').then(t => t.includes('Banking/CEDAR BANK N.A./2026/2026-10 CEDAR BANK N.A. statement 1234.txt') || t.includes('Banking/')), 'each row shows where it will go');
 
     // A scan: correct the sender with one edit; the path follows before filing; Enter files it.
     await open('20261105_143022.txt');
@@ -87,6 +87,24 @@ try {
     await page.getByLabel(/^From/).fill('Cedar Bank'); await page.getByLabel(/^From/).press('Tab');
     await page.waitForFunction(() => document.querySelector('[data-sort-name]')?.textContent.includes('2026-10 Cedar Bank statement'));
     await check(page.locator('[data-sort-name]').textContent().then(t => t.includes('2026-10 Cedar Bank statement 1234.txt')), 'correcting the sender updates the name and folder live');
+    // The name follows a field while it is being typed, before leaving the box.
+    await page.locator('#sort-field-account_ending').fill('9876');
+    await page.waitForFunction(() => document.querySelector('[data-sort-name]')?.textContent.includes('statement 9876'), null, { timeout: 5000 });
+    await check(Promise.resolve(true), 'the name follows a field as it is typed');
+    await page.locator('#sort-field-account_ending').fill('1234'); await page.locator('#sort-field-account_ending').press('Tab');
+    await page.waitForFunction(() => document.querySelector('[data-sort-name]')?.textContent.includes('statement 1234'));
+    // Choosing a folder starts from the suggested one, offers what exists, and can go back to the built one.
+    const folderChoice = page.getByRole('group', { name: 'How the folder is chosen' });
+    await folderChoice.getByRole('button', { name: 'Choose a folder', exact: true }).click();
+    await check(page.locator('#sort-folder').inputValue().then(v => v.startsWith('Banking/')), 'choosing a folder starts from the suggested path');
+    await check(page.locator('.folder-matches').getByRole('button', { name: 'Banking', exact: true }).count().then(n => n === 1), 'a path still to be made lists the folders that already exist along it');
+    await page.locator('#sort-folder').fill('Arch');
+    await page.locator('.folder-matches').getByRole('button', { name: 'Archive', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.replace(/\s+/g, '').endsWith('/Archive'));
+    await check(Promise.resolve(true), 'picking an existing folder sends it there');
+    await folderChoice.getByRole('button', { name: 'Built from details', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[data-sort-path]')?.textContent.includes('Banking'));
+    await check(page.locator('#sort-folder').count().then(n => n === 0), 'going back uses the built folder again');
     await page.screenshot({ path: path.join(shots, 'sorting-slip.png'), fullPage: false });
     await page.locator('.sort-slip h2').click();
     await page.keyboard.press('Enter'); await toast(page, 'Filed as');
@@ -95,7 +113,7 @@ try {
 
     // An emailed document keeps its descriptive name; a tag is added by typing and Enter.
     await open('Acme_Invoice_INV-20391_2026-10-14.txt');
-    await check(page.getByLabel('Keep the original name', { exact: true }).isChecked(), 'a descriptive emailed name is kept by default');
+    await check(page.getByRole('group', { name: 'How the name is chosen' }).getByRole('button', { name: 'Original', exact: true }).getAttribute('aria-pressed').then(v => v === 'true'), 'a descriptive emailed name is kept by default');
     await page.getByLabel('Add a tag', { exact: true }).fill('shop'); await page.getByLabel('Add a tag', { exact: true }).press('Enter');
     await page.locator('.tag-chip').filter({ hasText: '#shop' }).waitFor();
     await check(exists('Inbox/Acme_Invoice_INV-20391_2026-10-14.txt'), 'Enter in the tag box adds a tag without filing');
@@ -127,7 +145,7 @@ try {
     await open('Scan 7.txt');
     await check(page.locator('.new-mark').first().isVisible(), 'a kind the reader made up is marked new');
     // Arrange the name with chips: add words, drag Title to the front.
-    await page.getByRole('button', { name: 'Arrange name & folders' }).click();
+    await page.getByRole('button', { name: 'Arrange folders & name' }).click();
     const nameRow = page.locator('[data-name-row]');
     await nameRow.locator('.chip-part').first().waitFor();
     await check(nameRow.locator('.chip-part .chip-label').allTextContents().then(t => t.join('|') === 'Date|From|Title'), 'the arranger shows the name as chips');

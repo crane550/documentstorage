@@ -59,6 +59,18 @@ try {
     }
     await selected('work-099.txt');
     await check(page.locator('.intake-item').count().then(n => n === 50), 'emptying the last page returns near the end of the preceding page');
+    // The drag bar and the folded list are remembered on this device.
+    if (await page.locator('[data-inbox-split]').count()) {
+        await page.setViewportSize({ width: 1440, height: 940 });
+        const bar = await page.locator('[data-inbox-split]').boundingBox();
+        await page.mouse.move(bar.x + bar.width / 2, bar.y + 120); await page.mouse.down();
+        await page.mouse.move(bar.x - 160, bar.y + 120, { steps: 6 }); await page.mouse.up();
+        await page.locator('[data-tray-toggle]').click();
+        await page.reload(); await page.locator('[data-inbox-split]').waitFor();
+        await check(page.locator('[data-sort-inbox]').evaluate(x => x.dataset.tray === 'folded' && parseFloat(x.style.getPropertyValue('--preview-fr')) < 0.4), 'the preview/slip split and the folded list survive a reload');
+        await page.locator('[data-tray-toggle]').click();
+        await check(page.locator('.tray-list').isVisible(), 'the list unfolds again');
+    }
     await page.setViewportSize({ width: 390, height: 844 });
     await check(noOverflow(page), 'inbox tools fit the mobile viewport');
     await check(errors.length === 0, 'inbox navigation, rescan and trash produce no browser errors');
