@@ -1335,3 +1335,8 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .dup-body small { color: var(--muted); }
 .dup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .dup-actions .text-button { padding: 4px 8px; font-size: 12.5px; }
+.assistant-changes { margin-bottom: 16px; }
+.assistant-change-list { display: grid; gap: 12px; max-height: 520px; overflow: auto; }
+.assistant-change { border-top: 1px solid var(--line); padding: 12px 0; min-width: 0; }
+.assistant-change header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.assistant-change pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }

@@ -129,6 +129,7 @@ try
     await IdentificationChecks.RunAsync(factory, Path.Combine(scratch, "identification"), Check, Refuses);
     await DescriptionChecks.RunAsync(factory, Path.Combine(scratch, "descriptions"), Check, Refuses);
     await AssistantChecks.RunAsync(factory, Path.Combine(scratch, "assistants"), Check, Refuses);
+    await AssistantCoachingChecks.RunAsync(factory, Path.Combine(scratch, "coaching"), Check, Refuses);
     await RecoveryChecks.RunAsync(factory, Path.Combine(scratch, "recovery"), Check, Refuses);
     await OrganizingChecks.RunAsync(factory, Path.Combine(scratch, "organizing"), Check, Refuses);
     await DeskChecks.RunAsync(factory, Path.Combine(scratch, "conversations"), Check, Refuses);

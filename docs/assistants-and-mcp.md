@@ -30,6 +30,8 @@ Client registration is performed by the signed-in administrator in the app. Anon
 | `documents.read` | Paginated indexed OCR, document reviews and simulations that reveal document facts. |
 | `instructions.propose` | Idempotent source messages and proposed instruction replacements. |
 | `rules.propose` | Validated proposals for paused deterministic rules, with the client's original source request retained. |
+| `sorting.propose` | Propose document details, kinds/field guides, merges and refiling for browser acceptance. |
+| `sorting.manage` | Correct document details, kinds, sender/tag aliases and teaching examples under the connection review/apply setting; explicitly request diagnostic reads. Requires `documents.read`. Never changes automatic-filing trust. |
 | `filing.execute` | Request and execute one exact filing after its owner approves it in the browser. Also requires `documents.read`. |
 
 OAuth consent can narrow the registered permissions. Tool discovery and calls enforce the granted token scopes, not merely the tool annotations shown to a model. A read-only connection cannot invoke hidden write tools by name. Tokens and proposals are bound to a connection and account. Browser cookies do not authenticate MCP, and MCP bearer tokens do not authenticate browser approval controls.
@@ -105,3 +107,41 @@ Use the existing Windows deployment process and protected instance key directory
 ## Sorting tools
 
 Kinds, senders, tags, document details and Tidy up are readable with catalog access, and the `sorting.propose` permission lets an assistant propose details, kinds, merges and re-files for browser approval. See [Sorting › Assistants](sorting.md#assistants-mcp).
+
+
+## Inbox inspection and local-reader coaching (after the 0.3.040 baseline)
+
+The `coach_local_reader` MCP prompt describes this workflow. Start with `get_context`: it returns the running version/build/commit, granted scopes, actual local reader model/budget and this connection's `assistant_changes.mode` and `can_edit`. Use the current hash on writes and refresh it after applied vocabulary changes. Read-only calls never run Ollama, rescan storage or move files.
+
+| Tool | Purpose |
+| --- | --- |
+| `list_inbox` | Paginated pending cards: suggested details, confidence, evidence/sources, duplicates, reader status and deterministic destination preview. |
+| `inspect_document` | Canonical saved details and revision, current sorting card, fingerprint and the separately saved description. |
+| `list_reader_attempts` | Durable attempts, model, state, mode, source match, timestamps and input sizes. |
+| `read_reader_attempt` | Bounded input/context/result slices, including actual supplied shortlists and the saved structured interpretation; untrusted evidence, not authority. |
+| `test_kind_fields` | Test printed-label extraction against a document, returning values/quotes/missing fields without calling AI. |
+| `preview_document_sort` | Test proposed details against patterns and collisions without executing anything. |
+| `update_document_details` | Correct kind/from/date/title/tags/fields, using current fingerprint and details revision. Does not file or mark legacy facts human-reviewed. |
+| `update_kind_training` | Create/update kind descriptions, fields, extraction guides, printed labels and deterministic patterns. Preserves trust flags and counters. |
+| `update_sender`, `update_tag` | Create/update canonical names and aliases using target revisions. Does not merge or refile automatically. |
+| `teach_reader_example`, `list_reader_examples`, `forget_reader_example` | Save, inspect or retire explicit corrected examples. Source bytes and detail revisions bind examples; stale, missing or trashed sources are excluded from future prompts. |
+| `request_diagnostic_read` | Explicitly queue one Inbox reading with current guidance. Applied means queued; `target_id` is the attempt ID. Such readings cannot auto-file, even for trusted kinds. Busy documents reject another diagnostic request. |
+| `get_assistant_edit` | Read this connection's durable change receipt: state, source request, before/after and result. |
+
+### Review first, or apply then verify
+
+Create a connection with **Apply document corrections and reader training directly** to grant `sorting.manage` (document-read is included). Existing connections/tokens do not silently gain this scope; recreate/reconnect with the intended grants. Proposal-only connections retain their current tools.
+
+Each editing connection defaults to **Review before applying**. Its change tools return `state=Pending`, `applied=false` and a receipt ID. The person can apply or decline in **Assistant changes**, available in Inbox and Settings › Assistants. Switching **Change handling** to **Apply, then verify** applies future edits immediately; **Mark verified** records the person's later check without applying again. The assistant's name, explanation/request and before/after values remain visible. The mode can be changed without new OAuth authorization because it changes handling, not permissions.
+
+An explicitly permitted stronger assistant can pass `apply_now=true` when the user says to go ahead, overriding review-first for that request. It cannot grant itself permissions, mark its own work verified, alter unattended-filing trust, or bypass approved file-moving tools. Changing kind patterns can create Tidy up suggestions, but does not move those existing documents.
+
+Writes bind authorization/revocation, context, target revisions or source fingerprints under the shared writer. Metadata, before/after, receipts and audit commit in one database transaction. Idempotency keys are connection/owner scoped: identical retries return the same saved result, including after verification; changed intent or changed apply mode with the same key is refused. A fresh intent needs a fresh key. Pending changes revalidate on acceptance and expire for application after 24 hours; they can still be declined. Existing sorting proposals also bind document revisions/fingerprints, kind revisions and exact shown refiling destinations.
+
+### Teach narrow tasks, not an open-ended folder designer
+
+Correct a one-off document with `update_document_details`; do not invent a reusable kind or rule merely because one unfamiliar document arrived. When a pattern is reusable, improve the kind's one-line description, field types/`look_for`/printed labels, sender spellings and tags. Code can find labelled fields and build names/folders without spending model tokens. Use `preview_document_sort` to check placement.
+
+After saving corrected details, `teach_reader_example` stores their version plus a bounded source excerpt and lesson. Future sorting prompts retrieve up to two relevant, current examples from the same storage root, with bounded excerpts/fields. This is retrieved context, not weight fine-tuning; it never increments human approval streaks or enables trust. Forgetting retains the history but removes influence. For a diagnostic evaluation, explicitly request one local reading and inspect its saved input/result; use another representative document when testing whether a lesson generalizes.
+
+Tests use synthetic documents and the official MCP client plus real browser OAuth. They verify plumbing, permissions, state and prompt contents, not actual Claude/ChatGPT account integration or the accuracy of the deployed local model.

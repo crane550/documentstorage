@@ -175,6 +175,7 @@ try {
 
     // Kinds: the new kind exists; switching a kind to file itself.
     await page.goto(base + '/kinds'); await ready(page);
+    await page.locator('.kind-card h2').filter({ hasText: /^Recipe$/ }).waitFor();
     await check(page.locator('.kind-card h2').filter({ hasText: /^Recipe$/ }).count().then(n => n === 1), 'the new kind is on the Kinds page');
     const statements = page.locator('.kind-card').filter({ has: page.locator('h2', { hasText: /^Bank statement$/ }) });
     await check(statements.locator('.kind-record').textContent().then(t => t.includes('1 approved') && t.includes('1 corrected')), 'each kind shows its record of approvals and corrections');

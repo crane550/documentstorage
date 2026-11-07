@@ -267,6 +267,7 @@ internal static class SortingChecks
         await library.DecideAssistantProposalAsync(detailsProposal.Id, detailsProposal.Revision, true, actor);
         var flyerSaved = await library.DocumentDetailsAsync(flyer.Id);
         check(flyerSaved!.Kind == "Flyer" && flyerSaved.Tags.SequenceEqual(["food"]) && File.Exists(Path.Combine(scratch, "Archive/Scan 99.txt")), "accepting saves the details and leaves the file where it is");
+        context = (await library.AssistantContextAsync()).Hash;
         var kindProposal = await library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(null, "Flyers", "Menus and adverts.", "Flyers/{from}", "{from} {title}", [])), context, "kind-flyers-1", caller);
         await library.DecideAssistantProposalAsync(kindProposal.Id, kindProposal.Revision, false, actor);
         check(!(await library.SortVocabularyAsync()).Kinds.Any(x => x.Name == "Flyers"), "a rejected kind is not made");
@@ -278,6 +279,7 @@ internal static class SortingChecks
         check(invoiceKind.FolderPattern == "Bills to pay/{from}" && invoiceKind.AutoFile, "an accepted kind change keeps the person's file-by-itself switch as it was");
         await library.SetFollowsPatternsAsync(oldInvoice.Id, true, actor);
         var tidy = await library.RefilePlanAsync(kindId: invoiceKind.Id);
+        context = (await library.AssistantContextAsync()).Hash;
         var refile = await library.ProposeAssistantAsync("Refile", JsonSerializer.Serialize(new RefileProposal(tidy.Select(x => x.EntryId).ToArray())), context, "refile-invoices-1", caller);
         check(File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")) && refile.ResultJson.Contains("Bills to pay/Acme Supply Co"), "a re-file proposal shows each move and moves nothing yet");
         await library.DecideAssistantProposalAsync(refile.Id, refile.Revision, true, actor);

@@ -1,0 +1,49 @@
+@implements IDisposable
+@inject LibraryService Library
+@inject IServiceScopeFactory Scopes
+@inject WorkspaceState Workspace
+@if(changes.Count>0)
+{
+<details class="sheet settings-card assistant-changes">
+    <summary>Assistant changes · @changes.Count(x=>x.State=="Pending") waiting · @changes.Count(x=>x.State=="Applied") to verify</summary>
+    <p class="hint">Review-first changes wait below. Applied changes are already saved; marking one verified records that you checked its decisions.</p>
+    <button class="text-button" disabled="@busy" @onclick="Load">Refresh changes</button>
+    @if(error!=null){<p class="form-error" role="alert">@error</p>}
+    <div class="assistant-change-list">
+    @foreach(var change in changes)
+    {
+        <article class="assistant-change" @key="change.Id" data-change-id="@change.Id">
+            <header><strong>@ActionName(change.Action)</strong><Stamp Text="@change.State" Tone="@(change.State=="Pending"?"attention":"muted")" /><small>@ConnectionName(change.ConnectionId) · @WorkspaceState.Ago(change.CreatedAt)</small></header>
+            <p>@change.SourceRequest</p>
+            <details><summary>What changed</summary><div class="compare"><div><h3>Before</h3><pre>@Pretty(change.BeforeJson)</pre></div><div><h3>@(change.State=="Pending"?"Requested":"Requested change applied")</h3><pre>@Pretty(change.State=="Pending"?change.PayloadJson:change.AfterJson)</pre></div></div></details>
+            @if(change.State=="Pending") { <button class="button small primary" disabled="@busy" @onclick="()=>Decide(change,true)">Apply change</button><button class="text-button" disabled="@busy" @onclick="()=>Decide(change,false)">Decline change</button> }
+            @if(change.State=="Applied") { <button class="button small" disabled="@busy" @onclick="()=>Decide(change,true,true)">Mark verified</button> }
+            @if(change.VerifiedAt!=null){<p class="hint">Verified @change.VerifiedAt.Value.ToLocalTime().ToString("g")</p>}
+        </article>
+    }
+    </div>
+</details>
+}
+@code {
+    private List<AssistantEdit> changes=[];
+    private Dictionary<Guid,string> connections=[];
+    private string ConnectionName(Guid id)=>connections.GetValueOrDefault(id,"Assistant");
+    private bool busy,disposed;
+    private string? error;
+    protected override async Task OnInitializedAsync(){Workspace.Changed+=Refresh;await Load();}
+    private void Refresh()=>_ = InvokeAsync(async()=>{if(!busy&&!disposed){await Load();StateHasChanged();}});
+    private async Task Load(){var actor=await Workspace.ActorAsync();changes=await Library.AssistantEditsAsync(actor);await using var scope=Scopes.CreateAsyncScope();connections=(await scope.ServiceProvider.GetRequiredService<DocumentStorage.Web.Mcp.AssistantConnections>().ListAsync(actor)).ToDictionary(x=>x.Id,x=>x.Name);}
+    private async Task Decide(AssistantEdit change,bool accept,bool verify=false)
+    {
+        if(busy)return;busy=true;error=null;
+        try {await Library.DecideAssistantEditAsync(change.Id,await Workspace.ActorAsync(),accept,verify);await Workspace.RefreshAsync();await Load();Workspace.Notify(verify?"Assistant change verified.":accept?"Assistant change applied.":"Assistant change declined.");}
+        catch(StorageException ex){error=ex.Message;}catch{error="The change could not finish. Refresh and try again.";}
+        finally{busy=false;}
+    }
+    private static string ActionName(string action)=>action switch {"details"=>"Document corrections","kind"=>"Kind and field training","sender"=>"Sender and aliases","tag"=>"Tag and aliases","example"=>"Reader teaching example","reread"=>"Diagnostic reader run","forget_example"=>"Stop using teaching example",_=>action};
+    private static string Pretty(string value)
+    {
+        try{using var document=System.Text.Json.JsonDocument.Parse(value);return System.Text.Json.JsonSerializer.Serialize(document.RootElement,new System.Text.Json.JsonSerializerOptions{WriteIndented=true});}catch{return "Unavailable";}
+    }
+    public void Dispose(){disposed=true;Workspace.Changed-=Refresh;}
+}

@@ -27,6 +27,7 @@ public sealed class InstructionRevision
 }
 public sealed class AssistantConnection
 {
+    public bool ReviewChangesFirst {get;set;} = true;
     public Guid Id { get; set; } = Guid.NewGuid();
     public string ClientId { get; set; } = "";
     public string Name { get; set; } = "";

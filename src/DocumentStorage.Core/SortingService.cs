@@ -641,6 +641,12 @@ public sealed partial class LibraryService
         var examples = (await db.FilingExamples.AsNoTracking().Where(x => x.RemovedAt == null).OrderByDescending(x => x.CreatedAt).Take(150).ToListAsync())
             .OrderByDescending(x => DocumentHints.Words(x.OriginalName + " " + x.DocumentType + " " + x.Summary).Select(w => w.ToLowerInvariant()).Count(words.Contains)).ThenByDescending(x => x.CreatedAt)
             .Take(3).Select(x => new { file_name = x.OriginalName, kind = x.DocumentType, title = x.Summary.Length > 80 ? x.Summary[..80] : x.Summary, filed_as = x.Filename }).ToArray();
+        var lessons=await db.ReaderTeachingExamples.AsNoTracking().Where(x=>x.RootId==entry.RootId&&x.RemovedAt==null&&
+            db.Entries.Any(e=>e.Id==x.EntryId&&!e.IsMissing&&e.TrashBatchId==null&&e.ContentHash==x.ContentHash)&&
+            db.Details.Any(d=>d.EntryId==x.EntryId&&d.Revision==x.DetailsRevision)).OrderByDescending(x=>x.CreatedAt).Take(100).ToListAsync();
+        var teaching=lessons.Where(x=>vocab.Kinds.Any(k=>k.Id==x.KindId))
+            .OrderByDescending(x=>DocumentHints.Words(x.TextExcerpt+" "+x.Lesson).Select(w=>w.ToLowerInvariant()).Count(words.Contains)).ThenByDescending(x=>x.CreatedAt).Take(2)
+            .Select(x=>TeachingPromptExample(x,vocab.Kinds.First(k=>k.Id==x.KindId).Name)).ToArray();
         var budget = Math.Min(SortTextBudget, settings.MaxInputCharacters);
         var text = entry.ExtractedText.Length > budget ? entry.ExtractedText[..budget] + "\n[the rest of the document is not shown]" : entry.ExtractedText;
         var json = JsonSerializer.Serialize(new
@@ -649,7 +655,7 @@ public sealed partial class LibraryService
             // The likeliest kinds say what each field is; the rest list field names only, to keep the prompt short.
             known_kinds = kinds.Select((x, i) => new { name = x.Name, description = x.Description.Length > 160 ? x.Description[..160] : x.Description, fields = KindFields(x),
                 field_notes = i < 5 ? FieldGuides(x).Where(g => Described(g.Value) || g.Value.Type != "text").ToDictionary(g => g.Key, g => FieldNote(g.Key, g.Value)) : null }),
-            known_senders = senders, known_tags = tags, approved_examples = examples,
+            known_senders = senders, known_tags = tags, approved_examples = examples, teaching_examples=teaching,
             general_guidance = settings.Instructions.Length > 800 ? settings.Instructions[..800] : settings.Instructions,
             text
         });
@@ -795,7 +801,7 @@ public sealed partial class LibraryService
     }
 
     // Details on a document already in the Library, without moving it.
-    public async Task SaveDocumentDetailsAsync(Guid entryId, SortChoice choice, string actor)
+    public async Task SaveDocumentDetailsAsync(Guid entryId, SortChoice choice, string actor, int? expectedRevision=null,string? expectedContentHash=null)
     {
         Actor(actor);
         if (choice.Kind.Trim().Length == 0) throw new StorageException("Choose what kind of document this is.");
@@ -804,6 +810,11 @@ public sealed partial class LibraryService
         {
             await using var db = await factory.CreateDbContextAsync();
             var entry = await db.Entries.SingleOrDefaultAsync(x => x.Id == entryId && !x.IsFolder) ?? throw new StorageException("That document is no longer in the catalog.");
+            if(expectedRevision!=null)
+            {
+                var(current,root)=await WritableEntryAsync(db,entryId);
+                if(current.IsMissing||current.TrashBatchId!=null||(await db.Details.Where(x=>x.EntryId==entryId).Select(x=>(int?)x.Revision).SingleOrDefaultAsync()??0)!=expectedRevision||current.ContentHash!=expectedContentHash||await FingerprintAsync(root,current)!=expectedContentHash)throw new StorageException("stale_document: The proposed details no longer match the document.");
+            }
             await using var transaction = await db.Database.BeginTransactionAsync();
             await SaveDetailsCoreAsync(db, entry.Id, choice, actor, "");
             await db.SaveChangesAsync();
@@ -894,6 +905,7 @@ public sealed partial class LibraryService
             if (settings?.AutoFileEnabled != true) return false;
             var job = await db.IdentificationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == jobId);
             if (job == null || !job.Sorting || job.State != "Succeeded") return false;
+            if(job.CreatedBy.StartsWith("assistant:",StringComparison.Ordinal))return false; // Diagnostic coaching never starts automatic filing.
             if (await db.Details.AnyAsync(x => x.EntryId == job.EntryId)) return false; // A person has had a hand in it.
             card = await SortCardAsync(job.EntryId);
             if (card == null || !card.Sure || card.JobId != jobId) return false;

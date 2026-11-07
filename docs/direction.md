@@ -205,3 +205,7 @@ tools.
 2. Do invoices and purchase orders split into "to me" and "from me"? (A shop's own POs and
    invoices may already live in Beans.)
 3. Should "Everything else" go to one folder with tags, or a folder per tag?
+
+## Outside assistant verification (7 Nov 2026)
+
+Alex clarified that stronger assistants should be able to make corrections and teach the smaller reader, with visibility into the decisions rather than mandatory approval of each edit. A granted editing connection can use review-first or apply-then-verify; an explicit go-ahead can override review-first. Direct changes are metadata/training only, retain before/after and source receipts, and never grant file-moving or unattended-filing trust. See assistants-and-mcp.md.

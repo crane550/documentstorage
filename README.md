@@ -10,6 +10,8 @@ The main loop is described in [Sorting](docs/sorting.md): the reader says what a
 
 Working now:
 
+- Strong-assistant MCP coaching: inspect Inbox/reader attempts, correct metadata and field guides, teach source-bound examples, and review before applying or verify afterward.
+
 - Kinds, senders and tags (Kinds & tags page), details saved on every filed document and searchable (`kind:`, `from:`, `tag:`).
 - An approval list in the Inbox with live destinations, new folders made as needed, Enter to file, batch approval, and a Filed list with Undo.
 - Per-kind automatic filing once you switch it on, with a master switch; undoing one it filed switches its kind back to asking.

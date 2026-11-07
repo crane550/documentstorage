@@ -27,7 +27,7 @@ public sealed partial class DocumentTools
     public Task<CallToolResult> Senders(string query = "", int offset = 0, CancellationToken cancellationToken = default) => Run("senders.list", async _ =>
     {
         Page(offset); var vocab = await library.SortVocabularyAsync();
-        var all = vocab.Senders.Select(x => new { x.Id, x.Name, spellings = LibraryService.Aliases(x.AliasesJson), documents = vocab.SenderUse.GetValueOrDefault(x.Id) })
+        var all = vocab.Senders.Select(x => new { x.Id, x.Name, x.Revision, spellings = LibraryService.Aliases(x.AliasesJson), documents = vocab.SenderUse.GetValueOrDefault(x.Id) })
             .Where(x => query.Length == 0 || x.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || x.spellings.Any(a => a.Contains(query, StringComparison.OrdinalIgnoreCase))).ToList();
         var items = all.Skip(offset).Take(50).ToList();
         return new { items, total = all.Count, next_offset = offset + items.Count < all.Count ? (int?)(offset + items.Count) : null };
@@ -37,7 +37,7 @@ public sealed partial class DocumentTools
     public Task<CallToolResult> Tags(string query = "", int offset = 0, CancellationToken cancellationToken = default) => Run("tags.list", async _ =>
     {
         Page(offset); var vocab = await library.SortVocabularyAsync();
-        var all = vocab.Tags.Select(x => new { x.Id, x.Name, spellings = LibraryService.Aliases(x.AliasesJson), documents = vocab.TagUse.GetValueOrDefault(x.Id) })
+        var all = vocab.Tags.Select(x => new { x.Id, x.Name, x.Revision, spellings = LibraryService.Aliases(x.AliasesJson), documents = vocab.TagUse.GetValueOrDefault(x.Id) })
             .Where(x => query.Length == 0 || x.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || x.spellings.Any(a => a.Contains(query, StringComparison.OrdinalIgnoreCase))).ToList();
         var items = all.Skip(offset).Take(50).ToList();
         return new { items, total = all.Count, next_offset = offset + items.Count < all.Count ? (int?)(offset + items.Count) : null };
@@ -102,5 +102,5 @@ public sealed partial class DocumentTools
     public sealed record McpFieldGuide(string type, string look_for, string[] labels);
 
     private static object Details(DocumentDetailView value) => new { value.Kind, from = value.From, date = value.Date?.ToString("yyyy-MM-dd"), value.Title, value.Tags, value.Fields,
-        follows_kind_folder = value.FollowsFolder, follows_kind_name = value.FollowsName };
+        revision=value.Revision, follows_kind_folder = value.FollowsFolder, follows_kind_name = value.FollowsName };
 }

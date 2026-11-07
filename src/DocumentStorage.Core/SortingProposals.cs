@@ -39,7 +39,7 @@ public sealed partial class LibraryService
                 if (input.Title.Length > 200 || input.Tags.Length > 12 || input.Fields.Count > 16 || input.Fields.Values.Any(x => x.Length > 300)) throw new StorageException("Keep the title short, with up to 12 tags and 16 fields.");
                 foreach (var tag in input.Tags) TagName(tag);
                 foreach (var field in input.Fields.Keys) FactKey(field);
-                return JsonSerializer.Serialize(new { document = entry.Name, path = entry.RelativePath });
+                return JsonSerializer.Serialize(new { document = entry.Name, path = entry.RelativePath, content_hash=entry.ContentHash, base_revision=await db.Details.Where(x=>x.EntryId==entry.Id).Select(x=>(int?)x.Revision).SingleOrDefaultAsync()??0 });
             }
             case "Kind":
             {
@@ -60,7 +60,7 @@ public sealed partial class LibraryService
                 if (input.KindId is Guid id && !await db.Kinds.AnyAsync(x => x.Id == id)) throw new StorageException("Kind not found.");
                 if (await db.Kinds.AnyAsync(x => x.Name.ToLower() == name.ToLower() && x.Id != input.KindId)) throw new StorageException("There is already a kind called " + name + ".");
                 var values = new SortValues(name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", input.Fields.ToDictionary(x => x, x => x.Replace('_', ' ')));
-                return JsonSerializer.Serialize(new { example = string.Join('/', SortPatterns.Folder(input.FolderPattern, values).Append(SortPatterns.Name(input.NamePattern, values, "scan.pdf"))) });
+                return JsonSerializer.Serialize(new { base_revision=input.KindId==null?0:await db.Kinds.Where(x=>x.Id==input.KindId).Select(x=>x.Revision).SingleAsync(), example = string.Join('/', SortPatterns.Folder(input.FolderPattern, values).Append(SortPatterns.Name(input.NamePattern, values, "scan.pdf"))) });
             }
             case "Merge":
             {
@@ -117,6 +117,7 @@ public sealed partial class LibraryService
             }
             await CheckCallerAsync(db, new(actor, proposal.ConnectionId), ProposalScope(proposal.Kind));
             if (proposal.ExpiresAt <= time.GetUtcNow()) throw new StorageException("This proposal expired. Ask for a new one.");
+            if((await AssistantContextLockedAsync(db)).Hash!=proposal.ContextHash)throw new StorageException("stale_context: Sorting configuration changed. Ask for a refreshed proposal.");
             proposal.State = "Applying"; proposal.Revision++;
             await db.SaveChangesAsync();
         }
@@ -151,7 +152,8 @@ public sealed partial class LibraryService
             case "Details":
             {
                 var input = JsonSerializer.Deserialize<DetailsProposal>(proposal.PayloadJson)!;
-                await SaveDocumentDetailsAsync(input.DocumentId, new(input.Kind, input.From, ProposalDate(input.Date), input.Title, input.Tags, input.Fields), actor);
+                using var basis=JsonDocument.Parse(proposal.ResultJson);
+                await SaveDocumentDetailsAsync(input.DocumentId, new(input.Kind, input.From, ProposalDate(input.Date), input.Title, input.Tags, input.Fields), actor, basis.RootElement.GetProperty("base_revision").GetInt32(),basis.RootElement.GetProperty("content_hash").GetString());
                 return new { document_id = input.DocumentId };
             }
             case "Kind":
@@ -160,7 +162,7 @@ public sealed partial class LibraryService
                 DocumentKind? existing = null;
                 if (input.KindId is Guid kindId) { await using var db = await factory.CreateDbContextAsync(); existing = await db.Kinds.AsNoTracking().SingleOrDefaultAsync(x => x.Id == kindId) ?? throw new StorageException("Kind not found."); }
                 // An assistant never changes whether a kind files itself.
-                var saved = await SaveKindAsync(new() { Id = existing?.Id ?? Guid.Empty, Revision = existing?.Revision ?? 0, Name = input.Name, Description = input.Description,
+                var saved = await SaveKindAsync(new() { Id = existing?.Id ?? Guid.Empty, Revision = JsonDocument.Parse(proposal.ResultJson).RootElement.GetProperty("base_revision").GetInt32(), Name = input.Name, Description = input.Description,
                     FolderPattern = input.FolderPattern, NamePattern = input.NamePattern, FieldsJson = JsonSerializer.Serialize(input.Fields), AutoFile = existing?.AutoFile ?? false,
                     FieldGuideJson = input.Guides != null ? JsonSerializer.Serialize(input.Guides) : existing?.FieldGuideJson ?? "{}" }, actor);
                 return new { kind_id = saved.Id, documents_to_move = (await RefilePlanAsync(kindId: saved.Id)).Count(x => x.Problem == null) };
@@ -175,7 +177,14 @@ public sealed partial class LibraryService
             {
                 var input = JsonSerializer.Deserialize<RefileProposal>(proposal.PayloadJson)!;
                 var items = new List<RefileItem>();
-                foreach (var id in input.DocumentIds.Distinct()) if ((await RefilePlanAsync(entryId: id)).FirstOrDefault() is { Problem: null } item) items.Add(item);
+                using var preview=JsonDocument.Parse(proposal.ResultJson);
+                foreach (var id in input.DocumentIds.Distinct())
+                {
+                    var item=(await RefilePlanAsync(entryId:id)).FirstOrDefault();
+                    var shown=preview.RootElement.EnumerateArray().FirstOrDefault(x=>x.GetProperty("document_id").GetGuid()==id);
+                    if(item==null||item.Problem!=null||shown.ValueKind!=JsonValueKind.Object||shown.GetProperty("from").GetString()!=item.FromPath||shown.GetProperty("to").GetString()!=item.ToPath)throw new StorageException("stale_refile: The shown move changed. Request a new proposal.");
+                    items.Add(item);
+                }
                 var outcome = await RefileManyAsync(items, actor);
                 return new { moved = outcome.Moved, failed = outcome.Failed };
             }

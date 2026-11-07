@@ -30,6 +30,7 @@ public sealed class WorkspaceState(LibraryService library, AuthenticationStatePr
         {
             Overview = await library.OverviewAsync();
             PendingProposals = (await library.AssistantChangesAsync(await ActorAsync())).Proposals.Count(x => x.State == "Pending");
+            PendingProposals += await library.PendingAssistantEditsAsync(await ActorAsync());
             ReaderEnabled = (await library.IdentificationOverviewAsync()).Settings.Enabled;
             Loaded = true;
         }

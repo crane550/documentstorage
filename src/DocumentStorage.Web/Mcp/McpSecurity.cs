@@ -87,6 +87,7 @@ public sealed class AssistantConnections(IOpenIddictApplicationManager applicati
         if (name.Length is 0 or > 80 || actor.Length is 0 or > 256 || redirects.Length is 0 or > 5 || scopes.Length > LibraryService.AssistantScopes.Length || !scopes.Contains("catalog.read") || scopes.Any(x => !LibraryService.AssistantScopes.Contains(x)))
             throw new StorageException("Choose a name, 1–5 callback URLs and allowed permissions, including catalog.read.");
         if (scopes.Contains("filing.execute") && !scopes.Contains("documents.read")) throw new StorageException("Filing permission also requires document-read permission for reviewing the preview.");
+        if(scopes.Contains("sorting.manage")&&!scopes.Contains("documents.read"))throw new StorageException("Direct corrections and training also require document-read permission.");
         var uris = new List<Uri>();
         foreach (var redirect in redirects)
         {

@@ -25,6 +25,7 @@
                     <label class="check"><input type="checkbox" @bind="proposeInstructions" /><span>Suggest guidance for you to review</span></label>
                     <label class="check"><input type="checkbox" @bind="proposeRules" /><span>Suggest rules for you to review</span></label>
                     <label class="check"><input type="checkbox" @bind="proposeSorting" /><span>Suggest document details, kinds, merges and tidy-ups for you to review</span></label>
+                    <label class="check"><input type="checkbox" @bind="manageSorting" /><span>Apply document corrections and reader training directly (no file moves or automatic-filing trust changes)</span></label>
                     <label class="check"><input type="checkbox" @bind="execute" /><span>File documents you approve one at a time</span></label>
                 </fieldset>
                 <details class="advanced"><summary>Desktop client options</summary><label class="check"><input type="checkbox" @bind="publicClient" /><span>Public client with PKCE and no client secret</span></label><p class="hint">Leave this off when your client asks for a client ID and secret.</p></details>
@@ -49,12 +50,17 @@
     </section>
 
     <div class="settings-side">
+        <AssistantChangeList />
         <section class="sheet settings-card" aria-labelledby="assistant-connections">
             <h2 id="assistant-connections">Connections</h2>
             @foreach (var connection in connections)
             {
                 <div class="connection-row @(connection.RevokedAt == null ? "" : "revoked")" @key="connection.Id">
                     <div><strong>@connection.Name</strong><small class="mono">@connection.ClientId</small><small>@string.Join(" · ", (JsonSerializer.Deserialize<string[]>(connection.ScopesJson) ?? []).Select(ScopeName))</small></div>
+                    @if(connection.RevokedAt==null && (JsonSerializer.Deserialize<string[]>(connection.ScopesJson)??[]).Contains("sorting.manage"))
+                    {
+                        <label>Change handling<select aria-label="@($"Change handling for {connection.Name}")" value="@(connection.ReviewChangesFirst?"review":"apply")" disabled="@busy" @onchange="e=>ReviewMode(connection,e)"><option value="review">Review before applying</option><option value="apply">Apply, then verify</option></select></label>
+                    }
                     @if (connection.RevokedAt == null) { <button class="button small danger-text" disabled="@busy" @onclick="() => Revoke(connection.Id)">Revoke connection</button> } else { <Stamp Text="Revoked" Tone="muted" /> }
                 </div>
             }
@@ -81,13 +87,13 @@
 
 @code {
     private string name = "", callbacks = "";
-    private bool readDocuments, proposeInstructions = true, proposeRules = true, proposeSorting = true, execute, publicClient, busy;
+    private bool readDocuments, proposeInstructions = true, proposeRules = true, proposeSorting = true, execute, manageSorting, publicClient, busy;
     private RegisteredAssistant? registered;
     private List<AssistantConnection> connections = [];
     private AssistantPage changes = new([], []);
     private AssistantProposal? reviewing;
     private string ConnectionName(Guid? id) => id == null ? "This workspace" : connections.FirstOrDefault(x => x.Id == id)?.Name ?? "Assistant";
-    private static string ScopeName(string scope) => scope switch { "catalog.read" => "folders", "documents.read" => "document text", "instructions.propose" => "guidance", "rules.propose" => "rules", "filing.execute" => "approved filing", "sorting.propose" => "sorting", _ => scope };
+    private static string ScopeName(string scope) => scope switch { "catalog.read" => "folders", "documents.read" => "document text", "instructions.propose" => "guidance", "rules.propose" => "rules", "filing.execute" => "approved filing", "sorting.propose" => "sorting proposals", "sorting.manage" => "direct corrections and training", _ => scope };
     protected override async Task OnInitializedAsync() => await Load();
     private async Task Load()
     {
@@ -96,10 +102,11 @@
         changes = await Library.AssistantChangesAsync(actor);
     }
     private async Task Refresh() => await Run(Load);
+    private Task ReviewMode(AssistantConnection connection,ChangeEventArgs value)=>Run(async()=>{await Library.SetAssistantReviewModeAsync(connection.Id,value.Value?.ToString()=="review",await Workspace.ActorAsync());await Load();Workspace.Notify("Assistant change handling updated.");});
     private async Task Register() => await Run(async () =>
     {
         var permissions = new List<string> { "catalog.read" };
-        if (readDocuments || execute) permissions.Add("documents.read"); if (proposeInstructions) permissions.Add("instructions.propose"); if (proposeRules) permissions.Add("rules.propose"); if (proposeSorting) permissions.Add("sorting.propose"); if (execute) permissions.Add("filing.execute");
+        if (readDocuments || execute || manageSorting) permissions.Add("documents.read"); if (proposeInstructions) permissions.Add("instructions.propose"); if (proposeRules) permissions.Add("rules.propose"); if (proposeSorting) permissions.Add("sorting.propose"); if (execute) permissions.Add("filing.execute"); if(manageSorting) permissions.Add("sorting.manage");
         await using var scope = Scopes.CreateAsyncScope();
         registered = await scope.ServiceProvider.GetRequiredService<AssistantConnections>().CreateAsync(name, callbacks.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), permissions.ToArray(), publicClient, await Workspace.ActorAsync());
         name = callbacks = ""; await Load();
