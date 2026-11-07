@@ -112,6 +112,12 @@ override, and Approve & file. **Enter** files it and opens the next; **J/K** mov
 (`wwwroot/sort-keys.js` only clicks buttons Blazor rendered). Tick several, or **Approve N sure**,
 to file as suggested.
 
+Under the folder, **Earlier ones went to** offers up to three folders from history
+(`FolderSuggestionsAsync`): where earlier documents of the same kind and sender are now (so a hand
+move counts), then the same kind, then the same sender, busiest first. Inbox folders and the root
+never appear. When the planned folder is already the top one, the slip says so instead ("Same
+folder as 3 earlier ones"). Clicking a chip chooses that folder for this document only.
+
 `FileSortedAsync` checks the bytes against the hash the card showed, plans again under the writer,
 records an `OrganizationFiling` carrying the details (`DetailsJson`) and moves through the
 existing journal (`Kind = "Organize"`). Missing folders along the path are created in the same
@@ -124,6 +130,10 @@ sender and tags, the kind's record, a learned spelling and the remembered exampl
 - **Filed** lists recent filings with Undo. Undo moves the document back to the inbox it came from
   (the details stay, so the card returns filled in), forgets its example, resets the kind's run,
   and if the filing was automatic switches that kind back to asking first.
+- **Back to inbox** on any document in the Library (`ReturnToInboxAsync`) is the same undo when
+  the document is still where Stash filed it. Otherwise (moved by hand, filed before sorting, or
+  its inbox is gone) it moves the file through the ordinary journaled move into this storage's
+  shallowest inbox folder. Either way the Inbox opens on it.
 - Each kind's record: approved, corrected (kind, sender, date, folder or name changed), and right
   in a row. After 10 in a row the Kinds page suggests letting it file itself.
 - **File without asking** is per kind and yours to switch; a master switch on the Kinds page

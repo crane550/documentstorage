@@ -131,6 +131,20 @@
                         @foreach (var part in plan.NewFolders) { <span class="path-sep">/</span><span class="path-part path-new" title="A new folder">@part</span> }
                     </p>
                     @if (plan.NewFolders.Length > 0) { <p class="hint where-note">Makes @(plan.NewFolders.Length == 1 ? "a new folder" : $"{plan.NewFolders.Length} new folders") (dashed).</p> }
+                    @if (SameAsEarlier is { } same) { <p class="hint where-note history-same"><Icon Name="check" Size="13" />Same folder as @same.Count earlier @(same.Count == 1 ? "one" : "ones") (@same.Reason).</p> }
+                }
+                @* Where earlier documents like this one are now: one click files this one there too. *@
+                @if (OtherSuggestions.Count > 0)
+                {
+                    <div class="folder-history" aria-label="Where earlier ones went">
+                        <span class="slip-label">Earlier ones went to</span>
+                        @foreach (var suggestion in OtherSuggestions)
+                        {
+                            <button type="button" class="history-chip" @key="suggestion.Path" title="@($"{suggestion.Count} {suggestion.Reason} {(suggestion.Count == 1 ? "is" : "are")} here")" @onclick="() => PickFolder(suggestion.Path)">
+                                <Icon Name="folder" Size="13" /><span>@suggestion.Path</span><small>@suggestion.Count</small>
+                            </button>
+                        }
+                    </div>
                 }
                 @if (FolderMode == "pick")
                 {
@@ -227,6 +241,20 @@
     private int planVersion;
 
     private bool pickingFolder, customName;
+    private List<FolderSuggestion> suggestions = [];
+    private string? suggestionsKey;
+    private FolderSuggestion? SameAsEarlier => plan?.Problem == null && plan != null ? suggestions.FirstOrDefault(x => SamePath(x.Path, plan.FolderPath)) : null;
+    private List<FolderSuggestion> OtherSuggestions => suggestions.Where(x => plan == null || !SamePath(x.Path, plan.FolderPath)).ToList();
+    private static bool SamePath(string a, string b) => string.Equals(a.Trim('/'), b.Trim('/'), StringComparison.OrdinalIgnoreCase);
+    // Refreshed when the kind or sender changes, the two things that say where similar documents went.
+    private async Task LoadSuggestions()
+    {
+        var key = Card.Document.Id + "|" + kind.Trim().ToLowerInvariant() + "|" + from.Trim().ToLowerInvariant();
+        if (key == suggestionsKey) return;
+        suggestionsKey = key;
+        try { var found = await Library.FolderSuggestionsAsync(Card.Document.Id, kind.Trim(), from.Trim()); if (suggestionsKey == key) suggestions = found; }
+        catch (Exception ex) when (ex is StorageException or InvalidOperationException) { suggestions = []; Logger.LogWarning("Folder suggestions failed: {Kind}", ex.GetType().Name); }
+    }
     private CancellationTokenSource? typingPause;
     private string FolderMode => pickingFolder || folderOverride.Trim().Length > 0 ? "pick" : "built";
     private string NameMode => customName || nameOverride.Trim().Length > 0 ? "custom" : keepName ? "original" : "built";
@@ -273,7 +301,7 @@
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
         folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; edited = false; plan = Card.Plan;
         draftKind = "\u0000"; SyncDraft();
-        await Task.CompletedTask;
+        await LoadSuggestions();
     }
 
     private SortChoice Choice() => new(kind.Trim(), from.Trim(), date, title.Trim(), tags.ToArray(),
@@ -309,6 +337,7 @@
             if (version == planVersion) plan = next;
         }
         catch (StorageException ex) { if (version == planVersion) plan = new("", [], Card.Document.Name, false, false, [], ex.Message); }
+        await LoadSuggestions();
     }
     private Task PickKind(string name) { kind = name; return Changed(); }
     // Typing replans after a short pause, so the folder and name follow along without a request per key.

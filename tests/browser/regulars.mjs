@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath } from './ui.mjs';
+import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, fileRow } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5250';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
@@ -80,6 +80,7 @@ try {
     await check(page.locator('.sort-reader').textContent().then(t => t.includes('Filled in from the last 3 bank statements from Willow Savings, no reading needed')), 'the fourth fills in from memory');
     await check(page.locator('[data-sort-name]').textContent().then(t => t.includes('2026-04 Willow Savings statement 1234.txt')), 'memory picks the date and account the same way as before');
     await check(Promise.resolve(reads === 3), 'no model reading is spent on it');
+    await check(page.locator('.history-same').textContent().then(t => t.includes('Same folder as 3 earlier ones')), 'the slip says the folder is where the last three went');
     await page.screenshot({ path: path.join(shots, 'regulars-memory.png') });
     await page.locator('.sort-slip h2').click(); await page.keyboard.press('Enter'); await check(gone(4), 'Enter files it');
     await arrive(5); await approveWithEnter(5);
@@ -105,6 +106,15 @@ try {
     await check(row.locator('input[type=checkbox]').isChecked(), 'the Regulars tab shows it filing itself');
     await check(row.textContent().then(t => t.includes('6 filed')), 'the confirmation counts toward its record');
     await page.screenshot({ path: path.join(shots, 'regulars-tab.png'), fullPage: true });
+
+    // Something wrong after all: send it back from the Library, and it returns to the inbox filled in.
+    await page.goto(base + '/library?q=' + encodeURIComponent('2026-06 Willow')); await ready(page);
+    await fileRow(page, '2026-06 Willow Savings statement 1234.txt').click();
+    await page.getByRole('button', { name: 'Back to inbox', exact: true }).click();
+    await page.waitForURL(url => url.pathname === '/' && url.searchParams.has('open'));
+    await page.locator('.sort-slip h2').filter({ hasText: name(6) }).waitFor();
+    await check(inInbox(6), 'Back to inbox moves the file back into the inbox folder');
+    await check(page.locator('#sort-kind').inputValue().then(v => v === 'Bank statement'), 'it comes back with its details filled in, ready to fix');
     await check(errors.length === 0 && !wireError, 'no page errors');
     console.log(`\n${checks} regulars browser checks passed.`);
 } catch (error) {

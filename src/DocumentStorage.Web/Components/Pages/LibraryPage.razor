@@ -96,6 +96,7 @@ else
                 <div class="doc-actions">
                     <a class="button" href="@($"/ask?scope={selected.Id}")"><Icon Name="spark" Size="15" />Ask about this document</a>
                     <button class="button" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("move", selected)'><Icon Name="edit" Size="15" />Rename or move</button>
+                    @if (CanReturn(selected)) { <button class="button" disabled="@(busy || !Workspace.IsWritable(selected.RootId))" title="Something wrong? Send it back to be filed again" @onclick="() => BackToInbox(selected)"><Icon Name="inbox" Size="15" />Back to inbox</button> }
                     <button class="icon-button danger" title="Move to trash" aria-label="Move selected item to trash" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("trash", selected)'><Icon Name="trash" Size="17" /></button>
                 </div>
                 <details class="review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(20000, selected.ExtractedText.Length)] : "No text was found. A scanned PDF needs its OCR text layer.")</pre></details>
@@ -225,6 +226,17 @@ else
         if (selected != null) selected = await Library.EntryAsync(selected.Id);
         if (current != null) current = Workspace.Folder(current.Id) ?? current;
     }
+    // Offered for a document outside the inbox, on storage that has one.
+    private bool CanReturn(CatalogEntry entry) => Workspace.InboxFolders.Any(x => x.RootId == entry.RootId)
+        && !(Workspace.Folder(entry.ParentId) is { } parent && Workspace.InInbox(parent));
+    private async Task BackToInbox(CatalogEntry entry) => await Run(async () =>
+    {
+        var message = await Library.ReturnToInboxAsync(entry.Id, await Workspace.ActorAsync());
+        await Workspace.RefreshAsync();
+        Workspace.Notify(message + " Fix it and approve when ready.");
+        // Straight to it, so whatever was wrong can be put right now.
+        Navigation.NavigateTo($"/?open={entry.Id}");
+    });
     private async Task ToggleInbox() => await Run(async () =>
     {
         if (current == null) return;
