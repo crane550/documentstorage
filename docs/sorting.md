@@ -39,10 +39,49 @@ Each kind carries fields (`DocumentKind.FieldsJson`, keys like `statement_end_da
   files by year there: `{statement_end_date:yyyy}`).
 - **Edit kind…** opens the kind's whole form without leaving the Inbox.
 
-A field whose name has the word "date" gets a date picker and is stored as `yyyy-MM-dd`
-(`NormalizeFieldValue`; the reader is asked for that format and a written-out date is converted),
-so patterns can format it: `{statement_end_date:yyyy-MM}`. A brand-new kind has no Keep buttons:
-its fields travel with the document and become the kind's fields when it is approved.
+A brand-new kind has no Keep buttons: its fields travel with the document and become the kind's
+fields when it is approved.
+
+## How each field is found
+
+Each kept field has a **guide** (`FieldGuide`, in `DocumentKind.FieldGuideJson`, keyed by field):
+a **type** (text, date, money, number, ID number), **what to look for** (one line the reader is
+told) and the **words printed beside it** ("Beginning balance", "Previous balance"). Until someone
+says, the type comes from the name (`DefaultFieldType`: *date* → date, *balance*/*total*/*amount* →
+money, *number*/*ending* → ID number). Values are kept in one form per type (`NormalizeFieldValue`):
+dates as `yyyy-MM-dd` (so patterns can format them: `{statement_end_date:yyyy-MM}`), money as
+`1234.56`, a masked number by the digits it shows (`****5678` → `5678`).
+
+- **Matching** (`ValueFound`): a value counts when it's in the text however it's written: `$1,204.33`
+  for 1204.33, May 31, 2025 for 2025-05-31, `****5678` for XXXX5678, any capitals or spacing. A value
+  the reader gave that still isn't in the text is left empty, and the slip says so ("Left Account
+  type empty: the reader said …").
+- **Printed words** (`LabelFind`): when a card is built, an empty field whose guide has printed words
+  is filled from the rest of that line (or the next), read as the field's type, with source *text*.
+  No model is asked. This never makes a card sure: a sure card already has its pattern fields.
+- **The reading prompt** gives the five likeliest kinds' guides as `field_notes`; it shows 6,000
+  characters of text and takes up to 12 fields.
+- **Describe** (the note button on a kept field) edits the guide in place (`SetFieldGuideAsync`).
+  The kind form lists every field's guide under **How each field is found**.
+
+## Asking the reader from the slip
+
+Both share the model slot with the queue (`modelWork`), run one at a time, and are checked against
+the same text and reader settings afterwards (`AskReaderAsync`); a change refuses the answer.
+**Stop** cancels.
+
+- **Find N empty with AI** (`FindFieldsAsync`) tries each empty field's printed words first, then
+  asks the reader only for the rest (`FindFieldsAsync` on the client: the kind, sender and date as
+  context, each field with its type and guide, and up to 12,000 characters: the start, then the
+  passages around the fields' printed words, `FieldExcerpt`). Values are checked as above and fill
+  only fields still empty; nothing is saved until you approve.
+- **Set up fields with AI** (`DraftKindAsync`) asks which fields this kind should carry, with each
+  one's type, what to look for, printed words and this document's value. The review dialog
+  (`KindSetupDialog`) lists the kind's own fields first (a guide you wrote wins over the
+  suggestion), ticks new ones that this document shows, and offers the suggested description.
+  **Keep N fields** (`SaveKindDraftAsync`) adds the ticked fields and their guides, never removes
+  one, and fills this document's empty fields from the checked values. A kind not made yet is made
+  then, with the slip's arrangement.
 
 ## Arranging the name and folders
 
@@ -174,7 +213,8 @@ organizations), which now pre-fills an Inbox card where plain matching found not
 With catalog access: `list_kinds`, `list_senders`, `list_tags`, `find_documents` (by kind, sender,
 tag; words need document-read permission), `get_document_details`, `list_tidy_up`. With the new
 **sorting.propose** permission ("Suggest document details, kinds, merges and tidy-ups"):
-`propose_document_details`, `propose_kind`, `propose_merge`, `propose_refile`. Each is an ordinary
+`propose_document_details`, `propose_kind` (with optional `field_guides`: per field key, a type,
+`look_for` and `labels`; left out keeps the kind's own; `list_kinds` returns them), `propose_merge`, `propose_refile`. Each is an ordinary
 `AssistantProposal` (context hash, idempotency key, source request), checked with the same rules
 the pages use when proposed, and shown in the Inbox under **From your assistants** with exactly
 what it would do. Accepting runs the same services (`DecideSortingProposalAsync`: claimed as

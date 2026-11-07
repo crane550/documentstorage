@@ -13,6 +13,9 @@ public sealed class DocumentKind
     public string FolderPattern { get; set; } = "";
     public string NamePattern { get; set; } = "";
     public string FieldsJson { get; set; } = "[]";
+    // How each field is found, keyed by field: its type, a line on what to look for, and the words
+    // printed beside it. The reader is told these; code uses the words to find values on its own.
+    public string FieldGuideJson { get; set; } = "{}";
     public bool IsCatchAll { get; set; }
     // Files documents of this kind without asking, once the person has switched it on.
     public bool AutoFile { get; set; }

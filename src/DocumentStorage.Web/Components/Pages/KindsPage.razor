@@ -143,7 +143,7 @@ else
         var folder = SortPatterns.Folder(kind.FolderPattern, values);
         return string.Join("/", folder.Append(SortPatterns.Name(kind.NamePattern, values, "scan.pdf")));
     }
-    private static DocumentKind Copy(DocumentKind k) => new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
+    private static DocumentKind Copy(DocumentKind k) => new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, FieldGuideJson = k.FieldGuideJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
     private void NewKind() => editing = new() { Id = Guid.Empty, FolderPattern = LibraryService.DefaultKindFolder, NamePattern = LibraryService.DefaultKindName };
 
     private Task SaveKind(DocumentKind kind) => Run(async () => { var saved = await Library.SaveKindAsync(kind, await Workspace.ActorAsync()); editing = null; await Load();

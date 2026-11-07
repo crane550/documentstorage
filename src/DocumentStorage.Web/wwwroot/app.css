@@ -1277,3 +1277,48 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .history-chip small { flex: none; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--manila-2); color: var(--manila-ink); font: 700 10.5px/16px var(--font); text-align: center; }
 .history-chip:hover { background: #fff; border-color: var(--kraft-2); color: var(--ink); }
 .history-same { display: flex; align-items: center; gap: 4px; color: var(--green); }
+
+/* Fields on the slip: asking the reader, and how each field is found. */
+.fields-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-bottom: -4px; }
+.fields-head .slip-label { margin-right: auto; }
+.fields-head .text-button, .field-guide-actions .text-button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; font-size: 12px; }
+.fields-asking { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.field-notes { margin: 0; }
+.field-describe { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--muted); }
+.field-describe:hover:not(:disabled) { background: var(--paper-3); color: var(--ink); }
+.field-describe.on { color: var(--manila-ink); background: var(--manila); }
+.field-describe[aria-expanded=true] { background: var(--brown); color: #fff8ee; }
+.field-guide-editor { display: grid; grid-template-columns: minmax(120px, .6fr) minmax(0, 2fr); gap: 6px 10px; margin: 6px 0 4px; padding: 10px 12px; border-radius: 6px;
+    background: var(--manila); border: 1px solid var(--manila-2); }
+.field-guide-editor label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 650; color: var(--manila-ink); }
+.field-guide-editor label.wide { grid-column: span 1; }
+.field-guide-editor label:nth-child(3) { grid-column: 1 / -1; }
+.field-guide-editor input, .field-guide-editor select { min-height: 30px; height: 30px; padding: 0 8px; font-size: 13px; font-weight: 400; }
+.field-guide-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.field-guide-actions .hint { margin-right: auto; font-size: 11.5px; }
+@container slip (max-width: 520px) { .field-guide-editor { grid-template-columns: minmax(0, 1fr); } }
+
+/* Set up fields with AI: the reader's suggestions, to tick and correct. */
+.kind-setup { display: flex; flex-direction: column; gap: 10px; }
+.kind-setup-description { width: 100%; }
+.kind-setup-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.kind-setup-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
+.kind-setup-table th { padding: 7px 8px; text-align: left; font: 650 11px/1.2 var(--font); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--paper-2); border-bottom: 1px solid var(--line); }
+.kind-setup-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.kind-setup-table tr:last-child td { border-bottom: 0; }
+.kind-setup-table tr.off td:not(:first-child) { opacity: .5; }
+.kind-setup-table td:first-child { width: 30px; text-align: center; }
+.kind-setup-table td:nth-child(2) { width: 17%; }
+.kind-setup-table td:nth-child(2) small { display: block; font-size: 11px; }
+.kind-setup-table td:nth-child(3) { width: 13%; }
+.kind-setup-table td:last-child { width: 15%; overflow-wrap: anywhere; color: var(--ink-2); font-size: 12.5px; }
+.kind-setup-table input, .kind-setup-table select { width: 100%; min-height: 30px; height: 30px; padding: 0 6px; font-size: 13px; }
+
+/* The kind form's field guides. */
+.kind-guide-rows { display: flex; flex-direction: column; gap: 6px; }
+.kind-guide-row { display: grid; grid-template-columns: minmax(110px, .8fr) minmax(100px, .7fr) minmax(0, 2fr) minmax(0, 1.4fr); gap: 6px; align-items: center; }
+.kind-guide-row strong { font-size: 13px; }
+.kind-guide-row input, .kind-guide-row select { min-height: 32px; height: 32px; font-size: 13px; }
+@media (max-width: 700px) { .kind-guide-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .kind-guide-row input { grid-column: 1 / -1; } }
+.guide-list { margin: 0; padding-left: 16px; }
+.guide-list small { color: var(--muted); }

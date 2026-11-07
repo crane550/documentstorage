@@ -25,6 +25,10 @@ public interface IOllamaClient
     Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default);
     Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default)
         => Task.FromException<SortReply>(new OllamaException("This adapter does not support sorting."));
+    Task<FieldReply> FindFieldsAsync(FieldFindRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<FieldReply>(new OllamaException("This adapter does not support finding fields."));
+    Task<KindDraftReply> DraftKindAsync(KindDraftRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<KindDraftReply>(new OllamaException("This adapter does not support setting up kinds."));
     Task<GuidanceDraftResult> DraftGuidanceAsync(GuidanceDraftRequest request, CancellationToken cancellationToken = default)
         => Task.FromException<GuidanceDraftResult>(new OllamaException("This Ollama adapter does not support guidance drafting."));
 }

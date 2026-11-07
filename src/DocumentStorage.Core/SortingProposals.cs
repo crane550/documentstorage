@@ -9,7 +9,8 @@ namespace DocumentStorage.Core;
 // use. An assistant can't approve, can't switch a kind to file by itself, and can't move a file
 // except through an accepted re-file of documents whose kind's patterns already put them elsewhere.
 public sealed record DetailsProposal(Guid DocumentId, string Kind, string From, string Date, string Title, string[] Tags, Dictionary<string, string> Fields);
-public sealed record KindProposal(Guid? KindId, string Name, string Description, string FolderPattern, string NamePattern, string[] Fields);
+// Guides (how each field is found) are optional: null keeps the kind's own.
+public sealed record KindProposal(Guid? KindId, string Name, string Description, string FolderPattern, string NamePattern, string[] Fields, Dictionary<string, FieldGuide>? Guides = null);
 public sealed record MergeProposal(string What, Guid FromId, Guid IntoId);
 public sealed record RefileProposal(Guid[] DocumentIds);
 
@@ -47,6 +48,15 @@ public sealed partial class LibraryService
                 SortPatterns.ValidatePattern(input.FolderPattern, folder: true); SortPatterns.ValidatePattern(input.NamePattern, folder: false);
                 if (input.Description.Length > 400 || input.Fields.Length > 12) throw new StorageException("Keep the description under 400 characters and up to 12 fields.");
                 foreach (var field in input.Fields) FactKey(field);
+                if (input.Guides != null)
+                {
+                    if (input.Guides.Count > 12) throw new StorageException("Describe up to 12 fields.");
+                    foreach (var (key, guide) in input.Guides)
+                    {
+                        if (!input.Fields.Contains(FactKey(key))) throw new StorageException("Describe only the fields the kind carries: " + key + " isn't one of them.");
+                        if ((guide.Look?.Length ?? 0) > 240 || (guide.Labels?.Length ?? 0) > 6 || (guide.Labels ?? []).Any(x => x.Length > 40)) throw new StorageException("Keep each field's description under 240 characters, with up to 6 printed words of up to 40 characters.");
+                    }
+                }
                 if (input.KindId is Guid id && !await db.Kinds.AnyAsync(x => x.Id == id)) throw new StorageException("Kind not found.");
                 if (await db.Kinds.AnyAsync(x => x.Name.ToLower() == name.ToLower() && x.Id != input.KindId)) throw new StorageException("There is already a kind called " + name + ".");
                 var values = new SortValues(name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", input.Fields.ToDictionary(x => x, x => x.Replace('_', ' ')));
@@ -151,7 +161,8 @@ public sealed partial class LibraryService
                 if (input.KindId is Guid kindId) { await using var db = await factory.CreateDbContextAsync(); existing = await db.Kinds.AsNoTracking().SingleOrDefaultAsync(x => x.Id == kindId) ?? throw new StorageException("Kind not found."); }
                 // An assistant never changes whether a kind files itself.
                 var saved = await SaveKindAsync(new() { Id = existing?.Id ?? Guid.Empty, Revision = existing?.Revision ?? 0, Name = input.Name, Description = input.Description,
-                    FolderPattern = input.FolderPattern, NamePattern = input.NamePattern, FieldsJson = JsonSerializer.Serialize(input.Fields), AutoFile = existing?.AutoFile ?? false }, actor);
+                    FolderPattern = input.FolderPattern, NamePattern = input.NamePattern, FieldsJson = JsonSerializer.Serialize(input.Fields), AutoFile = existing?.AutoFile ?? false,
+                    FieldGuideJson = input.Guides != null ? JsonSerializer.Serialize(input.Guides) : existing?.FieldGuideJson ?? "{}" }, actor);
                 return new { kind_id = saved.Id, documents_to_move = (await RefilePlanAsync(kindId: saved.Id)).Count(x => x.Problem == null) };
             }
             case "Merge":

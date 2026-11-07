@@ -507,6 +507,10 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("FieldGuideJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("FieldsJson")
                         .IsRequired()
                         .HasColumnType("text");

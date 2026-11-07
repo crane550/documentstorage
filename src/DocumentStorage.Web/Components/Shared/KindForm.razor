@@ -6,6 +6,25 @@
         <div><label for="kind-name">Name</label><input id="kind-name" @bind="Kind.Name" @bind:event="oninput" maxlength="60" placeholder="Vehicle title" /></div>
         <div><label for="kind-fields">Fields <span class="hint">(comma-separated)</span></label><input id="kind-fields" @bind="fields" @bind:event="oninput" placeholder="Statement end date, Account number" /></div>
     </div>
+    @if (FieldNames().Length > 0)
+    {
+        <details class="advanced kind-guides" open="@AnyDescribed">
+            <summary>How each field is found</summary>
+            <p class="hint">The reader is told what to look for; the printed words let Stash find a value on its own, without the reader.</p>
+            <div class="kind-guide-rows">
+                @foreach (var key in FieldNames())
+                {
+                    var guide = Guide(key);
+                    <div class="kind-guide-row" @key="key">
+                        <strong>@LibraryService.FieldLabel(key)</strong>
+                        <select aria-label="@($"Type of {LibraryService.FieldLabel(key)}")" value="@guide.Type" @onchange='e => SetGuide(key, e.Value, "type")'>@foreach (var type in LibraryService.FieldTypes) { <option value="@type">@LibraryService.FieldTypeLabel(type)</option> }</select>
+                        <input aria-label="@($"What to look for: {LibraryService.FieldLabel(key)}")" value="@guide.Look" maxlength="240" placeholder="What it is and where it appears" @onchange='e => SetGuide(key, e.Value, "look")' />
+                        <input aria-label="@($"Printed beside {LibraryService.FieldLabel(key)}")" value="@string.Join(", ", guide.Labels)" maxlength="240" placeholder="Words printed beside it" @onchange='e => SetGuide(key, e.Value, "labels")' />
+                    </div>
+                }
+            </div>
+        </details>
+    }
     <label for="kind-description">What it covers <span class="hint">(the reader sees this)</span></label>
     <input id="kind-description" @bind="Kind.Description" maxlength="400" placeholder="Titles and registrations for cars, trucks and trailers." />
     <span class="form-label">Where its documents go</span>
@@ -29,6 +48,14 @@
     [Parameter] public EventCallback<DocumentKind> Save { get; set; }
     [Parameter] public EventCallback Cancel { get; set; }
     private string fields = "";
+    private Dictionary<string, FieldGuide> guides = [];
+    private FieldGuide Guide(string key) => guides.TryGetValue(key, out var guide) ? guide : LibraryService.DefaultGuide(key);
+    private void SetGuide(string key, object? value, string part)
+    {
+        var text = value?.ToString() ?? ""; var guide = Guide(key);
+        guides[key] = part switch { "type" => guide with { Type = text }, "look" => guide with { Look = text }, _ => guide with { Labels = LibraryService.SplitLabels(text) } };
+    }
+    private bool AnyDescribed => FieldNames().Any(x => LibraryService.Described(Guide(x)));
     private SortValues Sample => new(Kind.Name.Length == 0 ? "Kind" : Kind.Name, "Acme Co", new DateOnly(2026, 10, 14), "Example title", FieldNames().ToDictionary(x => x, x => LibraryService.IsDateField(x) ? "2026-10-31" : LibraryService.FieldLabel(x)));
     private void Arranged((string Folder, string Name) value) { Kind.FolderPattern = value.Folder; Kind.NamePattern = value.Name; }
     private Guid loaded = Guid.NewGuid();
@@ -42,6 +69,7 @@
     {
         if (loaded == Kind.Id) return;
         loaded = Kind.Id; fields = string.Join(", ", LibraryService.KindFields(Kind).Select(LibraryService.FieldLabel));
+        guides = LibraryService.ReadGuides(Kind.FieldGuideJson);
     }
     protected override void OnAfterRender(bool firstRender) { }
     protected override bool ShouldRender() { Update(); return true; }
@@ -60,6 +88,7 @@
     private async Task Submit()
     {
         Kind.FieldsJson = System.Text.Json.JsonSerializer.Serialize(FieldNames());
+        Kind.FieldGuideJson = System.Text.Json.JsonSerializer.Serialize(FieldNames().ToDictionary(x => x, Guide));
         await Save.InvokeAsync(Kind);
     }
 }

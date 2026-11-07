@@ -18,7 +18,8 @@ public sealed partial class DocumentTools
     public Task<CallToolResult> Kinds(CancellationToken cancellationToken = default) => Run("kinds.list", async _ =>
     {
         var vocab = await library.SortVocabularyAsync();
-        return new { items = vocab.Kinds.Select(x => new { x.Id, x.Name, x.Description, fields = LibraryService.KindFields(x), x.FolderPattern, x.NamePattern, x.IsCatchAll,
+        return new { items = vocab.Kinds.Select(x => new { x.Id, x.Name, x.Description, fields = LibraryService.KindFields(x),
+            field_guides = LibraryService.FieldGuides(x).ToDictionary(g => g.Key, g => new McpFieldGuide(g.Value.Type, g.Value.Look, g.Value.Labels)), x.FolderPattern, x.NamePattern, x.IsCatchAll,
             files_itself = x.AutoFile, documents = vocab.KindUse.GetValueOrDefault(x.Id), approved = x.Approved, corrected = x.Corrected, x.Revision }) };
     }, cancellationToken);
 
@@ -84,9 +85,10 @@ public sealed partial class DocumentTools
     public Task<CallToolResult> ProposeDetails(Guid document_id, string kind, string from, string date, string title, string[] tags, Dictionary<string, string> fields, string source_request, string context_hash, string idempotency_key, CancellationToken cancellationToken = default) => Run("details.propose", async caller =>
         McpContract.Proposal(await library.ProposeAssistantAsync("Details", JsonSerializer.Serialize(new DetailsProposal(document_id, kind, from, date, title, tags ?? [], fields ?? [])), context_hash, idempotency_key, caller, source_request)), cancellationToken);
 
-    [McpServerTool(Name = "propose_kind", Idempotent = true, Destructive = false, OpenWorld = false), Authorize(Policy = "sorting.propose"), Description("Propose a new kind (kind_id empty) or changes to one: name, a one-line description the local reader sees, fields, folder_pattern (folders separated by /) and name_pattern. An assistant cannot make a kind file itself. After acceptance, documents that follow the kind and now belong elsewhere show in list_tidy_up.")]
-    public Task<CallToolResult> ProposeKind(Guid? kind_id, string name, string description, string folder_pattern, string name_pattern, string[] fields, string source_request, string context_hash, string idempotency_key, CancellationToken cancellationToken = default) => Run("kind.propose", async caller =>
-        McpContract.Proposal(await library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(kind_id, name, description, folder_pattern, name_pattern, fields ?? [])), context_hash, idempotency_key, caller, source_request)), cancellationToken);
+    [McpServerTool(Name = "propose_kind", Idempotent = true, Destructive = false, OpenWorld = false), Authorize(Policy = "sorting.propose"), Description("Propose a new kind (kind_id empty) or changes to one: name, a one-line description the local reader sees, fields (keys like account_number), folder_pattern (folders separated by /) and name_pattern. field_guides optionally says, per field key, its type (text, date, money, number or id), look_for (one sentence on what the value is and where it appears, which the local reader is told) and labels (up to 6 words printed beside the value, which Stash uses to find it without a model); leave it out to keep the kind's current guides. An assistant cannot make a kind file itself. After acceptance, documents that follow the kind and now belong elsewhere show in list_tidy_up.")]
+    public Task<CallToolResult> ProposeKind(Guid? kind_id, string name, string description, string folder_pattern, string name_pattern, string[] fields, string source_request, string context_hash, string idempotency_key, Dictionary<string, McpFieldGuide>? field_guides = null, CancellationToken cancellationToken = default) => Run("kind.propose", async caller =>
+        McpContract.Proposal(await library.ProposeAssistantAsync("Kind", JsonSerializer.Serialize(new KindProposal(kind_id, name, description, folder_pattern, name_pattern, fields ?? [],
+            field_guides?.ToDictionary(x => x.Key, x => new FieldGuide(x.Value.type ?? "", x.Value.look_for ?? "", x.Value.labels ?? [])))), context_hash, idempotency_key, caller, source_request)), cancellationToken);
 
     [McpServerTool(Name = "propose_merge", Idempotent = true, Destructive = false, OpenWorld = false), Authorize(Policy = "sorting.propose"), Description("Propose merging two senders or two tags (what = sender or tag). The 'into' one keeps its name; the other's name becomes one of its spellings and its documents move over.")]
     public Task<CallToolResult> ProposeMerge(string what, Guid from_id, Guid into_id, string source_request, string context_hash, string idempotency_key, CancellationToken cancellationToken = default) => Run("merge.propose", async caller =>
@@ -95,6 +97,9 @@ public sealed partial class DocumentTools
     [McpServerTool(Name = "propose_refile", Idempotent = true, Destructive = false, OpenWorld = false), Authorize(Policy = "sorting.propose"), Description("Propose moving up to 100 documents listed by list_tidy_up to where their kind's patterns now put them. Each move is shown to the person; accepting moves them through the recoverable journal, never overwriting.")]
     public Task<CallToolResult> ProposeRefile(Guid[] document_ids, string source_request, string context_hash, string idempotency_key, CancellationToken cancellationToken = default) => Run("refile.propose", async caller =>
         McpContract.Proposal(await library.ProposeAssistantAsync("Refile", JsonSerializer.Serialize(new RefileProposal(document_ids ?? [])), context_hash, idempotency_key, caller, source_request)), cancellationToken);
+
+    // How a field is found, as assistants read and write it.
+    public sealed record McpFieldGuide(string type, string look_for, string[] labels);
 
     private static object Details(DocumentDetailView value) => new { value.Kind, from = value.From, date = value.Date?.ToString("yyyy-MM-dd"), value.Title, value.Tags, value.Fields,
         follows_kind_folder = value.FollowsFolder, follows_kind_name = value.FollowsName };

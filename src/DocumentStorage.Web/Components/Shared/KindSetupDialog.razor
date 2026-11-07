@@ -1,0 +1,88 @@
+@*
+    What the reader suggests a kind should carry, read from one document: each field with its type,
+    what to look for, the words printed beside it, and this document's value. Nothing is saved until
+    you keep it; fields already on the kind stay, whether ticked or not.
+*@
+<form class="kind-setup" @onsubmit="Submit" @onsubmit:preventDefault>
+    <p class="hint">Read from this document. Tick the fields every @Draft.Kind should carry and change anything that's off; the reader and Stash use these on every @Draft.Kind from now on. Nothing is saved until you keep them.</p>
+    @if (Draft.Description.Length > 0)
+    {
+        <label class="check"><input type="checkbox" @bind="useDescription" /> @(KindExists ? "Use this description for the kind" : "Describe the kind as")</label>
+        <input class="kind-setup-description" @bind="description" maxlength="400" disabled="@(!useDescription)" aria-label="What the kind covers" />
+    }
+    <div class="kind-setup-scroll">
+        <table class="kind-setup-table">
+            <thead><tr><th scope="col"><span class="sr-only">Keep</span></th><th scope="col">Field</th><th scope="col">Type</th><th scope="col">What to look for</th><th scope="col">Printed beside it</th><th scope="col">In this document</th></tr></thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr @key="row.Key" class="@(row.Keep ? "" : "off")">
+                        <td><input type="checkbox" checked="@row.Keep" disabled="@row.Existing" aria-label="@($"Keep {row.Label}")" @onchange="e => row.Keep = e.Value is true" /></td>
+                        <td>
+                            @if (row.Existing) { <strong>@row.Label</strong><small class="hint">on the kind</small> }
+                            else { <input @bind="row.Label" maxlength="60" aria-label="Field name" /> }
+                        </td>
+                        <td><select @bind="row.Type" aria-label="@($"Type of {row.Label}")">@foreach (var type in LibraryService.FieldTypes) { <option value="@type">@LibraryService.FieldTypeLabel(type)</option> }</select></td>
+                        <td><input @bind="row.Look" maxlength="240" aria-label="@($"What to look for: {row.Label}")" /></td>
+                        <td><input @bind="row.Labels" maxlength="240" aria-label="@($"Printed beside {row.Label}")" /></td>
+                        <td class="mono" title="@row.Quote">@(row.Example.Length > 0 ? row.Example : "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Kept > LibraryService.KindFieldLimit) { <p class="destination-problem"><Icon Name="alert" Size="14" />A kind can carry up to @LibraryService.KindFieldLimit fields. Untick @(Kept - LibraryService.KindFieldLimit).</p> }
+    @if (error != null) { <p class="destination-problem"><Icon Name="alert" Size="14" />@error</p> }
+    <div class="form-actions">
+        <button type="submit" class="button primary" data-keep-fields disabled="@(Busy || Kept == 0 || Kept > LibraryService.KindFieldLimit)"><Icon Name="check" Size="15" />Keep @Kept @(Kept == 1 ? "field" : "fields")</button>
+        <button type="button" class="text-button" @onclick="Cancel">Cancel</button>
+    </div>
+</form>
+
+@code {
+    [Parameter, EditorRequired] public KindDraft Draft { get; set; } = default!;
+    [Parameter] public bool KindExists { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<(string? Description, List<FieldDraft> Fields)> Save { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+
+    private sealed class Row
+    {
+        public string Key = "", Label = "", Type = "text", Look = "", Labels = "", Example = "", Quote = "";
+        public bool Keep, Existing;
+    }
+    private List<Row> rows = [];
+    private KindDraft? loaded;
+    private bool useDescription;
+    private string description = "";
+    private string? error;
+    private int Kept => rows.Count(x => x.Keep);
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(loaded, Draft)) return;
+        loaded = Draft; description = Draft.Description; useDescription = !KindExists;
+        // Fields already on the kind stay; new ones start ticked when this document shows a value for them.
+        rows = Draft.Fields.Select(x => new Row
+        {
+            Key = x.Key, Label = LibraryService.FieldLabel(x.Key), Type = x.Guide.Type, Look = x.Guide.Look, Labels = string.Join(", ", x.Guide.Labels),
+            Example = x.Example, Quote = x.Quote, Existing = x.Existing, Keep = x.Existing || x.Example.Length > 0
+        }).ToList();
+        while (Kept > LibraryService.KindFieldLimit && rows.LastOrDefault(x => x.Keep && !x.Existing) is { } extra) extra.Keep = false;
+    }
+
+    private async Task Submit()
+    {
+        error = null;
+        var chosen = new List<FieldDraft>();
+        foreach (var row in rows.Where(x => x.Keep))
+        {
+            string key;
+            try { key = row.Existing ? row.Key : LibraryService.FieldKey(row.Label); }
+            catch (StorageException ex) { error = ex.Message; return; }
+            if (chosen.Any(x => x.Key == key)) { error = $"Two fields are both called {LibraryService.FieldLabel(key)}. Rename one."; return; }
+            chosen.Add(new(key, LibraryService.CleanGuide(key, new(row.Type, row.Look, LibraryService.SplitLabels(row.Labels))), row.Example, row.Quote, row.Existing));
+        }
+        await Save.InvokeAsync((useDescription && description.Trim().Length > 0 ? description.Trim() : null, chosen));
+    }
+}

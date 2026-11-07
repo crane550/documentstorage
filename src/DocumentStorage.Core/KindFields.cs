@@ -72,7 +72,7 @@ public sealed partial class LibraryService
                 if (fields.Count >= KindFieldLimit) throw new StorageException($"A kind can carry up to {KindFieldLimit} fields.");
                 fields.Add(key); kind.FieldsJson = JsonSerializer.Serialize(fields);
             }
-            var token = "{" + key + (folder && IsDateField(key) ? ":yyyy" : "") + "}";
+            var token = "{" + key + (folder && GuideFor(kind, key).Type == "date" ? ":yyyy" : "") + "}";
             if (folder)
             {
                 var segments = kind.FolderPattern.Split('/', StringSplitOptions.RemoveEmptyEntries).ToList();

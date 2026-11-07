@@ -44,7 +44,11 @@
             @if (kind.Description.Length > 0) { <div><dt>Covers</dt><dd>@kind.Description</dd></div> }
             <div><dt>Folder</dt><dd class="mono">@kind.FolderPattern</dd></div>
             <div><dt>Name</dt><dd class="mono">@kind.NamePattern</dd></div>
-            @if (kind.Fields.Length > 0) { <div><dt>Fields</dt><dd>@string.Join(", ", kind.Fields)</dd></div> }
+            @if (kind.Fields.Length > 0) { <div><dt>Fields</dt><dd>@string.Join(", ", kind.Fields.Select(LibraryService.FieldLabel))</dd></div> }
+            @if (kind.Guides is { Count: > 0 } guides)
+            {
+                <div><dt>How to find them</dt><dd><ul class="guide-list">@foreach (var (key, guide) in guides) { <li><strong>@LibraryService.FieldLabel(key)</strong> (@LibraryService.FieldTypeLabel(LibraryService.CleanGuide(key, guide).Type).ToLowerInvariant())@(guide.Look?.Length > 0 ? ": " + guide.Look : "")@if (guide.Labels?.Length > 0) { <small> Printed as @string.Join(", ", guide.Labels)</small> }</li> }</ul></dd></div>
+            }
             <div><dt>Example</dt><dd class="mono">@Summary("example")</dd></div>
         </dl>
         <p class="hint">Accepting saves the kind. It doesn't change whether the kind files itself, and moves nothing: documents that now belong elsewhere show under Tidy up.</p>

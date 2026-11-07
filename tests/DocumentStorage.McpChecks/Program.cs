@@ -203,6 +203,18 @@ try
     var newKind = await client.CallToolAsync("propose_kind", new Dictionary<string,object?> { ["kind_id"]=null, ["name"]="Recipe", ["description"]="Cooking recipes.", ["folder_pattern"]="Recipes", ["name_pattern"]="{title}", ["fields"]=Array.Empty<string>(), ["source_request"]="synthetic", ["context_hash"]=sortingHash, ["idempotency_key"]="sorting-kind-recipe-01" });
     Check(newKind.IsError != true && newKind.StructuredContent!.Value.GetProperty("data").GetProperty("state").GetString() == "Pending"
         && !(await app.Services.GetRequiredService<LibraryService>().SortVocabularyAsync()).Kinds.Any(x => x.Name == "Recipe"), "a kind proposal waits for the person and changes nothing yet");
+    Check(kinds.StructuredContent!.Value.GetProperty("data").GetProperty("items").EnumerateArray().Single(x => x.GetProperty("name").GetString() == "Bank statement")
+        .GetProperty("field_guides").GetProperty("account_ending").GetProperty("type").GetString() == "id", "MCP lists how each of a kind's fields is found");
+    var strayGuide = await client.CallToolAsync("propose_kind", new Dictionary<string,object?> { ["kind_id"]=null, ["name"]="Synthetic lease", ["description"]="Leases.", ["folder_pattern"]="Leases", ["name_pattern"]="{title}", ["fields"]=new[] { "rent" },
+        ["field_guides"]=new Dictionary<string,object> { ["deposit"]=new { type="money", look_for="The deposit.", labels=new[] { "Deposit" } } }, ["source_request"]="synthetic", ["context_hash"]=sortingHash, ["idempotency_key"]="sorting-kind-lease-stray-01" });
+    Check(strayGuide.IsError == true, "a guide for a field the kind doesn't carry is refused");
+    var guided = await client.CallToolAsync("propose_kind", new Dictionary<string,object?> { ["kind_id"]=null, ["name"]="Synthetic lease", ["description"]="Leases.", ["folder_pattern"]="Leases", ["name_pattern"]="{title}", ["fields"]=new[] { "rent" },
+        ["field_guides"]=new Dictionary<string,object> { ["rent"]=new { type="money", look_for="The monthly rent.", labels=new[] { "Monthly rent", "Rent" } } }, ["source_request"]="synthetic", ["context_hash"]=sortingHash, ["idempotency_key"]="sorting-kind-lease-01" });
+    var guidedData = guided.StructuredContent!.Value.GetProperty("data");
+    await app.Services.GetRequiredService<LibraryService>().DecideAssistantProposalAsync(guidedData.GetProperty("id").GetGuid(), guidedData.GetProperty("revision").GetInt32(), true, owner);
+    var lease = (await app.Services.GetRequiredService<LibraryService>().SortVocabularyAsync()).Kinds.Single(x => x.Name == "Synthetic lease");
+    Check(guided.IsError != true && LibraryService.FieldGuides(lease)["rent"] is { Type: "money", Look: "The monthly rent." } rent && rent.Labels.SequenceEqual(["Monthly rent", "Rent"]),
+        "an accepted kind proposal saves how each field is found");
     using (var request = new HttpRequestMessage(HttpMethod.Post,"/mcp"))
     {
         request.Headers.Add("Origin","https://attacker.example.test"); request.Content=JsonContent.Create(new {jsonrpc="2.0",id=1,method="tools/list"});

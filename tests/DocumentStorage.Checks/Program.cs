@@ -135,6 +135,7 @@ try
     await SortingChecks.RunAsync(factory, Path.Combine(scratch, "sorting"), Check, Refuses);
     await RegularsChecks.RunAsync(factory, Path.Combine(scratch, "regulars"), Check, Refuses);
     await KindFieldChecks.RunAsync(factory, Path.Combine(scratch, "fields"), Check, Refuses);
+    await FieldGuideChecks.RunAsync(factory, Path.Combine(scratch, "guides"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

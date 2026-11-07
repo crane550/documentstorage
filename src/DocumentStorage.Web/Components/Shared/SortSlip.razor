@@ -2,6 +2,7 @@
 @inject WorkspaceState Workspace
 @inject ILogger<SortSlip> Logger
 @inject IJSRuntime JS
+@inject IOllamaClient Ollama
 @implements IAsyncDisposable
 
 @*
@@ -81,13 +82,32 @@
                 </div>
             </div>
             <div class="slip-cell full sort-kind-fields" aria-label="Fields">
+                @* The reader can look for the empty ones, or suggest which fields this kind should carry. *@
+                @if (CanAsk && kind.Trim().Length > 0)
+                {
+                    <div class="fields-head">
+                        <span class="slip-label">Fields</span>
+                        @if (asking != null)
+                        {
+                            <span class="fields-asking" role="status"><span class="spin"><Icon Name="refresh" Size="13" /></span>@(asking == "find" ? $"Looking for {askingCount} {(askingCount == 1 ? "field" : "fields")}…" : "Working out the fields…")</span>
+                            <button type="button" class="text-button small" @onclick="StopAsking">Stop</button>
+                        }
+                        else
+                        {
+                            @if (EmptyFields.Count > 0) { <button type="button" class="text-button small" data-find-fields disabled="@busy" title="Code looks by each field's printed words first; the reader looks for the rest" @onclick="FindFields"><Icon Name="spark" Size="13" />Find @EmptyFields.Count empty with AI</button> }
+                            <button type="button" class="text-button small" data-setup-fields disabled="@busy" title="@($"The reader suggests the fields every {kind.Trim()} should carry, and how to find each")" @onclick="SetUpFields"><Icon Name="wand" Size="13" />Set up fields with AI</button>
+                        }
+                    </div>
+                }
+                @if (findNotes.Length > 0) { <ul class="sort-notes field-notes">@foreach (var note in findNotes) { <li>@note</li> }</ul> }
                 @foreach (var name in FieldRows)
                 {
                     var kept = CurrentKind is { } k && LibraryService.KindFields(k).Contains(name);
+                    var guide = LibraryService.GuideFor(CurrentKind, name);
                     <div class="field-row" @key="name">
-                        <label class="slip-label" for="@($"sort-field-{name}")">@LibraryService.FieldLabel(name) <SourceMark Source="@(Card.Quotes.ContainsKey(name) && !edited ? "reader" : "")" Title="@Card.Quotes.GetValueOrDefault(name)" /></label>
+                        <label class="slip-label" for="@($"sort-field-{name}")" title="@(guide.Look.Length > 0 ? guide.Look : null)">@LibraryService.FieldLabel(name) <SourceMark Source="@FieldSource(name)" Title="@FieldQuote(name)" /></label>
                         <div class="field-line">
-                            @if (LibraryService.IsDateField(name) && (fields.GetValueOrDefault(name, "").Length == 0 || DateOnly.TryParseExact(fields.GetValueOrDefault(name, ""), "yyyy-MM-dd", out _)))
+                            @if (guide.Type == "date" && (fields.GetValueOrDefault(name, "").Length == 0 || DateOnly.TryParseExact(fields.GetValueOrDefault(name, ""), "yyyy-MM-dd", out _)))
                             { <input id="@($"sort-field-{name}")" type="date" class="slip-field" value="@fields.GetValueOrDefault(name)" @onchange="e => SetField(name, e.Value?.ToString())" /> }
                             else
                             { <input id="@($"sort-field-{name}")" class="slip-field" value="@fields.GetValueOrDefault(name)" @oninput="e => TypeField(name, e.Value?.ToString())" maxlength="200" autocomplete="off" /> }
@@ -97,8 +117,18 @@
                             }
                             <button type="button" class="field-toggle @(InDraft(name, false) ? "on" : "")" aria-pressed="@(InDraft(name, false) ? "true" : "false")" disabled="@busy" title="Use in the file name" @onclick="() => Toggle(name, false)">Name</button>
                             <button type="button" class="field-toggle @(InDraft(name, true) ? "on" : "")" aria-pressed="@(InDraft(name, true) ? "true" : "false")" disabled="@busy" title="Use as a folder" @onclick="() => Toggle(name, true)">Folder</button>
+                            @if (kept) { <button type="button" class="field-describe @(LibraryService.Described(guide) ? "on" : "")" aria-expanded="@(describing == name ? "true" : "false")" aria-label="@($"Describe {LibraryService.FieldLabel(name)} for the reader")" title="@(LibraryService.Described(guide) ? "How the reader finds it: " + guide.Look : "Describe it for the reader")" disabled="@busy" @onclick="() => Describe(name)"><Icon Name="note" Size="13" /></button> }
                             @if (!kept) { <button type="button" class="field-remove" aria-label="@($"Remove {LibraryService.FieldLabel(name)}")" title="Remove" @onclick="() => RemoveField(name)">×</button> }
                         </div>
+                        @if (describing == name)
+                        {
+                            <div class="field-guide-editor" aria-label="@($"How to find {LibraryService.FieldLabel(name)}")">
+                                <label>Type<select @bind="guideType">@foreach (var type in LibraryService.FieldTypes) { <option value="@type">@LibraryService.FieldTypeLabel(type)</option> }</select></label>
+                                <label class="wide">What to look for<input @bind="guideLook" maxlength="240" placeholder="The balance at the start of the statement period" /></label>
+                                <label class="wide">Printed beside it<input @bind="guideLabels" maxlength="240" placeholder="Beginning balance, Previous balance" /></label>
+                                <div class="field-guide-actions"><span class="hint">Every @CurrentKind!.Name uses this. The words let Stash find it without the reader.</span><button type="button" class="button small" disabled="@busy" @onclick="() => SaveGuide(name)">Save</button><button type="button" class="text-button small" @onclick="() => describing = null">Cancel</button></div>
+                            </div>
+                        }
                     </div>
                 }
                 <div class="field-add-row">
@@ -205,6 +235,12 @@
 </form>
 <form id="@tagFormId" class="sr-only" @onsubmit="AddTag" @onsubmit:preventDefault aria-hidden="true"><button type="submit" tabindex="-1">Add tag</button></form>
 <form id="@fieldFormId" class="sr-only" @onsubmit="AddField" @onsubmit:preventDefault aria-hidden="true"><button type="submit" tabindex="-1">Add field</button></form>
+@if (draft != null)
+{
+    <Modal Title="@($"Fields for {draft.Kind}")" IconName="wand" OnClose="() => draft = null" Wide="true" Busy="busy">
+        <KindSetupDialog Draft="draft" KindExists="CurrentKind != null" Busy="busy" Save="SaveDraft" Cancel="() => draft = null" />
+    </Modal>
+}
 @if (editingKind != null)
 {
     <Modal Title="@($"Edit {editingKind.Name}")" IconName="edit" OnClose="() => editingKind = null" Wide="true">
@@ -241,6 +277,21 @@
     private int planVersion;
 
     private bool pickingFolder, customName;
+    // Asking the reader from the slip: "find" (empty fields) or "setup" (the kind's fields).
+    private string? asking;
+    private int askingCount;
+    private CancellationTokenSource? askCancel;
+    private string[] findNotes = [];
+    private readonly Dictionary<string, string> fieldSources = [], fieldQuotes = [];
+    private KindDraft? draft;
+    private string? describing;
+    private string guideType = "text", guideLook = "", guideLabels = "";
+    private bool CanAsk => Workspace.ReaderEnabled && CanRead;
+    private List<string> EmptyFields => FieldRows.Where(x => fields.GetValueOrDefault(x, "").Trim().Length == 0).ToList();
+    // Where a field's value came from: found on this slip, else the card's reading.
+    private string FieldSource(string name) => fieldSources.TryGetValue(name, out var found) ? found
+        : edited ? "" : Card.Sources.GetValueOrDefault("field:" + name) ?? (Card.Quotes.ContainsKey(name) ? "reader" : "");
+    private string? FieldQuote(string name) => fieldQuotes.TryGetValue(name, out var quote) ? quote : Card.Quotes.GetValueOrDefault(name);
     private List<FolderSuggestion> suggestions = [];
     private string? suggestionsKey;
     private FolderSuggestion? SameAsEarlier => plan?.Problem == null && plan != null ? suggestions.FirstOrDefault(x => SamePath(x.Path, plan.FolderPath)) : null;
@@ -300,6 +351,8 @@
         kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
         folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; edited = false; plan = Card.Plan;
+        if (!sameDocument) { askCancel?.Cancel(); draft = null; }
+        fieldSources.Clear(); fieldQuotes.Clear(); findNotes = []; describing = null;
         draftKind = "\u0000"; SyncDraft();
         await LoadSuggestions();
     }
@@ -350,7 +403,7 @@
         catch (TaskCanceledException) { return; }
         await Changed();
     }
-    private Task TypeField(string name, string? value) { fields[name] = value ?? ""; return Typed(); }
+    private Task TypeField(string name, string? value) { fields[name] = value ?? ""; fieldSources.Remove(name); return Typed(); }
     private Task SetFolderMode(string mode)
     {
         pickingFolder = mode == "pick";
@@ -367,7 +420,7 @@
         if (!customName) nameOverride = "";
         return Changed();
     }
-    private Task SetField(string name, string? value) { fields[name] = value ?? ""; return Changed(); }
+    private Task SetField(string name, string? value) { fields[name] = value ?? ""; fieldSources.Remove(name); return Changed(); }
     private DocumentKind? CurrentKind => Vocabulary.Kinds.FirstOrDefault(x => string.Equals(x.Name, kind.Trim(), StringComparison.OrdinalIgnoreCase));
     // The kind's own fields first, then any added on this document.
     private IEnumerable<string> FieldRows => (CurrentKind is { } k ? LibraryService.KindFields(k) : []).Concat(fields.Keys).Distinct();
@@ -389,7 +442,7 @@
     }
     public async ValueTask DisposeAsync()
     {
-        typingPause?.Cancel();
+        typingPause?.Cancel(); askCancel?.Cancel();
         if (keys == null) return;
         try { await keys.DisposeAsync(); } catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException) { }
     }
@@ -409,7 +462,7 @@
     // Name and Folder on a field change this document's arrangement (kept for the kind if "Use for every" stays ticked).
     private async Task Toggle(string name, bool folder)
     {
-        var token = "{" + name + (folder && LibraryService.IsDateField(name) ? ":yyyy" : "") + "}";
+        var token = "{" + name + (folder && LibraryService.GuideFor(CurrentKind, name).Type == "date" ? ":yyyy" : "") + "}";
         if (folder) { pickingFolder = false; folderOverride = ""; } else { customName = false; nameOverride = ""; }
         if (folder)
         {
@@ -430,7 +483,7 @@
     private void EditKind()
     {
         if (CurrentKind is not { } k) return;
-        editingKind = new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
+        editingKind = new() { Id = k.Id, Name = k.Name, Description = k.Description, FolderPattern = k.FolderPattern, NamePattern = k.NamePattern, FieldsJson = k.FieldsJson, FieldGuideJson = k.FieldGuideJson, AutoFile = k.AutoFile, IsCatchAll = k.IsCatchAll, Revision = k.Revision };
     }
     private async Task SaveKind(DocumentKind input) => await KindChange(async actor =>
     {
@@ -487,6 +540,72 @@
         }
         finally { busy = false; }
     }
+
+    // ---------- Fields from the reader ----------
+
+    private void Describe(string name)
+    {
+        if (describing == name) { describing = null; return; }
+        var guide = LibraryService.GuideFor(CurrentKind, name);
+        describing = name; guideType = guide.Type; guideLook = guide.Look; guideLabels = string.Join(", ", guide.Labels);
+    }
+    private async Task SaveGuide(string name) => await KindChange(async actor =>
+    {
+        await Library.SetFieldGuideAsync(kind, name, new(guideType, guideLook, LibraryService.SplitLabels(guideLabels)), actor);
+        describing = null;
+        Workspace.Notify($"Saved how to find {LibraryService.FieldLabel(name)} on every {kind.Trim()}.");
+    });
+
+    private void StopAsking() => askCancel?.Cancel();
+    private async Task<T?> Ask<T>(string what, int count, Func<string, CancellationToken, Task<T>> ask) where T : class
+    {
+        if (busy) return null;
+        busy = true; asking = what; askingCount = count;
+        askCancel?.Dispose(); askCancel = new();
+        var document = Card.Document.Id;
+        try
+        {
+            var result = await ask(await Workspace.ActorAsync(), askCancel.Token);
+            return Card.Document.Id == document ? result : null; // Moved on to another document meanwhile.
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (StorageException ex) { Workspace.Notify(ex.Message, true); return null; }
+        finally { busy = false; asking = null; }
+    }
+
+    private async Task FindFields()
+    {
+        var wanted = EmptyFields;
+        if (wanted.Count == 0) return;
+        var found = await Ask("find", wanted.Count, (actor, token) => Library.FindFieldsAsync(Card.Document.Id, kind.Trim(), wanted, from.Trim(), date, actor, Ollama, token));
+        if (found == null) return;
+        foreach (var (key, value) in found.Values)
+        {
+            if (fields.GetValueOrDefault(key, "").Trim().Length > 0) continue;
+            fields[key] = value; fieldSources[key] = found.Sources.GetValueOrDefault(key, "reader"); fieldQuotes[key] = found.Quotes.GetValueOrDefault(key, "");
+        }
+        findNotes = found.Notes;
+        Workspace.Notify(found.Values.Count == 0 ? "No values found for the empty fields." : $"Found {found.Values.Count} of {wanted.Count}. Check them before approving.");
+        await Changed();
+    }
+
+    private async Task SetUpFields()
+    {
+        if (kind.Trim().Length == 0) return;
+        draft = await Ask("setup", 0, (actor, token) => Library.DraftKindAsync(Card.Document.Id, kind.Trim(), actor, Ollama, token));
+    }
+
+    private async Task SaveDraft((string? Description, List<FieldDraft> Fields) chosen) => await KindChange(async actor =>
+    {
+        var current = draft!;
+        await Library.SaveKindDraftAsync(kind.Trim(), chosen.Description, chosen.Fields.Select(x => (x.Key, x.Guide)).ToList(), draftFolder, draftName, actor);
+        // This document's values from the draft fill its empty fields straight away.
+        foreach (var field in chosen.Fields.Where(x => x.Example.Length > 0 && fields.GetValueOrDefault(x.Key, "").Trim().Length == 0))
+        { fields[field.Key] = field.Example; fieldSources[field.Key] = "reader"; fieldQuotes[field.Key] = field.Quote; }
+        foreach (var field in chosen.Fields) if (!fields.ContainsKey(field.Key)) fields[field.Key] = "";
+        draft = null;
+        Workspace.Notify($"Saved {chosen.Fields.Count} {(chosen.Fields.Count == 1 ? "field" : "fields")} for {current.Kind}.");
+    });
 
     private async Task ReadWithAi()
     {

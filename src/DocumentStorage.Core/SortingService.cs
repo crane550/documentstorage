@@ -33,7 +33,7 @@ public sealed record DocumentDetailView(Guid EntryId, string Kind, string From, 
 public sealed partial class LibraryService
 {
     public const string SortSchema = "sort-v1";
-    public const int SortTextBudget = 4000;
+    public const int SortTextBudget = 6000;
     public const int TrustStreak = 10;
     public const string DefaultKindFolder = "{kind}/{from}";
     public const string DefaultKindName = "{date} {from} {title}";
@@ -129,6 +129,7 @@ public sealed partial class LibraryService
             if (kind == null) { kind = new() { CreatedAt = time.GetUtcNow(), Revision = 0 }; db.Kinds.Add(kind); }
             kind.Name = name; kind.Description = input.Description.Trim(); kind.FolderPattern = folder; kind.NamePattern = pattern;
             kind.FieldsJson = JsonSerializer.Serialize(fields); kind.AutoFile = input.AutoFile; kind.Revision++;
+            kind.FieldGuideJson = JsonSerializer.Serialize(ReadGuides(input.FieldGuideJson).Where(x => fields.Contains(x.Key)).ToDictionary(x => x.Key, x => CleanGuide(x.Key, x.Value)));
             if (input.IsCatchAll && !kind.IsCatchAll)
             {
                 foreach (var other in await db.Kinds.Where(x => x.IsCatchAll && x.Id != kind.Id).ToListAsync()) other.IsCatchAll = false;
@@ -402,8 +403,10 @@ public sealed partial class LibraryService
         {
             string key; try { key = FactKey(field.Name.Trim().Replace(' ', '_').Replace('-', '_')); } catch (StorageException) { continue; }
             if (allowed != null && !allowed.Contains(key)) continue;
-            if (!QuoteFound(entry.ExtractedText, field.Quote) && !QuoteFound(entry.ExtractedText, field.Value)) continue;
-            fields[key] = NormalizeFieldValue(key, SortPatterns.Clean(field.Value)); quotes[key] = field.Quote;
+            var guide = GuideFor(kind, key); var value = SortPatterns.Clean(field.Value);
+            if (!QuoteFound(entry.ExtractedText, field.Quote) && !ValueFound(entry.ExtractedText, field.Value, guide) && !ValueFound(entry.ExtractedText, value, guide))
+            { notes.Add($"Left {FieldLabel(key)} empty: the reader said “{Short(value)}”, which isn't in the text."); continue; }
+            fields[key] = NormalizeFieldValue(key, value, guide); quotes[key] = field.Quote; sources["field:" + key] = "reader";
         }
         var patterns = (kind?.FolderPattern ?? DefaultKindFolder) + "/" + (kind?.NamePattern ?? DefaultKindName);
         var tokens = SortPatterns.TokensIn(patterns);
@@ -458,6 +461,14 @@ public sealed partial class LibraryService
         {
             var description = await db.DocumentDescriptions.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == entry.Id && x.ContentHash == entry.ContentHash);
             (choice, sources) = FromHints(entry, vocab, hints, description);
+        }
+        // Empty fields the kind knows the printed words for are filled from the text. This never makes
+        // a card sure: a sure card already has every field its folder and name need.
+        if (saved == null)
+        {
+            var filled = new Dictionary<string, string>(choice.Fields);
+            FillFromLabels(entry, vocab.KindNamed(choice.Kind), filled, sources, quotes);
+            if (filled.Count != choice.Fields.Count) choice = choice with { Fields = filled };
         }
         var plan = await PlanAsync(db, root, entry, choice, vocab, folders);
         if (plan.Problem != null) sure = false;
@@ -625,7 +636,9 @@ public sealed partial class LibraryService
         var json = JsonSerializer.Serialize(new
         {
             file_name = entry.Name,
-            known_kinds = kinds.Select(x => new { name = x.Name, description = x.Description.Length > 160 ? x.Description[..160] : x.Description, fields = KindFields(x) }),
+            // The likeliest kinds say what each field is; the rest list field names only, to keep the prompt short.
+            known_kinds = kinds.Select((x, i) => new { name = x.Name, description = x.Description.Length > 160 ? x.Description[..160] : x.Description, fields = KindFields(x),
+                field_notes = i < 5 ? FieldGuides(x).Where(g => Described(g.Value) || g.Value.Type != "text").ToDictionary(g => g.Key, g => FieldNote(g.Key, g.Value)) : null }),
             known_senders = senders, known_tags = tags, approved_examples = examples,
             general_guidance = settings.Instructions.Length > 800 ? settings.Instructions[..800] : settings.Instructions,
             text
