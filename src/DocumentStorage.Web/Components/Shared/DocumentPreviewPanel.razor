@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject DocumentStorage.Core.Formats.DocumentFormatRegistry Formats
 @implements IAsyncDisposable
 
 <section class="document-preview" @ref="element" aria-label="Document preview">
@@ -18,7 +19,7 @@
             {
                 <input type="search" data-search aria-label="Find in PDF" placeholder="Find in PDF…" disabled /><button type="button" data-action="find-previous" aria-label="Previous search match" disabled>↑</button><button type="button" data-action="find-next" aria-label="Next search match" disabled>↓</button><span data-matches role="status"></span>
             }
-            @if (format.Kind == "text") { <button type="button" data-action="wrap">Wrap lines</button> }
+            @if (format.Kind is "text" or "document") { <button type="button" data-action="wrap">Wrap lines</button> }
             <button type="button" data-action="reload" aria-label="Reload preview" title="Reload preview"><Icon Name="refresh" Size="15" /></button>
         </div>
         <p class="preview-status" role="status" data-status>Loading preview…</p>
@@ -27,6 +28,7 @@
             <div class="pdf-scroll" tabindex="0"><div class="pdfViewer"></div></div>
             <div class="image-scroll"><div class="image-stage"><img alt="Preview of @Entry.Name" /></div></div>
             <pre class="source-preview" tabindex="0"></pre>
+            <div class="structured-preview" tabindex="0" aria-label="Document content"></div>
         </div>
     }
     else
@@ -41,23 +43,33 @@
     private IJSObjectReference? module, viewer;
     private PreviewFormat format = new("unsupported", "", 0);
     private string revision = "", loadedRevision = "";
-    protected override void OnParametersSet() { format = DocumentPreview.Format(Entry.Name); revision = DocumentPreview.Revision(Entry); }
+    private readonly SemaphoreSlim previewGate = new(1, 1);
+    private bool disposed;
+    protected override void OnParametersSet() { format = Formats.Preview(Entry.Name); revision = DocumentPreview.Revision(Entry); }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var viewRevision = revision + "|" + InitialPage;
-        if (loadedRevision == viewRevision) return;
-        loadedRevision = viewRevision;
+        await previewGate.WaitAsync();
         try
         {
+            if (disposed) return;
+            var viewRevision = revision + "|" + InitialPage + "|" + Entry.ExtractionVersion + "|" + Entry.TextStatus;
+            if (loadedRevision == viewRevision) return;
+            var options = new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : format.Kind is "document" or "spreadsheet" ? "preview-data" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit };
             if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); viewer = null; }
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./document-preview.js");
-            viewer = await module.InvokeAsync<IJSObjectReference>("attach", element, new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit });
+            if (disposed) return;
+            viewer = await module.InvokeAsync<IJSObjectReference>("attach", element, options);
+            loadedRevision = viewRevision;
         }
         catch (JSDisconnectedException) { }
+        finally { previewGate.Release(); }
     }
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
+        await previewGate.WaitAsync();
         try { if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); } if (module != null) await module.DisposeAsync(); }
         catch (JSDisconnectedException) { }
+        finally { previewGate.Release(); }
     }
 }

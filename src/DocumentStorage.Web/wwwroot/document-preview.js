@@ -1,3 +1,4 @@
+import { renderContent } from './document-content.js';
 let pdfModules;
 async function pdfLibrary() {
     return pdfModules ??= (async () => {
@@ -54,7 +55,7 @@ export function attach(root, options) {
         const task = loadingTask; loadingTask = null;
         if (task) await task.destroy().catch(() => {});
         if (blob) { URL.revokeObjectURL(blob); blob = null; }
-        q('img')?.removeAttribute('src'); q('.source-preview')?.replaceChildren();
+        q('img')?.removeAttribute('src'); q('.source-preview')?.replaceChildren(); q('.structured-preview')?.replaceChildren();
     }
     async function start() {
         const version = ++generation; ready(false); status('Loading preview…');
@@ -82,15 +83,26 @@ export function attach(root, options) {
                 pdfDocument = document; links.setDocument(document); pdfViewer.setDocument(document);
                 q('[data-page]').max = document.numPages;
             } else {
-                const response = await fetch(options.url,{credentials:'same-origin',signal});
+                let response;
+                for (let attempt = 0; ; attempt++) {
+                    response = await fetch(options.url,{credentials:'same-origin',signal});
+                    if (response.status !== 425 || attempt >= 40) break;
+                    status('Preparing text preview…');
+                    await new Promise((resolve, reject) => {
+                        const done = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); resolve(); };
+                        const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+                        const timer = setTimeout(done, 1500); signal.addEventListener('abort', abort, {once:true}); if (signal.aborted) abort();
+                    });
+                }
                 if (!response.ok) { const problem = await response.json().catch(()=>({})); throw new Error(problem.detail || 'Preview unavailable. Sign in again, check storage, or reload the document.'); }
                 if (options.kind === 'image') {
                     blob = URL.createObjectURL(await response.blob()); q('img').src = blob; await q('img').decode(); if (signal.aborted) return;
                     ready(true); fit(); status('');
                 } else {
                     const result = await response.json(); if (signal.aborted) return;
-                    q('.source-preview').textContent = result.text;
-                    ready(true); status(result.truncated ? 'Showing the first 200,000 characters. Download the original for the complete file.' : '');
+                    if (options.kind === 'text') q('.source-preview').textContent = result.text;
+                    else renderContent(options.kind, q('.structured-preview'), result, signal);
+                    ready(true); status(result.truncated ? options.kind === 'text' ? 'Showing the first 200,000 characters. Download the original for the complete file.' : 'Showing a bounded preview. Download the original for the complete document.' : '');
                 }
             }
         } catch (error) {
@@ -110,7 +122,7 @@ export function attach(root, options) {
             case 'in': case 'out': if (pdfViewer) pdfViewer.currentScale = Math.max(.25,Math.min(4,pdfViewer.currentScale*(action==='in'?1.25:.8))); else { scale=Math.max(.1,Math.min(4,scale*(action==='in'?1.25:.8))); imageLayout(); } break;
             case 'find-next': search(false); break;
             case 'find-previous': search(true); break;
-            case 'wrap': q('.source-preview').classList.toggle('wrap'); break;
+            case 'wrap': if (options.kind === 'document') q('.document-text')?.classList.toggle('nowrap'); else q('.source-preview').classList.toggle('wrap'); break;
         }
     });
     on(q('[data-page]'),'change', event => { if (pdfViewer && pdfDocument) pdfViewer.currentPageNumber=Math.max(1,Math.min(pdfDocument.numPages,Number(event.target.value)||1)); });

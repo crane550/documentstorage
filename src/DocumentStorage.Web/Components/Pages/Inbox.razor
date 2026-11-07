@@ -347,8 +347,8 @@ else
                 {
                     if (busy || view != "waiting") return;
                     // The selected card often; the whole list every so often, so readings finished in the background show up.
-                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again")) await RefreshAsync();
-                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again") await ReloadSelected();
+                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || x.Document.TextStatus is "Text queued" or "Extracting")) await RefreshAsync();
+                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || selected?.Document.TextStatus is "Text queued" or "Extracting") await ReloadSelected();
                     else return;
                     StateHasChanged();
                 });
@@ -423,9 +423,10 @@ else
         await RefreshAsync(); await ReloadSelected();
         Workspace.Notify(result.TextStatus == "Indexed" && result.Characters > 0
             ? $"Text rescanned: {result.Characters:N0} characters. Read it again with AI for a fresh suggestion."
+            : result.TextStatus is "Text queued" or "Extracting" ? "Text extraction queued. The document will update when it finishes; Read again with AI requests a fresh interpretation."
             : result.Readiness != "Ready" ? "The file is still arriving. Wait a few seconds, then rescan text again."
             : result.TextStatus == "Needs OCR" ? "No text layer was found. Rescan text reads existing OCR; it does not create OCR."
-            : "Rescan finished: " + result.TextStatus + ".", result.TextStatus != "Indexed");
+            : "Rescan finished: " + result.TextStatus + ".", result.TextStatus is not ("Indexed" or "Text queued" or "Extracting"));
     });
     private async Task Decided(string message) { reviewing = null; await RefreshAsync(); Workspace.Notify(message); }
     private async Task Connected(Guid rootId) { connecting = false; await Workspace.RefreshAsync(); Workspace.Notify("Storage connected. Now pick the folder new scans land in."); }

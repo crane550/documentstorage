@@ -139,6 +139,7 @@ try
     await KindFieldChecks.RunAsync(factory, Path.Combine(scratch, "fields"), Check, Refuses);
     await FieldGuideChecks.RunAsync(factory, Path.Combine(scratch, "guides"), Check, Refuses);
     await DuplicateChecks.RunAsync(factory, Path.Combine(scratch, "duplicates"), Check, Refuses);
+    await FormatChecks.RunAsync(factory, Path.Combine(scratch, "formats"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

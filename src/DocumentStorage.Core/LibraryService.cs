@@ -8,7 +8,7 @@ public sealed record EntryPage(List<CatalogEntry> Items, int Total);
 
 // One writer owns filesystem changes and scans. UI and future MCP tools share this service.
 // Run one application instance per catalog; network files must not have independent writers.
-public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory, DocumentTextReader textReader, TimeProvider? timeProvider = null)
+public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory, DocumentTextReader textReader, TimeProvider? timeProvider = null, bool deferExtraction = false)
 {
     private readonly SemaphoreSlim writer = new(1, 1);
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
@@ -105,6 +105,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
 
     public async Task<Guid> AddRootAsync(string name, string location, bool isNetwork)
     {
+        Guid rootId;
         await writer.WaitAsync();
         try
         {
@@ -138,9 +139,11 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             db.Entries.Add(new() { RootId = root.Id, Name = name, IsFolder = true, ModifiedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
             await ScanRootAsync(db, root);
-            return root.Id;
+            rootId = root.Id;
         }
         finally { writer.Release(); }
+        if (!deferExtraction) await DrainExtractionAsync();
+        return rootId;
     }
 
     public async Task ScanAsync()
@@ -153,6 +156,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             foreach (var root in await db.Roots.ToListAsync()) await ScanRootAsync(db, root);
         }
         finally { writer.Release(); }
+        if (!deferExtraction) await DrainExtractionAsync();
     }
 
     private static async Task RequireOnlineAsync(StorageRoot root)
@@ -229,15 +233,13 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
                 }
                 else entry.Readiness = "Not queued";
                 if (!file.Folder && (!inIntake || entry.Readiness == "Ready") &&
-                    (metadataChanged || previousHash != entry.ContentHash || entry.TextStatus is "Pending" or "PDF text tool unavailable"))
+                    (metadataChanged || previousHash != entry.ContentHash || entry.TextStatus == "Pending" || entry.ExtractionVersion != textReader.Formats.VersionFor(entry.Name)))
                 {
-                    TextResult extracted;
-                    try { extracted = await textReader.ReadAsync(StoragePaths.Resolve(root.Location, file.Relative)); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { extracted = new("", "Text unavailable"); }
-                    entry.ExtractedText = extracted.Text;
-                    entry.TextHash = TextHash(extracted.Text);
-                    entry.TextStatus = extracted.Status;
-                    entry.PassageRevision = "";
+                    if (metadataChanged || previousHash != entry.ContentHash)
+                    {
+                        entry.ExtractedText = ""; entry.TextHash = ""; entry.ExtractionArtifactJson = ""; entry.ExtractionSourceHash = ""; entry.PassageRevision = "";
+                    }
+                    await QueueExtractionAsync(db, entry);
                 }
                 entry.IsMissing = false;
             }
@@ -333,6 +335,7 @@ public sealed partial class LibraryService(IDbContextFactory<CatalogDb> factory,
             await ScanRootAsync(db, root);
         }
         finally { writer.Release(); }
+        if (!deferExtraction) await DrainExtractionAsync();
     }
 
     public async Task SaveInstructionsAsync(Guid folderId, string instructions, string actor = "workspace")

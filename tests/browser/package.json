@@ -10,6 +10,7 @@
     "test:folder-picker": "node folder-picker.mjs",
     "test:recovery": "node recovery.mjs",
     "test:preview": "node preview.mjs",
+    "test:formats": "node formats.mjs",
     "test:updates": "node updates.mjs",
     "test:desk": "node desk.mjs",
     "test:coaching": "node coaching.mjs",

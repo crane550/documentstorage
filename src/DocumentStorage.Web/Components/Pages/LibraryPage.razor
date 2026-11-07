@@ -6,6 +6,7 @@
 @inject WorkspaceState Workspace
 @inject NavigationManager Navigation
 @inject ILogger<LibraryPage> Logger
+@inject DocumentStorage.Core.Formats.DocumentFormatRegistry Formats
 
 <PageTitle>@(searching ? "Search" : current?.Name ?? "Library") · @Workspace.DisplayName</PageTitle>
 
@@ -61,7 +62,7 @@ else
                     <tr class="@(selected?.Id == entry.Id ? "chosen" : "")" @key="entry.Id">
                         <td>
                             <button class="file-name" @onclick="() => Choose(entry)">
-                                <span class="file-badge @(entry.IsFolder ? "folder" : "")" data-ext="@(entry.IsFolder ? "" : WorkspaceState.Extension(entry.Name))"><Icon Name="@(entry.IsFolder ? (entry.IsIntake ? "inbox" : "folder") : DocumentPreview.Format(entry.Name).Kind == "image" ? "image" : "file")" Size="18" /></span>
+                                <span class="file-badge @(entry.IsFolder ? "folder" : "")" data-ext="@(entry.IsFolder ? "" : WorkspaceState.Extension(entry.Name))"><Icon Name="@(entry.IsFolder ? (entry.IsIntake ? "inbox" : "folder") : Formats.Preview(entry.Name).Kind == "image" ? "image" : "file")" Size="18" /></span>
                                 <span class="item-text"><strong>@entry.Name</strong>@if (searching) { <small>@Workspace.RootName(entry.RootId) / @entry.RelativePath</small> }</span>
                                 @if (entry.IsIntake) { <Stamp Text="Inbox" Tone="new" /> }
                                 else if (!entry.IsFolder && entry.TextStatus != "Indexed") { <Stamp Text="@(entry.TextStatus == "Needs OCR" ? "No text" : entry.TextStatus)" Tone="muted" Title="@entry.TextStatus" /> }

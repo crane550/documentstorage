@@ -85,9 +85,11 @@ builder.Services.AddMcpServer(options =>
 builder.Logging.AddFilter("OpenIddict", LogLevel.Warning);
 builder.Logging.AddFilter("ModelContextProtocol", LogLevel.Warning);
 builder.Services.AddDbContextFactory<CatalogDb>(options => options.UseNpgsql(connection));
-builder.Services.AddSingleton(new DocumentTextReader(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext"));
-builder.Services.AddSingleton<LibraryService>();
+builder.Services.AddSingleton(DocumentStorage.Core.Formats.DocumentFormatRegistry.CreateDefault(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext"));
+builder.Services.AddSingleton(sp => new DocumentTextReader(formats: sp.GetRequiredService<DocumentStorage.Core.Formats.DocumentFormatRegistry>()));
+builder.Services.AddSingleton(sp => new LibraryService(sp.GetRequiredService<IDbContextFactory<CatalogDb>>(), sp.GetRequiredService<DocumentTextReader>(), sp.GetRequiredService<TimeProvider>(), deferExtraction: true));
 builder.Services.AddHostedService<LibraryScanner>();
+builder.Services.AddHostedService<ExtractionWorker>();
 builder.Services.AddHttpClient<IOllamaClient, OllamaClient>(client => client.Timeout = Timeout.InfiniteTimeSpan)
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, ConnectTimeout = TimeSpan.FromSeconds(3) });
 builder.Services.AddHostedService<IdentificationWorker>();

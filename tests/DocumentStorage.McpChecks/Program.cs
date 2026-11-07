@@ -264,6 +264,9 @@ try
     await library.UploadAsync(intakeId,"scan.txt",new MemoryStream(Encoding.UTF8.GetBytes(synthetic)));
     await Task.Delay(5500); await library.ScanAsync();
     var document = (await library.BrowseAsync(intakeId)).Items.Single();
+    for (var wait = 0; wait < 50 && document.TextStatus != "Indexed"; wait++)
+    { await library.ProcessNextExtractionAsync(); document = (await library.EntryAsync(document.Id))!; if (document.TextStatus != "Indexed") await Task.Delay(100); }
+    Check(document.TextStatus == "Indexed", "background format extraction prepares indexed text before MCP reader coaching");
     Check(tools.Any(x=>x.Name=="list_inbox")&&tools.Any(x=>x.Name=="update_kind_training")&&!readTools.Any(x=>x.Name is "list_inbox" or "inspect_document" or "update_document_details" or "teach_reader_example"),"Inbox diagnostics and coaching writes are scoped separately from catalog metadata");
     var inboxPage=await client.CallToolAsync("list_inbox",new Dictionary<string,object?>{["limit"]=5});
     Check(inboxPage.IsError!=true&&inboxPage.StructuredContent!.Value.GetProperty("data").GetProperty("items").EnumerateArray().Any(x=>x.GetProperty("document_id").GetGuid()==document.Id)&&!inboxPage.StructuredContent.Value.GetRawText().Contains(storage),"MCP exposes pending Inbox decisions without physical storage paths");

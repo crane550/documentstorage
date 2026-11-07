@@ -1,12 +1,14 @@
 # In-app document previews
 
-Select a document in the **Library** to open its preview beside the file list. Select an **Inbox** item to keep its original visible beside its filing slip. Opening a preview brings it into view. Indexed OCR remains available separately; rendering uses the actual original file rather than an extracted-text substitute. Originals are never modified by preview controls.
+Select a document in the **Library** to open its preview beside the file list. Select an **Inbox** item to keep its content visible beside its filing slip. Opening a preview brings it into view. PDF/image previews render the original; Office previews use saved extracted content. Originals are never modified by preview controls.
 
 ## Controls and formats
 
 - **PDF:** scroll through pages, use previous/next or enter a page number, zoom in/out, fit width, rotate, find text across pages (Enter searches; arrows move between matches), and select/copy its text layer. Image-only scans render normally but require existing OCR for text selection/search. Password-protected PDFs prompt inside the viewer; the password is passed only to the local browser worker and is not sent to the server or saved. Static form/annotation appearances render; editing, scripting, active annotation controls and XFA are disabled.
 - **Images:** PNG, JPEG, GIF, WebP, BMP and AVIF use the browser's image decoder, with zoom, fit width and rotation. Decoder support depends on the browser. TIFF, HEIC and camera raw conversion are not implemented.
 - **Text/source:** TXT, Markdown, CSV/TSV, JSON, XML, YAML, logs, INI, HTML and SVG show escaped source with a wrap-lines control. HTML/SVG are not active pages/images, and Markdown is not rendered as HTML. UTF-8 and BOM-marked Unicode text are supported. Other encodings use the original-download fallback.
+- **Word (.docx):** saved text from the body, headers and footers, with a wrap-lines control. Original page layout and embedded pictures are omitted.
+- **Excel (.xlsx):** worksheet tabs and cell tables retaining row/column coordinates. Uses saved formula results; no formula recalculation, original formatting or charts. Preview limits are smaller than indexing limits and are disclosed. See [File formats](file-formats.md) for the full capability matrix and bounds.
 
 **Expand** opens a large in-app viewer. Escape or **Close expanded preview** returns to the workspace; keyboard focus stays in the expanded viewer. **Reload preview** retries a failed load. **Download original** remains available for every type, including unsupported and damaged files. PDFs are limited to 250 MiB and images to 32 MiB for inline loading. Text shows at most 200,000 characters and clearly reports truncation.
 
@@ -14,11 +16,11 @@ Use a current browser supporting ES modules, workers, canvas and CSS scopes. The
 
 ## Serving and lifecycle
 
-`/documents/{id}/preview?v=...` streams allowlisted PDF/image types with an inline disposition, byte-range support, nosniff, no-store and a restrictive raw-content CSP. `/documents/{id}/preview-text?v=...` returns bounded text as JSON; the viewer inserts it using textContent. The app's existing cookie authorization protects both endpoints; MCP bearer tokens do not authenticate browser previews. File extensions are checked against binary signatures before inline serving.
+`/documents/{id}/preview?v=...` streams allowlisted PDF/image types with an inline disposition, byte-range support, nosniff, no-store and a restrictive raw-content CSP. `/documents/{id}/preview-text?v=...` returns bounded source text as JSON. `/documents/{id}/preview-data?v=...` returns saved Office text/artifacts after checking the source fingerprint and extraction version; it reports HTTP 425 while extraction is queued/running. The viewer inserts text using textContent. The app's existing cookie authorization protects all preview endpoints; MCP bearer tokens do not authenticate browser previews. File extensions are checked against binary signatures before inline serving. Office packages cannot be served through the inline binary endpoint.
 
 A preview revision binds the catalog ID, root, relative path, size and timestamp. Every stream request checks the current entry, actual metadata, original root identity, missing/trash status and safe physical path. Ordinary edits/moves invalidate an old URL, avoiding range requests silently mixing normal file revisions. External edits that deliberately retain size/timestamp need the later fingerprint reconciliation milestone; preview versioning is not a content-addressed filesystem snapshot. Rescan/select again after a file changes. Open read handles allow deletion/rename sharing so an active preview does not unnecessarily block app-managed filing. New requests still revalidate the current location.
 
-Switching or closing releases the old loading task, worker, event handlers, observers and image blob URL. PDF.js renders locally with scripting/evaluation disabled and no document cloud service or browser CDN. A corrupt/mislabeled/unavailable file yields a visible retry/download fallback. No database migration is needed for previews.
+Switching or closing releases the old loading task, worker, event handlers, observers and image blob URL. PDF.js renders locally with scripting/evaluation disabled and no document cloud service or browser CDN. A corrupt/mislabeled/unavailable file yields a visible retry/download fallback. Office artifacts and the persistent extraction queue use the additive `AddFormatExtractionQueue` migration.
 
 ## Assets
 

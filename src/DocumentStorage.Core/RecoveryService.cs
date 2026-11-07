@@ -76,6 +76,7 @@ public sealed partial class LibraryService
         if (!confirmed) throw new StorageException("Confirm that you checked the displayed paths and understand how the catalog will change.");
         if (reason.Length is < 10 or > 1000) throw new StorageException("Record a recovery reason between 10 and 1,000 characters.");
         if (decision is not ("Cancel" or "Complete")) throw new StorageException("Choose a supported recovery decision.");
+        RecoveryReceipt receipt;
         await writer.WaitAsync(token);
         try
         {
@@ -104,9 +105,11 @@ public sealed partial class LibraryService
             }
             // Discovery happens only after the durable decision. Another unresolved operation still pauses this root.
             await ScanRootAsync(db, root);
-            return Receipt(plan, op, root.Name);
+            receipt = Receipt(plan, op, root.Name);
         }
         finally { writer.Release(); }
+        if (!deferExtraction) await DrainExtractionAsync();
+        return receipt;
     }
 
     private async Task CancelRecoveredOperationAsync(CatalogDb db, FileOperation op, string explanation, bool sourceMissing = false)

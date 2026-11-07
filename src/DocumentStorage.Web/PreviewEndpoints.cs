@@ -25,5 +25,12 @@ public static class PreviewEndpoints
             catch (StorageException ex) { return Results.Problem(ex.Message,statusCode:409); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Results.Problem("The document is unavailable on storage. Reconnect it or rescan.",statusCode:409); }
         }).RequireAuthorization();
+        app.MapGet("/documents/{id:guid}/preview-data", async Task<IResult> (Guid id, string v, LibraryService library) =>
+        {
+            try { return Results.Ok(await library.ReadDerivedPreviewAsync(id, v)); }
+            catch (StorageException ex) when (ex.Message.StartsWith("preview_preparing:", StringComparison.Ordinal)) { return Results.Problem("Preparing text preview. Please wait.", statusCode: 425); }
+            catch (StorageException ex) { return Results.Problem(ex.Message, statusCode: 409); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Results.Problem("The document is unavailable on storage. Reconnect it or rescan.", statusCode: 409); }
+        }).RequireAuthorization();
     }
 }

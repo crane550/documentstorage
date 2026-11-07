@@ -29,6 +29,20 @@
 .image-stage img { position: absolute; left: 50%; top: 50%; max-width: none; object-fit: contain; box-shadow: 0 8px 18px -10px rgba(52, 38, 26, .45); }
 .source-preview { position: absolute; inset: 0; overflow: auto; margin: 0; padding: 18px 20px; background: #fffdf7; font: 12.5px/1.7 var(--mono); white-space: pre; tab-size: 4; color: var(--ink); }
 .source-preview.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.document-preview:not([data-kind=document]):not([data-kind=spreadsheet]) .structured-preview { display: none; }
+.structured-preview { position: absolute; inset: 0; overflow: auto; background: var(--paper); padding: 12px; }
+.content-note { margin: 0 0 10px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.document-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.7 var(--font); }
+.document-text.nowrap { white-space: pre; overflow-wrap: normal; }
+.sheet-tabs { display: flex; gap: 5px; overflow-x: auto; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 10px; }
+.sheet-tabs button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; background: var(--paper-2); font-size: 12px; }
+.sheet-tabs button[aria-selected=true] { background: var(--manila); color: var(--manila-ink); border-color: var(--manila-2); }
+.sheet-panel { overflow: auto; max-width: 100%; }
+.sheet-panel h3 { font-size: 13px; margin-bottom: 8px; }
+.sheet-table { border-collapse: collapse; font: 12px/1.5 var(--mono); }
+.sheet-table th, .sheet-table td { border: 1px solid var(--line); padding: 5px 8px; min-width: 70px; max-width: 320px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sheet-table thead th { position: sticky; top: 0; background: var(--paper-3); font-weight: 600; }
+.sheet-table tbody th { background: var(--paper-2); font-weight: 500; min-width: 40px; }
 .preview-password { padding: 12px 14px; background: var(--manila); border-bottom: 1px solid var(--manila-2); font-size: 13px; }
 .preview-password[hidden] { display: none; }
 .preview-password label { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 600; }
@@ -39,6 +53,8 @@
 .preview-expanded { position: fixed; inset: 16px; z-index: 1900; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgba(43, 37, 32, .6); }
 .preview-expanded .preview-surface { flex: 1; height: auto; }
 .preview-expanded .document-preview-heading { flex-shrink: 0; }
+/* Sticky panels create stacking contexts; raise the owner above the app shell too. */
+.details:has(.preview-expanded), .inbox-preview:has(.preview-expanded), .desk-source:has(.preview-expanded) { z-index: 1900; }
 
 /* Where the viewer sits in each page. */
 .details .preview-surface { height: calc(100dvh - 330px); min-height: 380px; max-height: 1000px; }

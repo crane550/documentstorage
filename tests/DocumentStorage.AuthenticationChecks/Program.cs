@@ -71,6 +71,7 @@ internal static partial class Runner
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/download")).StatusCode == HttpStatusCode.Unauthorized, "anonymous document downloads rejected");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous binary previews rejected");
             Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview-text?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous text previews rejected");
+            Check((await client.GetAsync("/documents/00000000-0000-0000-0000-000000000001/preview-data?v=test")).StatusCode == HttpStatusCode.Unauthorized, "anonymous derived previews rejected");
             Check((await client.PostAsync("/_blazor/negotiate?negotiateVersion=1", null)).StatusCode == HttpStatusCode.Unauthorized, "anonymous Blazor connection rejected");
             using (var request = new HttpRequestMessage(HttpMethod.Get, "/"))
             {

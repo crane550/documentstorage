@@ -7,6 +7,7 @@
 <nav class="folder-tabs" aria-label="Settings">
     <a href="/settings?tab=storage" class="@(Current == "storage" ? "active" : "")" aria-current="@(Current == "storage" ? "page" : null)"><Icon Name="drive" Size="15" />Storage</a>
     <a href="/settings?tab=reader" class="@(Current == "reader" ? "active" : "")" aria-current="@(Current == "reader" ? "page" : null)"><Icon Name="spark" Size="15" />AI reader</a>
+    <a href="/settings?tab=formats" class="@(Current == "formats" ? "active" : "")" aria-current="@(Current == "formats" ? "page" : null)"><Icon Name="file" Size="15" />File formats</a>
     <a href="/settings?tab=assistants" class="@(Current == "assistants" ? "active" : "")" aria-current="@(Current == "assistants" ? "page" : null)"><Icon Name="plug" Size="15" />Assistants</a>
     <a href="/account" data-enhance-nav="false"><Icon Name="user" Size="15" />Account</a>
     <a href="/settings?tab=updates" class="@(Current == "updates" ? "active" : "")" aria-current="@(Current == "updates" ? "page" : null)"><Icon Name="download" Size="15" />Updates</a>
@@ -14,6 +15,7 @@
 @switch (Current)
 {
     case "reader": <ReaderSettings /> break;
+    case "formats": <FormatSettings /> break;
     case "assistants": <AssistantSettings /> break;
     case "updates": <UpdateSettings Error="@Error" /> break;
     default: <StorageSettings /> break;
@@ -21,6 +23,6 @@
 @code {
     [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
     [SupplyParameterFromQuery(Name = "error")] public string? Error { get; set; }
-    private string Current => Tab is "reader" or "assistants" or "updates" ? Tab : "storage";
+    private string Current => Tab is "reader" or "formats" or "assistants" or "updates" ? Tab : "storage";
     protected override Task OnInitializedAsync() => Workspace.EnsureLoadedAsync();
 }

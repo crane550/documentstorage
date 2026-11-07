@@ -42,6 +42,9 @@ internal static class MigrationChecks
             VALUES ({legacyJob},{legacyDocument.Id},{legacyDocument.ContentHash},{legacyDocument.RelativePath},{0},{1},{"context"},{"{}"},{"http://127.0.0.1:11434/"},{"synthetic:latest"},{false},{"Succeeded"},{1},{DateTimeOffset.UtcNow},{"owner"},{DateTimeOffset.UtcNow},{"training_guide"},{"{}"},{"{}"},{"Synthetic saved guide summary."},{false})
             """);
         await migrator.MigrateAsync();
+        var extractionBaseline = await db.Entries.AsNoTracking().SingleAsync(x => x.Id == legacyDocument.Id);
+        check(extractionBaseline.ExtractionVersion == "" && extractionBaseline.ExtractionArtifactJson == "" && extractionBaseline.ExtractedText.Contains("café") && !await db.ExtractionJobs.AnyAsync(),
+            "format migration preserves existing text and leaves module backfill to the background scanner");
         var readerSettings = await db.OllamaConfigurations.AsNoTracking().SingleAsync();
         check(readerSettings.FallbackReadersJson == "[]" && readerSettings.KeepAliveSeconds == 120 && readerSettings.ReaderName == "Primary reader" &&
             (await db.IdentificationJobs.AsNoTracking().SingleAsync(x => x.Id == legacyJob)).State == "Succeeded",

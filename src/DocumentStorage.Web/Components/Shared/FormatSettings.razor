@@ -1,0 +1,52 @@
+@inject DocumentStorage.Core.Formats.DocumentFormatRegistry Formats
+@inject LibraryService Library
+@inject WorkspaceState Workspace
+@implements IDisposable
+
+<section class="sheet settings-card">
+    <h2>File formats</h2>
+    <p class="hint">Previewing a file and extracting its text are separate capabilities. Search and the local AI reader use extracted text. Your original files stay in their folders.</p>
+    <div class="format-list">
+        @foreach (var format in Formats.Formats)
+        {
+            <article class="format-card" @key="format.Id">
+                <header><strong>@format.Name</strong><code>@string.Join(" ", format.Extensions)</code></header>
+                <dl><div><dt>Search / AI</dt><dd>@(format.ExtractsText ? "Extracted text" : "Filename only")</dd></div><div><dt>Preview</dt><dd>@PreviewLabel(format.PreviewKind)</dd></div></dl>
+                @if (format.Notes.Length > 0) { <p class="hint">@format.Notes</p> }
+            </article>
+        }
+    </div>
+</section>
+<section class="sheet settings-card extraction-jobs">
+    <h2>Recent text extraction</h2>
+    <p class="hint">Text preparation runs in the background, one document at a time. Extract again after fixing a tool or testing a document; this does not request an AI reading.</p>
+    <button type="button" class="text-button" disabled="@busy" @onclick="Load">Refresh extraction status</button>
+    @if (error != null) { <p role="alert" class="form-error">@error</p> }
+    @foreach (var job in jobs)
+    {
+        <div class="ai-job" @key="job.Id">
+            <div><a href="@($"/library?doc={job.EntryId}")">@Path.GetFileName(job.SourcePath)</a><small>@WorkspaceState.Ago(job.CreatedAt) · @job.Attempts @(job.Attempts == 1 ? "attempt" : "attempts")</small>@if (job.Error != null) { <p class="hint">@job.Error</p> }</div>
+            <Stamp Text="@StateLabel(job.State)" Tone="@(job.State == "Succeeded" ? "ready" : job.State == "Failed" ? "danger" : "muted")" />
+            @if (job.State is "Succeeded" or "Failed" or "Superseded") { <button type="button" class="text-button" disabled="@busy" @onclick="() => Retry(job.EntryId)">Extract text again</button> }
+        </div>
+    }
+    @if (jobs.Count == 0) { <p class="hint">No extraction jobs yet.</p> }
+</section>
+@code {
+    private List<ExtractionJob> jobs = [];
+    private bool busy, disposed;
+    private string? error;
+    protected override async Task OnInitializedAsync() { Workspace.Changed += Refresh; await Load(); }
+    private void Refresh() => _ = InvokeAsync(async () => { if (!busy && !disposed) { await Load(); StateHasChanged(); } });
+    private async Task Load() { jobs = await Library.ExtractionJobsAsync(); }
+    private async Task Retry(Guid id)
+    {
+        if (busy) return; busy = true; error = null;
+        try { await Library.ReextractDocumentAsync(id, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Text extraction queued. Existing AI readings will need an explicit reread."); }
+        catch (Exception ex) { error = ex is StorageException ? ex.Message : "Text extraction could not be queued. Refresh and try again."; }
+        finally { busy = false; }
+    }
+    private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", _ => "Download original" };
+    private static string StateLabel(string state) => state switch { "Queued" => "Waiting", "Running" => "Extracting", "Retry" => "Waiting to retry", "Succeeded" => "Complete", "Superseded" => "Older attempt", _ => state };
+    public void Dispose() { disposed = true; Workspace.Changed -= Refresh; }
+}

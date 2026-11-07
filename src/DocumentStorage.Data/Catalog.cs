@@ -32,6 +32,10 @@ public sealed class CatalogEntry
     // SHA-256 of the extracted text (empty for none): finds the same text in a different file.
     public string TextHash { get; set; } = "";
     public string TextStatus { get; set; } = "Pending";
+    public string ExtractionVersion { get; set; } = "";
+    public string ExtractionSourceHash { get; set; } = "";
+    public bool ExtractionTruncated { get; set; }
+    public string ExtractionArtifactJson { get; set; } = "";
     public bool IsIntake { get; set; }
     public DateTimeOffset ObservedAt { get; set; }
     public string ContentHash { get; set; } = "";
@@ -207,6 +211,7 @@ public sealed partial class CatalogDb(DbContextOptions<CatalogDb> options) : Ide
         ConfigureInbox(model);
         ConfigureSorting(model);
         ConfigureCoaching(model);
+        ConfigureExtraction(model);
         ConfigureRoutes(model);
         ConfigureDescriptions(model);
         model.Entity<StorageRoot>().HasIndex(x => x.Location).IsUnique();

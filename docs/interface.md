@@ -31,7 +31,7 @@ Status stamps include **New**, **Queued**, **Reading**, **Suggested**, **Needs a
 
 Inbox remembers the selected document and page for each sign-in, including across browser reloads. Explicit document links take priority, even beyond the first page. Filing, moving or deleting advances near the current place. Saved review drafts and AI proposals remain in the catalog; unsaved edits still require **Save draft**.
 
-The slip's **More actions › Delete document…** confirms a move to recoverable Trash; restore through **History › Trash**. **Rescan text** beside the extraction status forces this document's text extraction even when its file has not changed. It rereads an existing PDF text layer, not OCR from pixels, and invalidates old AI suggestions. Afterward choose **Try again** or **Read again with AI** for a fresh attempt. **Reading details** shows the model, mode, state, exact submitted text excerpt (for new attempts) and saved folder/guidance context.
+The slip's **More actions › Delete document…** confirms a move to recoverable Trash; restore through **History › Trash**. **Rescan text** beside the extraction status forces this document's text extraction even when its file has not changed. It queues extraction in the background, reads an existing PDF text layer rather than OCR from pixels, and invalidates old AI suggestions. Text readiness updates when extraction finishes. Settings → **File formats** shows registered capabilities, recent extraction jobs and explicit retries. Afterward choose **Try again** or **Read again with AI** for a fresh attempt. **Reading details** shows the model, mode, state, exact submitted text excerpt (for new attempts) and saved folder/guidance context.
 
 ## Rules and types
 

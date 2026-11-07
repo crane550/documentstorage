@@ -263,6 +263,21 @@ namespace DocumentStorage.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ExtractionArtifactJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExtractionSourceHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("ExtractionTruncated")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ExtractionVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Instructions")
                         .IsRequired()
                         .HasColumnType("text");
@@ -751,6 +766,62 @@ namespace DocumentStorage.Data.Migrations
                     b.HasIndex("TagId");
 
                     b.ToTable("EntryTags");
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.ExtractionJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExtractorVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("NotBefore")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourcePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceRevision")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntryId", "CreatedAt");
+
+                    b.HasIndex("State", "NotBefore");
+
+                    b.ToTable("ExtractionJobs");
                 });
 
             modelBuilder.Entity("DocumentStorage.Data.FileOperation", b =>
@@ -2195,6 +2266,15 @@ namespace DocumentStorage.Data.Migrations
                         .WithMany()
                         .HasForeignKey("TagId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentStorage.Data.ExtractionJob", b =>
+                {
+                    b.HasOne("DocumentStorage.Data.CatalogEntry", null)
+                        .WithMany()
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.IO.Compression;
+using System.Text;
 using DocumentStorage.Core;
+using DocumentStorage.Core.Formats;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentStorage.AuthenticationChecks;
@@ -17,6 +20,9 @@ internal static class PreviewHttpChecks
         await File.WriteAllTextAsync(Path.Combine(path,"fake.png"),"<html>Not an image</html>");
         await File.WriteAllTextAsync(Path.Combine(path,"unsupported.docx"),"Synthetic unsupported bytes.");
         await File.WriteAllTextAsync(Path.Combine(path,"unicode.txt"),"Synthetic UTF16 café.",System.Text.Encoding.Unicode);
+        var wordPath=Path.Combine(path,"Synthetic policy.docx");
+        using(var zip=ZipFile.Open(wordPath,ZipArchiveMode.Create))
+        { using var output=new StreamWriter(zip.CreateEntry("word/document.xml",CompressionLevel.NoCompression).Open(),new UTF8Encoding(false)); output.Write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Synthetic policy café.</w:t></w:r></w:p></w:body></w:document>"); }
         var root=await library.AddRootAsync("Synthetic preview HTTP",path,false);
         var folder=(await library.OverviewAsync()).Folders.Single(x=>x.RootId==root&&x.ParentId==null);
         var entries=(await library.BrowseAsync(folder.Id)).Items;
@@ -35,7 +41,21 @@ internal static class PreviewHttpChecks
         { request.Headers.Range=new RangeHeaderValue(99999,null);using var response=await client.SendAsync(request);check(response.StatusCode==HttpStatusCode.RequestedRangeNotSatisfiable,"invalid preview ranges do not return unrelated bytes"); }
         check((await client.GetAsync($"/documents/{document.Id}/preview?v=stale")).StatusCode==HttpStatusCode.Conflict,"stale preview revisions cannot mix bytes from a changed catalog entry");
         check((await client.GetAsync(Url("fake.png"))).StatusCode==HttpStatusCode.Conflict,"an HTML document renamed to an image cannot be served as inline image content");
-        check((await client.GetAsync(Url("unsupported.docx"))).StatusCode==HttpStatusCode.Conflict,"unsupported formats use the existing download workflow");
+        check((await client.GetAsync(Url("unsupported.docx"))).StatusCode==HttpStatusCode.Conflict,"raw Office packages cannot be served as inline app-origin documents");
+        var word=entries.Single(x=>x.Name=="Synthetic policy.docx");
+        string DerivedUrl()=>$"/documents/{word.Id}/preview-data?v={DocumentPreview.Revision(word)}";
+        for(var wait=0;wait<40&&(await library.EntryAsync(word.Id))!.TextStatus!="Indexed";wait++)
+        { await library.ProcessNextExtractionAsync(); await Task.Delay(50); }
+        var derived=await client.GetFromJsonAsync<DerivedPreview>(DerivedUrl());
+        check(derived!.Text.Contains("Synthetic policy café.")&&!derived.Truncated,"authenticated Word previews use the saved Unicode extraction");
+        using(var response=await client.GetAsync(DerivedUrl()))
+            check(response.Headers.CacheControl?.NoStore==true&&response.Headers.GetValues("X-Content-Type-Options").Contains("nosniff"),"derived preview data forbids caching and content sniffing");
+        var wordBytes=await File.ReadAllBytesAsync(wordPath);var timestamp=File.GetLastWriteTimeUtc(wordPath);
+        var tampered=wordBytes.ToArray();var offset=tampered.AsSpan().IndexOf("Synthetic policy"u8);"Tampered! policy"u8.CopyTo(tampered.AsSpan(offset));
+        check(tampered.Length==wordBytes.Length,"derived preview tamper fixture preserves the original file size");
+        await File.WriteAllBytesAsync(wordPath,tampered);File.SetLastWriteTimeUtc(wordPath,timestamp);
+        check((await client.GetAsync(DerivedUrl())).StatusCode==HttpStatusCode.Conflict,"saved Office previews reject changed bytes even when size and timestamp are unchanged");
+        await File.WriteAllBytesAsync(wordPath,wordBytes);File.SetLastWriteTimeUtc(wordPath,timestamp);
         var text=await client.GetFromJsonAsync<PreviewText>(Url("source.html",true));
         check(text!.Text.StartsWith("<script>")&&!text.Truncated,"HTML source is returned as JSON text for escaped rendering rather than active HTML");
         text=await client.GetFromJsonAsync<PreviewText>(Url("long.txt",true));

@@ -62,27 +62,17 @@ public sealed partial class LibraryService
                 entry.Size = info.Length; entry.ModifiedAt = FileTimestamp(info.LastWriteTimeUtc);
                 entry.ObservedAt = time.GetUtcNow();
             }
-            TextResult result;
-            var hash = "";
             if (entry.Size == 0 || time.GetUtcNow() - entry.ObservedAt < StabilityDelay)
             {
                 entry.Readiness = entry.Size == 0 ? "Empty file" : "Finishing scan";
-                result = new("", "Pending");
+                entry.TextStatus = "Pending";
             }
             else
             {
-                // Hold a read handle throughout extraction; also verify bytes afterward for platforms
-                // which allow a writer to change an open file, including same-size/timestamp edits.
-                await using var source = OpenFingerprintStream(root, entry);
-                hash = await HashStreamAsync(source, root, entry);
-                result = await textReader.ReadAsync(path);
-                source.Position = 0;
-                if (await HashStreamAsync(source, root, entry) != hash || await FingerprintAsync(root, entry) != hash)
-                    throw new StorageException("The document changed during extraction. Rescan storage and try again once it settles.");
-                entry.Readiness = "Ready";
+                entry.ContentHash = await FingerprintAsync(root, entry); entry.Readiness = "Ready";
+                await QueueExtractionAsync(db, entry, force: true);
             }
-            entry.ContentHash = hash;
-            entry.ExtractedText = result.Text; entry.TextHash = TextHash(result.Text); entry.TextStatus = result.Status; entry.PassageRevision = "";
+            entry.ExtractedText = ""; entry.TextHash = ""; entry.PassageRevision = ""; entry.ExtractionArtifactJson = "";
             // OCR can change while the PDF bytes stay identical. Old proposals must never survive that.
             foreach (var job in await db.IdentificationJobs.Where(x => x.EntryId == entry.Id &&
                 (x.State == "Queued" || x.State == "Running" || x.State == "Retry" || x.State == "Succeeded")).ToListAsync())
@@ -91,8 +81,11 @@ public sealed partial class LibraryService
                 job.RunId = null; job.LeaseUntil = null; job.CompletedAt = time.GetUtcNow(); superseded.Add(job.Id);
             }
             await db.SaveChangesAsync();
-            return new(entry.TextStatus, entry.ExtractedText.Length, entry.Readiness);
+
         }
         finally { writer.Release(); foreach (var id in superseded) CancelLiveIdentification(id); }
+        if (!deferExtraction) await DrainExtractionAsync();
+        var current = await EntryAsync(entryId) ?? throw new StorageException("That document is no longer available.");
+        return new(current.TextStatus, current.ExtractedText.Length, current.Readiness);
     }
 }
