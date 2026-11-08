@@ -10,7 +10,7 @@ async function check(value,label){assert(await value,label);checks++;console.log
 const root=page.locator('.document-preview');
 async function select(name){await page.locator('.file-name').filter({has:page.locator('strong',{hasText:new RegExp('^'+name.replaceAll('.','\\.')+'$')})}).click();await root.locator('.document-preview-heading strong').filter({hasText:name}).waitFor();}
 async function loaded(){await page.waitForFunction(()=>document.querySelector('.document-preview')?.dataset.loaded==='true');}
-async function rendered(n=1){await page.waitForFunction(n=>document.querySelector(`.document-preview .page[data-page-number="${n}"] canvas`)?.width>0&&document.querySelector('.document-preview')?.dataset.rendered===String(n),n);}
+async function rendered(n=1){await page.waitForFunction(n=>document.querySelector(`.document-preview .page[data-page-number="${n}"] canvas`)?.width>0&&document.querySelector(`.document-preview .page[data-page-number="${n}"]`)?.dataset.rendered==='true',n);}
 try{
  await page.goto(base);await signIn(page,c);
  await connectStorage(page,base,'Preview test archive',fixture.directory);

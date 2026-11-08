@@ -11,7 +11,7 @@
     "Catalog": "Host=127.0.0.1;Port=5432;Database=documentstorage;Username=documentstorage"
   },
   "Documents": {
-    "PdfTextCommand": "C:\\Tools\\poppler\\Library\\bin\\pdftotext.exe"
+    "PdfTextCommand": "C:\\Tools\\poppler\\Library\\bin\\pdftotext.exe", "TesseractCommand": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe", "OcrLanguage": "eng"
   },
   "BootstrapAdmin": {
     "Username": "admin",

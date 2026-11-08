@@ -84,7 +84,8 @@ public sealed partial class LibraryService
             foreach (var file in all.Where(x => !x.IsFolder && Inside(x, folder)))
             {
                 file.ObservedAt = time.GetUtcNow();
-                file.ContentHash = "";
+                // Changing a folder's role does not change its bytes. Retain the extraction binding;
+                // the next settled scan still fingerprints the file and detects real changes.
                 file.Readiness = enabled ? "Finishing scan" : "Not queued";
             }
             await db.SaveChangesAsync();

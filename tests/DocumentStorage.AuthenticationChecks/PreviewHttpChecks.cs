@@ -5,6 +5,8 @@ using System.IO.Compression;
 using System.Text;
 using DocumentStorage.Core;
 using DocumentStorage.Core.Formats;
+using DocumentStorage.Core.Imaging;
+using ImageMagick;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentStorage.AuthenticationChecks;
@@ -20,6 +22,8 @@ internal static class PreviewHttpChecks
         await File.WriteAllTextAsync(Path.Combine(path,"fake.png"),"<html>Not an image</html>");
         await File.WriteAllTextAsync(Path.Combine(path,"unsupported.docx"),"Synthetic unsupported bytes.");
         await File.WriteAllTextAsync(Path.Combine(path,"unicode.txt"),"Synthetic UTF16 café.",System.Text.Encoding.Unicode);
+        using(var pages=new MagickImageCollection())
+        { pages.Add(new MagickImage(MagickColors.Red,100,80));pages.Add(new MagickImage(MagickColors.Blue,100,80));pages.Write(Path.Combine(path,"Synthetic pages.tiff"),MagickFormat.Tiff); }
         var wordPath=Path.Combine(path,"Synthetic policy.docx");
         using(var zip=ZipFile.Open(wordPath,ZipArchiveMode.Create))
         { using var output=new StreamWriter(zip.CreateEntry("word/document.xml",CompressionLevel.NoCompression).Open(),new UTF8Encoding(false)); output.Write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Synthetic policy café.</w:t></w:r></w:p></w:body></w:document>"); }
@@ -27,6 +31,19 @@ internal static class PreviewHttpChecks
         var folder=(await library.OverviewAsync()).Folders.Single(x=>x.RootId==root&&x.ParentId==null);
         var entries=(await library.BrowseAsync(folder.Id)).Items;
         var document=entries.Single(x=>x.Name.EndsWith(".pdf"));
+        var raster=entries.Single(x=>x.Name.EndsWith(".tiff"));
+        var rasterUrl=$"/documents/{raster.Id}/preview-image?v={DocumentPreview.Revision(raster)}";
+        var info=await client.GetFromJsonAsync<RasterInfo>($"/documents/{raster.Id}/preview-image-info?v={DocumentPreview.Revision(raster)}");
+        check(info!.Pages==2,"authenticated TIFF metadata reports the available pages");
+        using(var response=await client.GetAsync(rasterUrl+"&page=2"))
+        {
+            var bytes=await response.Content.ReadAsByteArrayAsync();using var rendered=new MagickImage(bytes);
+            check(response.StatusCode==HttpStatusCode.OK&&response.Content.Headers.ContentType!.MediaType=="image/png"&&rendered.Width==100&&rendered.Height==80,"authenticated TIFF page conversion serves decoded PNG pixels");
+            check(response.Headers.CacheControl?.NoStore==true&&response.Headers.GetValues("X-Content-Type-Options").Contains("nosniff"),"converted raster previews forbid caching and content sniffing");
+        }
+        check((await client.GetAsync(rasterUrl+"&page=3")).StatusCode==HttpStatusCode.Conflict,"converted preview rejects a page beyond the source document");
+        check((await client.GetAsync($"/documents/{raster.Id}/preview?v={DocumentPreview.Revision(raster)}")).StatusCode==HttpStatusCode.Conflict,"raster conversion sources cannot bypass the dedicated preview route");
+        check((await client.GetAsync($"/documents/{raster.Id}/preview-image?v=stale&page=1")).StatusCode==HttpStatusCode.Conflict,"converted image previews reject stale revisions");
         string Url(string name,bool text=false) { var item=entries.Single(x=>x.Name==name);return $"/documents/{item.Id}/{(text?"preview-text":"preview")}?v={DocumentPreview.Revision(item)}"; }
         var url=Url(document.Name);
         using(var response=await client.GetAsync(url))

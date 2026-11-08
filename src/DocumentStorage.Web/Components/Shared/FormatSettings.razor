@@ -1,8 +1,20 @@
 @inject DocumentStorage.Core.Formats.DocumentFormatRegistry Formats
 @inject LibraryService Library
 @inject WorkspaceState Workspace
+@inject DocumentStorage.Core.Imaging.TesseractOcr Ocr
 @implements IDisposable
 
+<section class="sheet settings-card">
+    <h2>Image OCR</h2>
+    <p class="hint">Local text recognition runs before the AI reader, one file at a time. Clear printed text works best; handwriting and poor photos may need correction. Images remain unchanged.</p>
+    <button type="button" class="text-button" disabled="@checking" @onclick="CheckOcr">Check OCR engine</button>
+    @if (ocrStatus != null)
+    {
+        <p role="status" class="@(ocrStatus.Available ? "hint" : "form-error")">@ocrStatus.Message</p>
+        <p class="hint">@ocrStatus.Version · Language: @ocrStatus.Language · @(ocrStatus.OrientationAvailable ? "Scan orientation detection available" : "EXIF rotation available; install osd language data for rotated scan detection")</p>
+        @if (!ocrStatus.Available) { <p class="hint">On the Windows server, install Tesseract OCR and restart DocumentStorage. The default install folder is detected automatically; a custom path uses Documents:TesseractCommand in the instance configuration. Waiting jobs retry automatically.</p> }
+    }
+</section>
 <section class="sheet settings-card">
     <h2>File formats</h2>
     <p class="hint">Previewing a file and extracting its text are separate capabilities. Search and the local AI reader use extracted text. Your original files stay in their folders.</p>
@@ -34,11 +46,19 @@
 </section>
 @code {
     private List<ExtractionJob> jobs = [];
-    private bool busy, disposed;
+    private bool busy, disposed, checking;
+    private DocumentStorage.Core.Imaging.OcrRuntimeStatus? ocrStatus;
     private string? error;
     protected override async Task OnInitializedAsync() { Workspace.Changed += Refresh; await Load(); }
     private void Refresh() => _ = InvokeAsync(async () => { if (!busy && !disposed) { await Load(); StateHasChanged(); } });
     private async Task Load() { jobs = await Library.ExtractionJobsAsync(); }
+    private async Task CheckOcr()
+    {
+        checking = true;
+        try { ocrStatus = await Ocr.CheckAsync(refresh: true); }
+        catch (Exception) { error = "The OCR engine could not be checked. Check its installation and permissions."; }
+        finally { checking = false; }
+    }
     private async Task Retry(Guid id)
     {
         if (busy) return; busy = true; error = null;
@@ -46,7 +66,7 @@
         catch (Exception ex) { error = ex is StorageException ? ex.Message : "Text extraction could not be queued. Refresh and try again."; }
         finally { busy = false; }
     }
-    private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", _ => "Download original" };
+    private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" or "raster" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", _ => "Download original" };
     private static string StateLabel(string state) => state switch { "Queued" => "Waiting", "Running" => "Extracting", "Retry" => "Waiting to retry", "Succeeded" => "Complete", "Superseded" => "Older attempt", _ => state };
     public void Dispose() { disposed = true; Workspace.Changed -= Refresh; }
 }

@@ -19,6 +19,18 @@ public static class PreviewEndpoints
             catch (StorageException ex) { return Results.Problem(ex.Message, statusCode: 409); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Results.Problem("The document is unavailable on storage. Reconnect it or rescan.",statusCode:409); }
         }).RequireAuthorization();
+        app.MapGet("/documents/{id:guid}/preview-image-info", async Task<IResult> (Guid id, string v, LibraryService library, CancellationToken token) =>
+        {
+            try { return Results.Ok(await library.DescribeImagePreviewAsync(id, v, token)); }
+            catch (StorageException ex) { return Results.Problem(ex.Message, statusCode: 409); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Results.Problem("The image is unavailable on storage. Reconnect it or rescan.", statusCode: 409); }
+        }).RequireAuthorization();
+        app.MapGet("/documents/{id:guid}/preview-image", async Task<IResult> (Guid id, string v, int page, LibraryService library, CancellationToken token) =>
+        {
+            try { return Results.File(await library.RenderImagePreviewAsync(id, v, page, token), "image/png"); }
+            catch (StorageException ex) { return Results.Problem(ex.Message, statusCode: 409); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return Results.Problem("The image is unavailable on storage. Reconnect it or rescan.", statusCode: 409); }
+        }).RequireAuthorization();
         app.MapGet("/documents/{id:guid}/preview-text", async Task<IResult> (Guid id, string v, LibraryService library) =>
         {
             try { return Results.Ok(await library.ReadPreviewTextAsync(id,v)); }

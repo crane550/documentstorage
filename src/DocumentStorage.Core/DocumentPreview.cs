@@ -4,6 +4,7 @@ using DocumentStorage.Data;
 using Microsoft.EntityFrameworkCore;
 using DocumentStorage.Core.Formats;
 using System.Text.Json;
+using DocumentStorage.Core.Imaging;
 
 namespace DocumentStorage.Core;
 
@@ -22,7 +23,7 @@ public static class DocumentPreview
 
 public sealed partial class LibraryService
 {
-    public async Task<PreviewFile> OpenPreviewAsync(Guid id, string revision, bool text = false, bool derived = false)
+    public async Task<PreviewFile> OpenPreviewAsync(Guid id, string revision, bool text = false, bool derived = false, bool raster = false)
     {
         await writer.WaitAsync();
         try
@@ -32,7 +33,7 @@ public sealed partial class LibraryService
             if (entry == null || entry.IsFolder || entry.IsMissing || entry.TrashBatchId != null) throw new StorageException("This document is unavailable. Refresh the library and select it again.");
             if (DocumentPreview.Revision(entry) != revision) throw new StorageException("This document changed. Refresh the library and reload its preview.");
             var format = textReader.Formats.Preview(entry.Name);
-            if (format.Kind == "unsupported" || (format.Kind == "text") != text || (format.Kind is "document" or "spreadsheet") != derived) throw new StorageException("This file type has no preview. Download the original to open it.");
+            if (format.Kind == "unsupported" || (format.Kind == "text") != text || (format.Kind is "document" or "spreadsheet") != derived || (format.Kind == "raster") != raster) throw new StorageException("This file type has no preview. Download the original to open it.");
             var root = await db.Roots.SingleAsync(x => x.Id == entry.RootId); await RequireOnlineAsync(root);
             var path = StoragePaths.Resolve(root.Location, entry.RelativePath);
             var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920, FileOptions.Asynchronous | FileOptions.RandomAccess);
@@ -51,6 +52,24 @@ public sealed partial class LibraryService
             catch { await stream.DisposeAsync(); throw; }
         }
         finally { writer.Release(); }
+    }
+    public async Task<RasterInfo> DescribeImagePreviewAsync(Guid id, string revision, CancellationToken token = default)
+    {
+        var file = await OpenPreviewAsync(id, revision, raster: true);
+        await using var source = file.Stream;
+        if (textReader.Formats.Find(file.Name)?.Module is not IRasterPreviewModule module) throw new StorageException("This image preview is unavailable.");
+        return await module.DescribeAsync(source, file.Name, token);
+    }
+    public async Task<byte[]> RenderImagePreviewAsync(Guid id, string revision, int page, CancellationToken token = default)
+    {
+        var file = await OpenPreviewAsync(id, revision, raster: true);
+        await using var source = file.Stream;
+        if (textReader.Formats.Find(file.Name)?.Module is not IRasterPreviewModule module) throw new StorageException("This image preview is unavailable.");
+        var result = await module.RenderAsync(source, file.Name, page, token);
+        // Conversion occurs outside the writer gate; recheck the current entry/root before publishing.
+        var current = await OpenPreviewAsync(id, revision, raster: true);
+        await current.Stream.DisposeAsync();
+        return result;
     }
     public async Task<DerivedPreview> ReadDerivedPreviewAsync(Guid id, string revision)
     {

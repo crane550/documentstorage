@@ -4,7 +4,7 @@ namespace DocumentStorage.Core.Formats;
 
 public sealed class PdfModule(string pdfCommand = "pdftotext") : IDocumentFormatModule
 {
-    public IReadOnlyList<DocumentFormat> Formats { get; } = [new("pdf", "1", "PDF", [".pdf"], true, "pdf", "application/pdf", 250L * 1024 * 1024, "Reads an existing text layer; pixel OCR is not installed.")];
+    public IReadOnlyList<DocumentFormat> Formats { get; } = [new("pdf", "1", "PDF", [".pdf"], true, "pdf", "application/pdf", 250L * 1024 * 1024, "Reads an existing text layer. Image-only PDFs still need OCR before import.")];
     public bool HeaderMatches(string mime, ReadOnlySpan<byte> header) => mime == "application/pdf" && header.IndexOf("%PDF-"u8) is >= 0 and < 1024;
     public async Task<TextResult> ReadAsync(string path, CancellationToken cancellationToken = default)
     {

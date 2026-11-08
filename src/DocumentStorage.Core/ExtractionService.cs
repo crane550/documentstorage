@@ -166,7 +166,7 @@ public sealed partial class LibraryService
                         job.State = "Retry"; job.NotBefore = time.GetUtcNow().AddSeconds(30); job.Error = "Source unavailable or changed before indexing. Waiting for a rescan.";
                         entry!.TextStatus = "Pending"; await db.SaveChangesAsync(); return true;
                     }
-                    if (result.Status == "PDF text tool unavailable") { job.State = "Retry"; job.Attempts--; job.NotBefore = time.GetUtcNow().AddSeconds(60); job.Error = result.Status; entry!.TextStatus = result.Status; }
+                    if (result.Status is "PDF text tool unavailable" or "OCR tool unavailable") { job.State = "Retry"; job.Attempts--; job.NotBefore = time.GetUtcNow().AddSeconds(60); job.Error = result.Status; entry!.TextStatus = result.Status; }
                     else
                     {
                         if (entry!.ExtractedText != result.Text)
@@ -175,7 +175,7 @@ public sealed partial class LibraryService
                         entry.ExtractedText = result.Text; entry.TextHash = TextHash(result.Text); entry.TextStatus = result.Status;
                         entry.ContentHash = hash!; entry.ExtractionSourceHash = hash!; entry.ExtractionVersion = job.ExtractorVersion;
                         entry.ExtractionTruncated = result.Truncated; entry.ExtractionArtifactJson = result.ArtifactJson; entry.PassageRevision = "";
-                        job.SourceHash = hash!; job.State = result.Status is "Text extraction failed" or "Text extraction timed out" or "Unsupported text encoding" ? "Failed" : "Succeeded";
+                        job.SourceHash = hash!; job.State = result.Status is "Indexed" or "Needs OCR" or "No text" or "No text found" or "Filename only" ? "Succeeded" : "Failed";
                         job.Error = job.State == "Failed" ? result.Status : null; job.CompletedAt = time.GetUtcNow();
                     }
                 }

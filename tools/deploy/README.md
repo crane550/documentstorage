@@ -145,3 +145,7 @@ Updates build a staging release, make/check a custom-format PostgreSQL backup, s
 | Page loads but controls do nothing | WebSockets, `/_blazor` requests, cache bypass, browser errors |
 | Login works until restart/update | Persistent Data Protection keys, service identity and file permissions |
 | Folder unavailable | Service-account rights and whether the storage is actually mounted |
+
+## Image OCR
+
+After updating, follow [Image OCR setup](../../docs/image-ocr.md). Install `UB-Mannheim.TesseractOCR` machine-wide, then run `tools\deploy\setup-ocr.ps1` in elevated PowerShell. It checks language data, grants the existing LocalService identity read/execute access to the dedicated tool folder, preserves instance settings and restarts only DocumentStorage. In Settings → File formats, **Check OCR engine** confirms what the service can actually run. Missing OCR does not stop the app or previewing; queued images wait to retry. Magick.NET image decoding is bundled with normal .NET publish.

@@ -4,6 +4,10 @@
     <ProjectReference Include="..\DocumentStorage.Data\DocumentStorage.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="15.1.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -22,7 +22,7 @@
     private async Task Connected(Guid rootId)
     {
         connecting = false; await Workspace.RefreshAsync();
-        Workspace.Notify("Storage connected and indexed.");
+        Workspace.Notify("Storage connected. Text extraction runs in the background.");
         Navigation.NavigateTo($"/library?folder={Workspace.RootFolder(rootId)?.Id}");
     }
 }

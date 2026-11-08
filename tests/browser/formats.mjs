@@ -54,7 +54,7 @@ try {
     await page.goto(base + '/settings?tab=formats'); await ready(page);
     await page.getByRole('heading', { name: 'File formats', exact: true }).waitFor();
     await check(page.locator('.format-card').filter({ hasText: 'Excel workbook' }).textContent().then(text => text.includes('.xlsx') && text.includes('Extracted text') && text.includes('Worksheets and cells')), 'format capabilities come from the registered Excel module');
-    await check(page.locator('.format-card').filter({ hasText: 'PNG image' }).textContent().then(text => text.includes('Filename only') && text.includes('OCR is not installed')), 'image previews do not pretend to provide OCR or AI text');
+    await check(page.locator('.format-card').filter({ hasText: 'PNG image' }).textContent().then(text => text.includes('Extracted text') && text.includes('Tesseract')), 'image capabilities describe local OCR through the registered module');
     await page.getByRole('button', { name: 'Refresh extraction status', exact: true }).click();
     const job = page.locator('.ai-job').filter({ hasText: 'Synthetic policy.docx' }).first();
     await job.getByRole('button', { name: 'Extract text again', exact: true }).click();

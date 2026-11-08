@@ -11,7 +11,7 @@ async function pdfLibrary() {
 }
 export function attach(root, options) {
     const lifetime = new AbortController();
-    let run, loadingTask, pdfViewer, pdfDocument, pdfEvents, blob, generation = 0, scale = 1, rotation = 0, expanded = false, oldOverflow, oldFocus, passwordCallback;
+    let run, loadingTask, pdfViewer, pdfDocument, pdfEvents, blob, generation = 0, scale = 1, rotation = 0, expanded = false, oldOverflow, oldFocus, passwordCallback, rasterInfo, rasterPage = 1, rasterRequest = 0;
     const q = selector => root.querySelector(selector);
     const status = text => { if (!lifetime.signal.aborted && q('[data-status]')) q('[data-status]').textContent = text; };
     const on = (target, name, listener) => target?.addEventListener(name, listener, { signal: lifetime.signal });
@@ -39,14 +39,29 @@ export function attach(root, options) {
     };
     function fit() {
         if (pdfDocument && pdfViewer) pdfViewer.currentScaleValue = 'page-width';
-        if (options.kind === 'image' && q('img')?.naturalWidth) { scale = Math.min(1,(q('.image-scroll').clientWidth - 24) / (rotation % 180 ? q('img').naturalHeight : q('img').naturalWidth)); imageLayout(); }
+        if (['image','raster'].includes(options.kind) && q('img')?.naturalWidth) { scale = Math.min(1,(q('.image-scroll').clientWidth - 24) / (rotation % 180 ? q('img').naturalHeight : q('img').naturalWidth)); imageLayout(); }
+    }
+    async function rasterLoad(page, signal) {
+        const request = ++rasterRequest;
+        rasterPage = Math.max(1, Math.min(rasterInfo.pages, page)); ready(false); status('Loading image page…');
+        try {
+            const url = new URL(options.url, location.href); url.pathname = url.pathname.replace('preview-image-info', 'preview-image'); url.searchParams.set('page', rasterPage);
+            const response = await fetch(url, { credentials: 'same-origin', signal });
+            if (!response.ok) { const problem = await response.json().catch(() => ({})); throw new Error(problem.detail || 'The image page could not load.'); }
+            const imageBlob = await response.blob(); if (signal.aborted || request !== rasterRequest) return;
+            if (blob) URL.revokeObjectURL(blob); blob = URL.createObjectURL(imageBlob);
+            q('img').src = blob; await q('img').decode(); if (signal.aborted || request !== rasterRequest) return;
+            rotation = 0; ready(true); fit(); status(rasterInfo.note);
+            q('[data-page]').value = rasterPage; q('[data-page]').max = rasterInfo.pages; q('[data-pages]').textContent = 'of ' + rasterInfo.pages;
+            q('[data-action=previous]').disabled = rasterPage <= 1; q('[data-action=next]').disabled = rasterPage >= rasterInfo.pages;
+        } catch (error) { if (!signal.aborted && request === rasterRequest) { ready(false); status(error.message || 'The image page could not load.'); } }
     }
     const search = previous => {
         if (!pdfEvents) return;
         pdfEvents.dispatch('find', { source: root, type: 'again', query: q('[data-search]').value, caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: previous, matchDiacritics: false });
     };
     async function cleanup() {
-        run?.abort(); run = null; passwordCallback = null;
+        run?.abort(); run = null; passwordCallback = null; rasterRequest++; rasterInfo = null;
         delete root.dataset.rendered;
         if (q('[data-matches]')) q('[data-matches]').textContent='';
         if (q('[data-search]')) q('[data-search]').value='';
@@ -73,7 +88,7 @@ export function attach(root, options) {
                 pdfEvents.on('pagesinit', () => { if (signal.aborted) return; ready(true); fit(); pdfViewer.currentPageNumber=Math.max(1,Math.min(pdfDocument.numPages,Number(options.page)||1)); pdfNavigation(); });
                 pdfEvents.on('pagechanging', () => { if (!signal.aborted) pdfNavigation(); });
                 pdfEvents.on('scalechanging', () => { if (!signal.aborted) pdfNavigation(); });
-                pdfEvents.on('pagerendered', event => { if (!signal.aborted) { status(event.error ? 'A PDF page could not render. Try reloading or download the original.' : ''); root.dataset.rendered = String(event.pageNumber); } });
+                pdfEvents.on('pagerendered', event => { if (!signal.aborted) { status(event.error ? 'A PDF page could not render. Try reloading or download the original.' : ''); root.dataset.rendered = String(event.pageNumber); const page = q(`.page[data-page-number="${event.pageNumber}"]`); if (page) page.dataset.rendered = event.error ? 'false' : 'true'; } });
                 pdfEvents.on('updatefindmatchescount', event => { if (!signal.aborted) q('[data-matches]').textContent = `${event.matchesCount.current} of ${event.matchesCount.total} matches`; });
                 pdfEvents.on('updatefindcontrolstate', event => { if (!signal.aborted && event.state === 1) q('[data-matches]').textContent = 'No matches'; });
                 const assets = new URL('./vendor/pdfjs/',import.meta.url).href;
@@ -95,7 +110,9 @@ export function attach(root, options) {
                     });
                 }
                 if (!response.ok) { const problem = await response.json().catch(()=>({})); throw new Error(problem.detail || 'Preview unavailable. Sign in again, check storage, or reload the document.'); }
-                if (options.kind === 'image') {
+                if (options.kind === 'raster') {
+                    rasterInfo = await response.json(); if (signal.aborted) return; await rasterLoad(Number(options.page) || 1, signal);
+                } else if (options.kind === 'image') {
                     blob = URL.createObjectURL(await response.blob()); q('img').src = blob; await q('img').decode(); if (signal.aborted) return;
                     ready(true); fit(); status('');
                 } else {
@@ -115,8 +132,8 @@ export function attach(root, options) {
         switch(action) {
             case 'expand': expand(!expanded); break;
             case 'reload': void start(); break;
-            case 'previous': if (pdfViewer) pdfViewer.currentPageNumber--; break;
-            case 'next': if (pdfViewer) pdfViewer.currentPageNumber++; break;
+            case 'previous': if (pdfViewer) pdfViewer.currentPageNumber--; else if (rasterInfo) void rasterLoad(rasterPage - 1, run.signal); break;
+            case 'next': if (pdfViewer) pdfViewer.currentPageNumber++; else if (rasterInfo) void rasterLoad(rasterPage + 1, run.signal); break;
             case 'fit': fit(); break;
             case 'rotate': rotation = (rotation+90)%360; if (pdfViewer) pdfViewer.pagesRotation=rotation; else imageLayout(); break;
             case 'in': case 'out': if (pdfViewer) pdfViewer.currentScale = Math.max(.25,Math.min(4,pdfViewer.currentScale*(action==='in'?1.25:.8))); else { scale=Math.max(.1,Math.min(4,scale*(action==='in'?1.25:.8))); imageLayout(); } break;
@@ -125,7 +142,7 @@ export function attach(root, options) {
             case 'wrap': if (options.kind === 'document') q('.document-text')?.classList.toggle('nowrap'); else q('.source-preview').classList.toggle('wrap'); break;
         }
     });
-    on(q('[data-page]'),'change', event => { if (pdfViewer && pdfDocument) pdfViewer.currentPageNumber=Math.max(1,Math.min(pdfDocument.numPages,Number(event.target.value)||1)); });
+    on(q('[data-page]'),'change', event => { if (pdfViewer && pdfDocument) pdfViewer.currentPageNumber=Math.max(1,Math.min(pdfDocument.numPages,Number(event.target.value)||1)); else if (rasterInfo) void rasterLoad(Number(event.target.value) || 1, run.signal); });
     on(q('[data-search]'),'keydown', event => { if (event.key==='Enter') { event.preventDefault(); search(event.shiftKey); } });
     on(q('[data-password-form]'),'submit', event => { event.preventDefault(); const callback=passwordCallback; passwordCallback=null; if (callback) { q('[data-password-form]').hidden=true; callback(q('[data-password]').value); q('[data-password]').value=''; status('Opening PDF…'); } });
     on(document,'keydown', event => {
@@ -133,7 +150,7 @@ export function attach(root, options) {
         if (event.key==='Escape') { event.preventDefault(); event.stopPropagation(); expand(false); }
         if (event.key==='Tab') { const items=Array.from(root.querySelectorAll('button:not(:disabled),a,input:not(:disabled),[tabindex="0"]')).filter(x=>x.getClientRects().length); const first=items[0], last=items.at(-1); if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();} }
     });
-    const resize = new ResizeObserver(() => { if (!lifetime.signal.aborted && (pdfViewer?.currentScaleValue==='page-width' || options.kind==='image')) fit(); }); resize.observe(root);
+    const resize = new ResizeObserver(() => { if (!lifetime.signal.aborted && (pdfViewer?.currentScaleValue==='page-width' || ['image','raster'].includes(options.kind))) fit(); }); resize.observe(root);
     if (options.enabled) { root.dataset.kind=options.kind; const rect=root.getBoundingClientRect(); if(rect.top>window.innerHeight*.35||rect.top<0)root.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'}); void start(); }
     return { dispose() { if (expanded) expand(false); lifetime.abort(); resize.disconnect(); generation++; return cleanup(); } };
 }

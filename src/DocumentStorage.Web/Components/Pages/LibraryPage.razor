@@ -62,7 +62,7 @@ else
                     <tr class="@(selected?.Id == entry.Id ? "chosen" : "")" @key="entry.Id">
                         <td>
                             <button class="file-name" @onclick="() => Choose(entry)">
-                                <span class="file-badge @(entry.IsFolder ? "folder" : "")" data-ext="@(entry.IsFolder ? "" : WorkspaceState.Extension(entry.Name))"><Icon Name="@(entry.IsFolder ? (entry.IsIntake ? "inbox" : "folder") : Formats.Preview(entry.Name).Kind == "image" ? "image" : "file")" Size="18" /></span>
+                                <span class="file-badge @(entry.IsFolder ? "folder" : "")" data-ext="@(entry.IsFolder ? "" : WorkspaceState.Extension(entry.Name))"><Icon Name="@(entry.IsFolder ? (entry.IsIntake ? "inbox" : "folder") : Formats.Preview(entry.Name).Kind is "image" or "raster" ? "image" : "file")" Size="18" /></span>
                                 <span class="item-text"><strong>@entry.Name</strong>@if (searching) { <small>@Workspace.RootName(entry.RootId) / @entry.RelativePath</small> }</span>
                                 @if (entry.IsIntake) { <Stamp Text="Inbox" Tone="new" /> }
                                 else if (!entry.IsFolder && entry.TextStatus != "Indexed") { <Stamp Text="@(entry.TextStatus == "Needs OCR" ? "No text" : entry.TextStatus)" Tone="muted" Title="@entry.TextStatus" /> }
@@ -100,7 +100,7 @@ else
                     @if (CanReturn(selected)) { <button class="button" disabled="@(busy || !Workspace.IsWritable(selected.RootId))" title="Something wrong? Send it back to be filed again" @onclick="() => BackToInbox(selected)"><Icon Name="inbox" Size="15" />Back to inbox</button> }
                     <button class="icon-button danger" title="Move to trash" aria-label="Move selected item to trash" disabled="@(!Workspace.IsWritable(selected.RootId))" @onclick='() => Open("trash", selected)'><Icon Name="trash" Size="17" /></button>
                 </div>
-                <details class="review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary><pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(20000, selected.ExtractedText.Length)] : "No text was found. A scanned PDF needs its OCR text layer.")</pre></details>
+                <details class="review-text"><summary><Icon Name="text" Size="14" />Extracted text</summary>@if (selected.ExtractionTruncated) { <p class="hint">Only part of this document was extracted. Check the original before relying on these details.</p> }<pre class="text-preview">@(selected.ExtractedText.Length > 0 ? selected.ExtractedText[..Math.Min(20000, selected.ExtractedText.Length)] : "No saved text is available (" + selected.TextStatus + "). Check File formats for extraction status and retries.")</pre></details>
             </div>
         }
         else if (current != null && !searching)

@@ -7,11 +7,11 @@
     @if (format.Kind != "unsupported" && Entry.Size <= format.Limit)
     {
         <div class="preview-toolbar" aria-label="Preview controls">
-            @if (format.Kind == "pdf")
+            @if (format.Kind is "pdf" or "raster")
             {
-                <button type="button" data-action="previous" aria-label="Previous PDF page" disabled>‹</button><input type="number" data-page min="1" value="1" aria-label="PDF page" disabled /><span data-pages>of —</span><button type="button" data-action="next" aria-label="Next PDF page" disabled>›</button>
+                <button type="button" data-action="previous" aria-label="@(format.Kind == "pdf" ? "Previous PDF page" : "Previous image page")" disabled>‹</button><input type="number" data-page min="1" value="1" aria-label="@(format.Kind == "pdf" ? "PDF page" : "Image page")" disabled /><span data-pages>of —</span><button type="button" data-action="next" aria-label="@(format.Kind == "pdf" ? "Next PDF page" : "Next image page")" disabled>›</button>
             }
-            @if (format.Kind is "pdf" or "image")
+            @if (format.Kind is "pdf" or "image" or "raster")
             {
                 <span class="tool-gap"></span><button type="button" data-action="out" aria-label="Zoom out" disabled>−</button><span data-zoom>Fit</span><button type="button" data-action="in" aria-label="Zoom in" disabled>+</button><button type="button" data-action="fit" aria-label="Fit width" title="Fit width" disabled><Icon Name="fit-width" Size="16" /></button><button type="button" data-action="rotate" aria-label="Rotate" title="Rotate" disabled><Icon Name="rotate" Size="16" /></button><span class="tool-gap"></span>
             }
@@ -52,9 +52,11 @@
         try
         {
             if (disposed) return;
-            var viewRevision = revision + "|" + InitialPage + "|" + Entry.ExtractionVersion + "|" + Entry.TextStatus;
+            // Original PDF/image bytes do not change when background OCR finishes. Keep the user's view.
+            var extractedRevision = format.Kind is "document" or "spreadsheet" ? Entry.ExtractionVersion + "|" + Entry.TextStatus : "";
+            var viewRevision = revision + "|" + InitialPage + "|" + extractedRevision;
             if (loadedRevision == viewRevision) return;
-            var options = new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : format.Kind is "document" or "spreadsheet" ? "preview-data" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit };
+            var options = new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : format.Kind is "document" or "spreadsheet" ? "preview-data" : format.Kind == "raster" ? "preview-image-info" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit };
             if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); viewer = null; }
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./document-preview.js");
             if (disposed) return;

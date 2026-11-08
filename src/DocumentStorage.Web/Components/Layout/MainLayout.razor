@@ -157,7 +157,7 @@ else
     {
         if (scanning) return;
         scanning = true;
-        try { await Library.ScanAsync(); await Workspace.RefreshAsync(); Workspace.Notify("Storage checked. New and changed files are indexed."); }
+        try { await Library.ScanAsync(); await Workspace.RefreshAsync(); Workspace.Notify("Storage checked. Text extraction continues in the background."); }
         catch (Exception ex) { Logger.LogError(ex, "Rescan failed"); Workspace.Notify(ex is StorageException ? ex.Message : "Storage could not be checked. Confirm it is available, then try again.", true); }
         finally { scanning = false; }
     }

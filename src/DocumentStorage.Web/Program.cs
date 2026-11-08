@@ -85,7 +85,8 @@ builder.Services.AddMcpServer(options =>
 builder.Logging.AddFilter("OpenIddict", LogLevel.Warning);
 builder.Logging.AddFilter("ModelContextProtocol", LogLevel.Warning);
 builder.Services.AddDbContextFactory<CatalogDb>(options => options.UseNpgsql(connection));
-builder.Services.AddSingleton(DocumentStorage.Core.Formats.DocumentFormatRegistry.CreateDefault(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext"));
+builder.Services.AddSingleton(new DocumentStorage.Core.Imaging.TesseractOcr(builder.Configuration["Documents:TesseractCommand"], builder.Configuration["Documents:OcrLanguage"] ?? "eng"));
+builder.Services.AddSingleton(sp => DocumentStorage.Core.Formats.DocumentFormatRegistry.CreateDefault(builder.Configuration["Documents:PdfTextCommand"] ?? "pdftotext", sp.GetRequiredService<DocumentStorage.Core.Imaging.TesseractOcr>()));
 builder.Services.AddSingleton(sp => new DocumentTextReader(formats: sp.GetRequiredService<DocumentStorage.Core.Formats.DocumentFormatRegistry>()));
 builder.Services.AddSingleton(sp => new LibraryService(sp.GetRequiredService<IDbContextFactory<CatalogDb>>(), sp.GetRequiredService<DocumentTextReader>(), sp.GetRequiredService<TimeProvider>(), deferExtraction: true));
 builder.Services.AddHostedService<LibraryScanner>();

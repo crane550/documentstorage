@@ -13,6 +13,19 @@
           "Microsoft.Extensions.Hosting": "10.0.12"
         }
       },
+      "Magick.NET-Q8-AnyCPU": {
+        "type": "Transitive",
+        "resolved": "15.1.0",
+        "contentHash": "nHJpUfEkhiDu5XJAymHWQBCinVQJABTK2j6haHqs650UPUP9iEMqN73VNu8m+YyoyEp5gGwO65hqivhgzzpfnQ==",
+        "dependencies": {
+          "Magick.NET.Core": "15.1.0"
+        }
+      },
+      "Magick.NET.Core": {
+        "type": "Transitive",
+        "resolved": "15.1.0",
+        "contentHash": "WIaemRN4tJvw5BNUfsO8/V3LojV5FOCojQ/sQ4ruXme1o2frRYfcvHPhKV5E6TbYoEdVEvtGX+8Wbut0F2lJHg=="
+      },
       "Microsoft.AspNetCore.Cryptography.Internal": {
         "type": "Transitive",
         "resolved": "10.0.14",
@@ -599,7 +612,8 @@
       "documentstorage.core": {
         "type": "Project",
         "dependencies": {
-          "DocumentStorage.Data": "[1.0.0, )"
+          "DocumentStorage.Data": "[1.0.0, )",
+          "Magick.NET-Q8-AnyCPU": "[15.1.0, )"
         }
       },
       "documentstorage.data": {

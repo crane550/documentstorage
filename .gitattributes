@@ -1,3 +1,5 @@
 * text=auto eol=lf
 # Keep upstream PDF.js assets and license whitespace conventions.
 src/DocumentStorage.Web/wwwroot/vendor/** -whitespace
+# Preserve the upstream native decoder's bundled legal notices verbatim.
+src/DocumentStorage.Web/licenses/Magick.NET-15.1.0-NOTICE.txt -text -whitespace

@@ -347,8 +347,8 @@ else
                 {
                     if (busy || view != "waiting") return;
                     // The selected card often; the whole list every so often, so readings finished in the background show up.
-                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || x.Document.TextStatus is "Text queued" or "Extracting")) await RefreshAsync();
-                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || selected?.Document.TextStatus is "Text queued" or "Extracting") await ReloadSelected();
+                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || x.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable")) await RefreshAsync();
+                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || selected?.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable") await ReloadSelected();
                     else return;
                     StateHasChanged();
                 });

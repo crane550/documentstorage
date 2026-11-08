@@ -4,5 +4,5 @@
   "ConnectionStrings": {
     "Catalog": "Host=127.0.0.1;Port=5432;Database=documentstorage_dev;Username=documentstorage"
   },
-  "Documents": { "PdfTextCommand": "pdftotext" }
+  "Documents": { "PdfTextCommand": "pdftotext", "TesseractCommand": "tesseract", "OcrLanguage": "eng" }
 }

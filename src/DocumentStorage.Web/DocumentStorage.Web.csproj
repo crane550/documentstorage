@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DocumentStorage.Core\DocumentStorage.Core.csproj" />
+    <None Update="licenses/**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
