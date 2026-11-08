@@ -17,7 +17,7 @@ Working now:
 - Kinds, senders and tags (Kinds & tags page), details saved on every filed document and searchable (`kind:`, `from:`, `tag:`).
 - An approval list in the Inbox with live destinations, new folders made as needed, Enter to file, batch approval, and a Filed list with Undo.
 - Per-kind automatic filing once you switch it on, with a master switch; undoing one it filed switches its kind back to asking.
-- Modular format support, Word (.docx) text previews, Excel (.xlsx) worksheet previews, and a persistent background text-extraction queue.
+- Modular format support: Word (.docx/.doc), Excel (.xlsx/.xls), PowerPoint (.pptx), Rich Text (.rtf) and OpenDocument (.odt/.ods), with searchable text, saved previews and a persistent extraction queue. Legacy .doc/.xls use local LibreOffice.
 - Tidy up: documents re-file when a kind's patterns or a sender change (after you approve each move), and documents already in the Library can be read and given details.
 - Arrange the name and folders with drag-and-drop chips on the slip, for one document or for every document of its kind.
 - Fields on the spot: add a field on a document's slip, keep it for its kind and put it into the name or folder with a click; date fields are stored as dates so patterns can format them.

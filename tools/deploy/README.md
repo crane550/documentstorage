@@ -151,3 +151,7 @@ Updates build a staging release, make/check a custom-format PostgreSQL backup, s
 After updating, follow [Image OCR setup](../../docs/image-ocr.md). Install `UB-Mannheim.TesseractOCR` machine-wide, then run `tools\deploy\setup-ocr.ps1` in elevated PowerShell. It checks language data, grants the existing LocalService identity read/execute access to the dedicated tool folder, preserves instance settings and restarts only DocumentStorage. In Settings → File formats, **Check OCR engine** confirms what the service can actually run. Missing OCR does not stop the app or previewing; queued images wait to retry. Magick.NET image decoding is bundled with normal .NET publish.
 
 Scanned PDF OCR also needs `pdfinfo.exe` and `pdftoppm.exe` beside the configured Poppler text tool. The updated setup helper validates all three and grants read/execute access to the dedicated Poppler bin directory. Use **Check PDF tools** in File formats to verify access from the service account. See [Scanned PDF OCR](../../docs/pdf-ocr.md).
+
+## Legacy Word and Excel conversion
+
+Stash reads `.pptx`, `.rtf`, `.odt` and `.ods` without extra tools. Older `.doc` / `.xls` files need LibreOffice installed machine-wide. After updating, run the [one-time Office setup](../../docs/file-formats.md#legacy-office-setup); `tools/deploy/setup-office.ps1` configures the executable and LocalService permissions without changing other applications. Missing tools leave jobs waiting and retry automatically. Originals are never converted in place.

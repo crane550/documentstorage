@@ -4,8 +4,7 @@ namespace DocumentStorage.Core.Formats;
 public sealed class WordModule : IDocumentFormatModule
 {
     public IReadOnlyList<DocumentFormat> Formats { get; } = [
-        new("word-openxml", "1", "Word document", [".docx"], true, "document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 100L * 1024 * 1024, "Text preview; original page layout is not rendered."),
-        new("word-legacy", "1", "Word 97–2003", [".doc"], false, "unsupported", "application/octet-stream", 0, "Convert to DOCX to extract text.")
+        new("word-openxml", "1", "Word document", [".docx"], true, "document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 100L * 1024 * 1024, "Text preview; original page layout is not rendered.")
     ];
     public bool HeaderMatches(string mime, ReadOnlySpan<byte> header) => mime == Formats[0].Mime && header.StartsWith("PK\x03\x04"u8);
     public async Task<TextResult> ReadAsync(string path, CancellationToken cancellationToken = default)

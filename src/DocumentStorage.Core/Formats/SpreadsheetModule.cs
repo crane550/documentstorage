@@ -10,8 +10,7 @@ public sealed class SpreadsheetModule : IDocumentFormatModule
 {
     public const int PreviewRows = 200, PreviewColumns = 50, MaximumSheets = 100;
     public IReadOnlyList<DocumentFormat> Formats { get; } = [
-        new("excel-openxml", "1", "Excel workbook", [".xlsx"], true, "spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 100L * 1024 * 1024, "Sheet/table preview. Uses saved formula results; does not recalculate formulas or render charts."),
-        new("excel-legacy", "1", "Excel 97–2003", [".xls"], false, "unsupported", "application/octet-stream", 0, "Convert to XLSX to extract cells.")
+        new("excel-openxml", "1", "Excel workbook", [".xlsx"], true, "spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 100L * 1024 * 1024, "Sheet/table preview. Uses saved formula results; does not recalculate formulas or render charts.")
     ];
     public bool HeaderMatches(string mime, ReadOnlySpan<byte> header) => mime == Formats[0].Mime && header.StartsWith("PK\x03\x04"u8);
     public Task<TextResult> ReadAsync(string path, CancellationToken cancellationToken = default) => Task.Run(() => Read(path, cancellationToken), cancellationToken);

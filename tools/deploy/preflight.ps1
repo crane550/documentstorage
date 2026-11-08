@@ -26,6 +26,9 @@ foreach ($name in @('pdfinfo.exe', 'pdftoppm.exe')) { $tool = Get-Command $name 
 Write-Host '--- Image OCR ---'
 $ocr = Join-Path $env:ProgramFiles 'Tesseract-OCR\tesseract.exe'
 if (Test-Path -LiteralPath $ocr) { & $ocr --version; & $ocr --list-langs } else { Write-Host 'Tesseract not installed in its default machine location.' }
+Write-Host '--- Legacy Office converter ---'
+$office = Join-Path $env:ProgramFiles 'LibreOffice\program\soffice.com'
+if (Test-Path -LiteralPath $office) { & $office --version } else { Write-Host 'LibreOffice not installed in its default machine location (needed for .doc and .xls).' }
 Write-Host '--- Proposed origin port ---'
 $listeners = Get-NetTCPConnection -LocalPort 5240 -State Listen -ErrorAction SilentlyContinue
 if ($listeners) { $listeners | Select-Object LocalAddress, LocalPort | Format-Table -AutoSize }

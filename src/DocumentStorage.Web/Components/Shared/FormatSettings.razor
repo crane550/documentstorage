@@ -3,6 +3,7 @@
 @inject WorkspaceState Workspace
 @inject DocumentStorage.Core.Imaging.TesseractOcr Ocr
 @inject DocumentStorage.Core.Pdf.PopplerPdfTools PdfTools
+@inject DocumentStorage.Core.Office.OfficeConverter OfficeConverter
 @implements IDisposable
 
 <section class="sheet settings-card">
@@ -21,6 +22,16 @@
         <p role="status" class="@(pdfStatus.Available ? "hint" : "form-error")">@pdfStatus.Message</p>
         <p class="hint">Text reader: @(pdfStatus.TextAvailable ? "Ready" : "Unavailable") · Page information: @(pdfStatus.InfoAvailable ? "Ready" : "Unavailable") · Page renderer: @(pdfStatus.RasterAvailable ? "Ready" : "Unavailable")</p>
         @if (!pdfStatus.Available) { <p class="hint">PDF OCR needs Poppler's pdftotext, pdfinfo and pdftoppm tools. The app looks beside the configured PDF text tool. Run the OCR setup helper on the Windows server to check tools and service permissions.</p> }
+    }
+</section>
+<section class="sheet settings-card">
+    <h2>Legacy Office conversion</h2>
+    <p class="hint">Older Word (.doc) and Excel (.xls) files use local LibreOffice conversion of a temporary copy. Modern Office, Rich Text and OpenDocument readers work without it.</p>
+    <button type="button" class="text-button" disabled="@checkingOffice" @onclick="CheckOffice">Check Office converter</button>
+    @if (officeStatus != null)
+    {
+        <p role="status" class="@(officeStatus.Available ? "hint" : "form-error")">@officeStatus.Message</p>
+        @if (!officeStatus.Available) { <p class="hint">Install LibreOffice on the Windows server, then run tools/deploy/setup-office.ps1 to configure service access. Waiting jobs retry automatically.</p> }
     }
 </section>
 <section class="sheet settings-card">
@@ -54,9 +65,10 @@
 </section>
 @code {
     private List<ExtractionJob> jobs = [];
-    private bool busy, disposed, checking, checkingPdf;
+    private bool busy, disposed, checking, checkingPdf, checkingOffice;
     private DocumentStorage.Core.Imaging.OcrRuntimeStatus? ocrStatus;
     private DocumentStorage.Core.Pdf.PdfToolStatus? pdfStatus;
+    private DocumentStorage.Core.Office.OfficeRuntimeStatus? officeStatus;
     private string? error;
     protected override async Task OnInitializedAsync() { Workspace.Changed += Refresh; await Load(); }
     private void Refresh() => _ = InvokeAsync(async () => { if (!busy && !disposed) { await Load(); StateHasChanged(); } });
@@ -82,7 +94,14 @@
         catch (Exception) { error = "The PDF tools could not be checked. Check their installation and permissions."; }
         finally { checkingPdf = false; }
     }
-    private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" or "raster" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", _ => "Download original" };
+    private async Task CheckOffice()
+    {
+        checkingOffice = true;
+        try { officeStatus = await OfficeConverter.CheckAsync(); }
+        catch (Exception) { error = "The Office converter could not be checked. Check its installation and permissions."; }
+        finally { checkingOffice = false; }
+    }
+    private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" or "raster" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", "presentation" => "Slide text and notes", _ => "Download original" };
     private static string StateLabel(string state) => state switch { "Queued" => "Waiting", "Running" => "Extracting", "Retry" => "Waiting to retry", "Succeeded" => "Complete", "Superseded" => "Older attempt", _ => state };
     public void Dispose() { disposed = true; Workspace.Changed -= Refresh; }
 }

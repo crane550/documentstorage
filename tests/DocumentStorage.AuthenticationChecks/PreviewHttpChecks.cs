@@ -27,6 +27,14 @@ internal static class PreviewHttpChecks
         var wordPath=Path.Combine(path,"Synthetic policy.docx");
         using(var zip=ZipFile.Open(wordPath,ZipArchiveMode.Create))
         { using var output=new StreamWriter(zip.CreateEntry("word/document.xml",CompressionLevel.NoCompression).Open(),new UTF8Encoding(false)); output.Write("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Synthetic policy café.</w:t></w:r></w:p></w:body></w:document>"); }
+        await File.WriteAllTextAsync(Path.Combine(path,"Synthetic rich text.rtf"),"{\\rtf1 Synthetic rich text preview}");
+        using(var zip=ZipFile.Open(Path.Combine(path,"Synthetic slides.pptx"),ZipArchiveMode.Create))
+        {
+            void Part(string name,string value){using var output=new StreamWriter(zip.CreateEntry(name).Open());output.Write(value);}
+            Part("ppt/presentation.xml", """<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst><p:sldId id="256" r:id="s1"/></p:sldIdLst></p:presentation>""");
+            Part("ppt/_rels/presentation.xml.rels", """<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="s1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/></Relationships>""");
+            Part("ppt/slides/slide1.xml", """<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Synthetic slide preview</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>""");
+        }
         var root=await library.AddRootAsync("Synthetic preview HTTP",path,false);
         var folder=(await library.OverviewAsync()).Folders.Single(x=>x.RootId==root&&x.ParentId==null);
         var entries=(await library.BrowseAsync(folder.Id)).Items;
@@ -67,6 +75,18 @@ internal static class PreviewHttpChecks
         check(derived!.Text.Contains("Synthetic policy café.")&&!derived.Truncated,"authenticated Word previews use the saved Unicode extraction");
         using(var response=await client.GetAsync(DerivedUrl()))
             check(response.Headers.CacheControl?.NoStore==true&&response.Headers.GetValues("X-Content-Type-Options").Contains("nosniff"),"derived preview data forbids caching and content sniffing");
+        foreach(var name in new[]{"Synthetic slides.pptx","Synthetic rich text.rtf"})
+        {
+            var item=entries.Single(x=>x.Name==name);
+            for(var wait=0;wait<40&&(await library.EntryAsync(item.Id))!.TextStatus!="Indexed";wait++) { await library.ProcessNextExtractionAsync(); await Task.Delay(50); }
+            var previewUrl=$"/documents/{item.Id}/preview-data?v={DocumentPreview.Revision(item)}";
+            using var response=await client.GetAsync(previewUrl);
+            var data=await response.Content.ReadFromJsonAsync<DerivedPreview>();
+            check(response.StatusCode==HttpStatusCode.OK&&data!.Text.Contains("Synthetic")&&(name.EndsWith(".rtf")||data.Artifact?.Sections.Count==1),name+" serves authenticated saved preview data");
+            check(response.Headers.CacheControl?.NoStore==true&&response.Headers.GetValues("X-Content-Type-Options").Contains("nosniff"),name+" derived previews forbid caching and sniffing");
+            check((await client.GetAsync($"/documents/{item.Id}/preview?v={DocumentPreview.Revision(item)}")).StatusCode==HttpStatusCode.Conflict,name+" cannot serve active original bytes through inline routes");
+            check((await client.GetAsync($"/documents/{item.Id}/preview-data?v=stale")).StatusCode==HttpStatusCode.Conflict,name+" saved preview rejects stale revisions");
+        }
         var wordBytes=await File.ReadAllBytesAsync(wordPath);var timestamp=File.GetLastWriteTimeUtc(wordPath);
         var tampered=wordBytes.ToArray();var offset=tampered.AsSpan().IndexOf("Synthetic policy"u8);"Tampered! policy"u8.CopyTo(tampered.AsSpan(offset));
         check(tampered.Length==wordBytes.Length,"derived preview tamper fixture preserves the original file size");

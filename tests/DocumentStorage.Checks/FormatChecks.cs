@@ -15,7 +15,7 @@ internal static class FormatChecks
         var formats = DocumentFormatRegistry.CreateDefault();
         var reader = new DocumentTextReader(formats: formats);
         check(formats.Find("UPPER.XLSX")?.Definition.Id == "excel-openxml" && formats.Preview("readme.docx").Kind == "document", "format registry supplies extraction and preview capabilities from the same modules");
-        check(formats.Find("picture.svg") is { Definition.ExtractsText: false, Definition.PreviewKind: "text" } && formats.Find("old.xls") is { Definition.ExtractsText: false }, "capabilities distinguish source previews and legacy formats from readable documents");
+        check(formats.Find("picture.svg") is { Definition.ExtractsText: false, Definition.PreviewKind: "text" } && formats.Find("old.xls") is { Definition.ExtractsText: true, Definition.PreviewKind: "spreadsheet" }, "capabilities distinguish escaped source previews from readable legacy documents");
         var path = Path.Combine(scratch, "synthetic.xlsx"); await File.WriteAllBytesAsync(path, Workbook());
         var result = await reader.ReadAsync(path);
         check(result.Status == "Indexed" && result.FormatId == "excel-openxml" && result.Text.Contains("[Sheet: Accounts]") && result.Text.Contains("A2: Cedar Bank"), "Excel extraction retains sheet names, cell addresses and rich shared strings");

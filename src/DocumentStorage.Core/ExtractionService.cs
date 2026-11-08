@@ -166,7 +166,7 @@ public sealed partial class LibraryService
                         job.State = "Retry"; job.NotBefore = time.GetUtcNow().AddSeconds(30); job.Error = "Source unavailable or changed before indexing. Waiting for a rescan.";
                         entry!.TextStatus = "Pending"; await db.SaveChangesAsync(); return true;
                     }
-                    if (result.Status is "PDF text tool unavailable" or "PDF OCR tools unavailable" or "OCR tool unavailable") { job.State = "Retry"; job.Attempts--; job.NotBefore = time.GetUtcNow().AddSeconds(60); job.Error = result.Status; entry!.TextStatus = result.Status; }
+                    if (result.Status is "PDF text tool unavailable" or "PDF OCR tools unavailable" or "Office converter unavailable" or "OCR tool unavailable") { job.State = "Retry"; job.Attempts--; job.NotBefore = time.GetUtcNow().AddSeconds(60); job.Error = result.Status; entry!.TextStatus = result.Status; }
                     else
                     {
                         if (entry!.ExtractedText != result.Text)

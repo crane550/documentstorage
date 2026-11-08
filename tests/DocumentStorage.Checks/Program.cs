@@ -4,6 +4,8 @@ using DocumentStorage.Data;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
+if (args is ["--office-fixtures", var directory]) { await AdditionalOfficeChecks.WriteFixturesAsync(directory); return; }
+
 var connection = Environment.GetEnvironmentVariable("DOCUMENTSTORAGE_CHECKS_DB") ?? "Host=127.0.0.1;Port=55432;Database=documentstorage_checks;Username=postgres";
 var settings = new NpgsqlConnectionStringBuilder(connection);
 if (!(settings.Host is "localhost" or "127.0.0.1" or "::1") || settings.Database?.EndsWith("_checks", StringComparison.Ordinal) != true)
@@ -30,6 +32,7 @@ async Task Refuses(Func<Task> action, string description)
 try
 {
     await MigrationChecks.RunAsync(factory, Check);
+    if (args is ["--office-only"]) { await AdditionalOfficeChecks.RunAsync(factory, Path.Combine(scratch, "office"), Check, Refuses); Console.WriteLine($"All {passed} additional Office checks passed."); return; }
     if (args is ["--pdf-ocr-only"]) { await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses); Console.WriteLine($"All {passed} PDF OCR checks passed."); return; }
     if (args is ["--images-only"]) { await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses); Console.WriteLine($"All {passed} image checks passed."); return; }
     Check(StoragePaths.ValidateName("Bank statements") == "Bank statements", "portable names accepted");
@@ -142,6 +145,7 @@ try
     await FieldGuideChecks.RunAsync(factory, Path.Combine(scratch, "guides"), Check, Refuses);
     await DuplicateChecks.RunAsync(factory, Path.Combine(scratch, "duplicates"), Check, Refuses);
     await FormatChecks.RunAsync(factory, Path.Combine(scratch, "formats"), Check, Refuses);
+    await AdditionalOfficeChecks.RunAsync(factory, Path.Combine(scratch, "office"), Check, Refuses);
     await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses);
     await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");

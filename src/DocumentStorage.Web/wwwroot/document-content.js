@@ -16,7 +16,7 @@ registerPresentation('document', (container, result) => {
 registerPresentation('spreadsheet', (container, result, signal) => {
     const sections = result.artifact?.sections || [];
     if (!sections.length) throw new Error('No worksheet preview is available.');
-    const note = document.createElement('p'); note.className = 'content-note'; note.textContent = 'Saved cell values · formulas are not recalculated; charts and original formatting are not shown.';
+    const note = document.createElement('p'); note.className = 'content-note'; note.textContent = 'Extracted cell values · charts and original formatting are not shown. Legacy files use converted values.';
     const tabs = document.createElement('div'); tabs.className = 'sheet-tabs'; tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Worksheets');
     const panel = document.createElement('div'); panel.className = 'sheet-panel'; panel.setAttribute('role', 'tabpanel'); panel.tabIndex = 0;
     const prefix = 'sheet-' + crypto.randomUUID(); panel.id = prefix + '-panel';
@@ -49,4 +49,35 @@ registerPresentation('spreadsheet', (container, result, signal) => {
         tabs.append(button);
     });
     select(0);
+});
+
+registerPresentation('presentation', (container, result, signal) => {
+    const sections = result.artifact?.sections || [];
+    if (!sections.length) throw new Error('No slide text preview is available. Download the original to view the presentation.');
+    const note = document.createElement('p'); note.className = 'content-note'; note.textContent = 'Slide text and speaker notes · original layouts, pictures, audio and video are not shown.';
+    const nav = document.createElement('div'); nav.className = 'slide-navigation';
+    const previous = document.createElement('button'); previous.type = 'button'; previous.textContent = '‹'; previous.setAttribute('aria-label', 'Previous slide');
+    const next = document.createElement('button'); next.type = 'button'; next.textContent = '›'; next.setAttribute('aria-label', 'Next slide');
+    const select = document.createElement('select'); select.setAttribute('aria-label', 'Presentation slide');
+    sections.forEach((section, index) => { const option = document.createElement('option'); option.value = index; option.textContent = `${index + 1}. ${section.name}`; select.append(option); });
+    const count = document.createElement('span'); count.setAttribute('role', 'status');
+    const panel = document.createElement('div'); panel.className = 'slide-content'; panel.setAttribute('aria-live', 'polite');
+    nav.append(previous, select, next, count); container.append(note, nav, panel);
+    let current = 0;
+    function show(index) {
+        if (signal.aborted || index < 0 || index >= sections.length) return;
+        current = index; select.value = index; previous.disabled = index === 0; next.disabled = index === sections.length - 1;
+        count.textContent = `${index + 1} of ${sections.length}`; panel.replaceChildren();
+        const section = sections[index], title = document.createElement('h3'); title.textContent = section.name; panel.append(title);
+        for (const reference of ['body', 'notes']) {
+            const value = section.rows.flatMap(row => row.cells).find(cell => cell.reference === reference)?.text || '';
+            if (!value) continue;
+            const block = document.createElement('section'); if (reference === 'notes') { block.className = 'slide-notes'; const heading = document.createElement('h4'); heading.textContent = 'Speaker notes'; block.append(heading); }
+            const text = document.createElement('pre'); text.textContent = value; block.append(text); panel.append(block);
+        }
+    }
+    select.addEventListener('change', () => show(Number(select.value)), { signal });
+    previous.addEventListener('click', () => show(current - 1), { signal });
+    next.addEventListener('click', () => show(current + 1), { signal });
+    show(0);
 });

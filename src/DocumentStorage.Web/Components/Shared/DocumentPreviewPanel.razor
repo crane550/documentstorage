@@ -53,10 +53,10 @@
         {
             if (disposed) return;
             // Original PDF/image bytes do not change when background OCR finishes. Keep the user's view.
-            var extractedRevision = format.Kind is "document" or "spreadsheet" ? Entry.ExtractionVersion + "|" + Entry.TextStatus : "";
+            var extractedRevision = format.Kind is "document" or "spreadsheet" or "presentation" ? Entry.ExtractionVersion + "|" + Entry.TextStatus : "";
             var viewRevision = revision + "|" + InitialPage + "|" + extractedRevision;
             if (loadedRevision == viewRevision) return;
-            var options = new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : format.Kind is "document" or "spreadsheet" ? "preview-data" : format.Kind == "raster" ? "preview-image-info" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit };
+            var options = new { kind = format.Kind, page = InitialPage, url = $"/documents/{Entry.Id}/{(format.Kind == "text" ? "preview-text" : format.Kind is "document" or "spreadsheet" or "presentation" ? "preview-data" : format.Kind == "raster" ? "preview-image-info" : "preview")}?v={revision}", enabled = format.Kind != "unsupported" && Entry.Size <= format.Limit };
             if (viewer != null) { await viewer.InvokeVoidAsync("dispose"); await viewer.DisposeAsync(); viewer = null; }
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./document-preview.js");
             if (disposed) return;

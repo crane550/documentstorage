@@ -43,7 +43,8 @@ try {
     await preview.locator('[data-status]').filter({ hasText: /not ready|contents do not match/ }).waitFor({ timeout: 60000 });
     await check(preview.getByRole('link', { name: 'Download original', exact: true }).isVisible(), 'damaged workbooks retain a clear fallback and original download');
     await open('Legacy workbook.xls');
-    await check(preview.getByText('Preview is not available for this file type.', { exact: true }).isVisible(), 'legacy Excel is represented honestly as unsupported');
+    await preview.locator('[data-status]').filter({ hasText: /contents do not match|not ready/ }).waitFor({ timeout: 60000 });
+    await check(preview.getByRole('link', { name: 'Download original', exact: true }).isVisible(), 'mislabeled legacy Excel has a controlled failure and original download');
 
     await page.goto(base + '/library?q=BeyondPreviewToken'); await ready(page);
     await page.locator('.file-name').filter({ hasText: 'Synthetic workbook.xlsx' }).waitFor();

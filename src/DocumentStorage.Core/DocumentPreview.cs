@@ -33,7 +33,7 @@ public sealed partial class LibraryService
             if (entry == null || entry.IsFolder || entry.IsMissing || entry.TrashBatchId != null) throw new StorageException("This document is unavailable. Refresh the library and select it again.");
             if (DocumentPreview.Revision(entry) != revision) throw new StorageException("This document changed. Refresh the library and reload its preview.");
             var format = textReader.Formats.Preview(entry.Name);
-            if (format.Kind == "unsupported" || (format.Kind == "text") != text || (format.Kind is "document" or "spreadsheet") != derived || (format.Kind == "raster") != raster) throw new StorageException("This file type has no preview. Download the original to open it.");
+            if (format.Kind == "unsupported" || (format.Kind == "text") != text || (format.Kind is "document" or "spreadsheet" or "presentation") != derived || (format.Kind == "raster") != raster) throw new StorageException("This file type has no preview. Download the original to open it.");
             var root = await db.Roots.SingleAsync(x => x.Id == entry.RootId); await RequireOnlineAsync(root);
             var path = StoragePaths.Resolve(root.Location, entry.RelativePath);
             var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920, FileOptions.Asynchronous | FileOptions.RandomAccess);
