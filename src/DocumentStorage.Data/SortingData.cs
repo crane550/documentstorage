@@ -12,6 +12,8 @@ public sealed class DocumentKind
     // "Banking/{from}/{date:yyyy}" and "{date} {from} statement".
     public string FolderPattern { get; set; } = "";
     public string NamePattern { get; set; } = "";
+    // Null uses the filename heuristic until a person explicitly approves Built or Original.
+    public bool? KeepOriginalName { get; set; }
     public string FieldsJson { get; set; } = "[]";
     // How each field is found, keyed by field: its type, a line on what to look for, and the words
     // printed beside it. The reader is told these; code uses the words to find values on its own.

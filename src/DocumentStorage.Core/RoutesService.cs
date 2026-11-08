@@ -113,7 +113,7 @@ public sealed partial class LibraryService
         if (missing.Count > 0) notes.Add("Needs " + string.Join(", ", missing.Select(x => x.Replace('_', ' '))));
         var sure = (dateOk || !tokens.Contains("date")) && missing.Count == 0 && (titleSteady || !tokens.Contains("title"));
         notes.Insert(0, $"Filled in from the last {samples.Count} {kind.Name.ToLowerInvariant()}s from {sender.Name}");
-        return new(new(kind.Name, sender.Name, date, title, tags, fields, KeepName: hints.DescriptiveName), sources, notes, sure, route.Id);
+        return new(new(kind.Name, sender.Name, date, title, tags, fields, KeepName: kind.KeepOriginalName ?? hints.DescriptiveName), sources, notes, sure, route.Id);
     }
 
     private static async Task<List<SortRoute>> RoutesForAsync(CatalogDb db, IEnumerable<Guid> senderIds)

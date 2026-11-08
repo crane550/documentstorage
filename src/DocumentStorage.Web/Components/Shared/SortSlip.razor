@@ -233,6 +233,8 @@
                     </div>
                 </div>
                 @if (plan != null && plan.Problem == null) { <p class="sort-name mono" data-sort-name><Icon Name="file" Size="14" />@plan.FileName</p> }
+                @if (rememberNameMode && kind.Trim().Length > 0)
+                { <p class="hint">After approval, @(NameMode == "original" ? "Original" : "Built") becomes the default name choice for @kind.Trim() documents.</p> }
                 @if (NameMode == "custom")
                 {
                     <label class="sr-only" for="sort-name">File name</label>
@@ -291,7 +293,7 @@
     private DateOnly? date;
     private List<string> tags = [];
     private Dictionary<string, string> fields = [];
-    private bool keepName, remember = true, busy, edited;
+    private bool keepName, rememberNameMode, remember = true, busy, edited;
     // The arrangement being worked on for this document: the kind's patterns until touched.
     private string draftFolder = LibraryService.DefaultKindFolder, draftName = LibraryService.DefaultKindName, draftKind = "";
     private bool touched, keepArrangement = true, showArranger;
@@ -367,7 +369,7 @@
         if (sameDocument && edited) return;
         kind = Card.Choice.Kind; from = Card.Choice.From; date = Card.Choice.Date; title = Card.Choice.Title;
         tags = Card.Choice.Tags.ToList(); fields = new(Card.Choice.Fields); keepName = Card.Choice.KeepName;
-        folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; edited = false; plan = Card.Plan;
+        folderOverride = ""; nameOverride = ""; pickingFolder = false; customName = false; rememberNameMode = false; edited = false; plan = Card.Plan;
         if (!sameDocument) { askCancel?.Cancel(); draft = null; keepBoth = false; }
         fieldSources.Clear(); fieldQuotes.Clear(); findNotes = []; describing = null;
         draftKind = "\u0000"; SyncDraft();
@@ -376,13 +378,15 @@
 
     private SortChoice Choice() => new(kind.Trim(), from.Trim(), date, title.Trim(), tags.ToArray(),
         fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => x.Key, x => x.Value.Trim()), keepName, nameOverride.Trim(), folderOverride.Trim(), remember,
-        touched ? draftFolder : null, touched ? draftName : null, touched && keepArrangement);
+        touched ? draftFolder : null, touched ? draftName : null, touched && keepArrangement, RememberNameMode: rememberNameMode);
 
     // A different kind brings its own arrangement; an untouched draft follows the kind.
     private void SyncDraft()
     {
         if (string.Equals(draftKind, kind.Trim(), StringComparison.OrdinalIgnoreCase)) return;
-        draftKind = kind.Trim(); touched = false; keepArrangement = true;
+        var changedKind = draftKind != "\u0000";
+        draftKind = kind.Trim(); touched = false; keepArrangement = true; rememberNameMode = false;
+        if (changedKind && !customName && nameOverride.Trim().Length == 0) keepName = CurrentKind?.KeepOriginalName ?? Card.DescriptiveName;
         draftFolder = CurrentKind?.FolderPattern ?? LibraryService.DefaultKindFolder;
         draftName = CurrentKind?.NamePattern ?? LibraryService.DefaultKindName;
     }
@@ -391,7 +395,7 @@
     private async Task Arranged((string Folder, string Name) value)
     {
         // Rearranging the name means using it, not the original name.
-        if (value.Name != draftName) { keepName = false; customName = false; nameOverride = ""; }
+        if (value.Name != draftName) { keepName = false; customName = false; nameOverride = ""; rememberNameMode = true; }
         if (value.Folder != draftFolder) { pickingFolder = false; folderOverride = ""; }
         draftFolder = value.Folder; draftName = value.Name; touched = true;
         await Changed();
@@ -432,7 +436,7 @@
     private Task PickFolder(string path) { folderOverride = path; pickingFolder = true; return Changed(); }
     private Task SetNameMode(string mode)
     {
-        customName = mode == "custom"; keepName = mode == "original";
+        customName = mode == "custom"; keepName = mode == "original"; rememberNameMode = !customName;
         if (customName && nameOverride.Trim().Length == 0) nameOverride = plan?.Problem == null && plan != null ? System.IO.Path.GetFileNameWithoutExtension(plan.FileName) : "";
         if (!customName) nameOverride = "";
         return Changed();
@@ -552,7 +556,7 @@
             if (current.Problem != null) { Workspace.Notify(current.Problem, true); return; }
             await Library.FileSortedAsync(Card.Document.Id, choice, Card.Document.ContentHash, await Workspace.ActorAsync());
             var moving = choice.KeepPatterns && CurrentKind is { } kept ? (await Library.RefilePlanAsync(kindId: kept.Id)).Count(x => x.Problem == null) : 0;
-            if (choice.KeepPatterns) await VocabularyChanged.InvokeAsync();
+            if (choice.KeepPatterns || choice.RememberNameMode) await VocabularyChanged.InvokeAsync();
             await Filed.InvokeAsync($"Filed as {current.DestinationPath}." + (moving > 0 ? $" {moving} other {kind}s now belong elsewhere: see Kinds › Tidy up." : ""));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

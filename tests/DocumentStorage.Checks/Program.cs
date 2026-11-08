@@ -32,6 +32,7 @@ async Task Refuses(Func<Task> action, string description)
 try
 {
     await MigrationChecks.RunAsync(factory, Check);
+    if (args is ["--naming-only"]) { await NamingModeChecks.RunAsync(factory, Path.Combine(scratch, "naming"), Check, Refuses); Console.WriteLine($"All {passed} naming checks passed."); return; }
     if (args is ["--office-only"]) { await AdditionalOfficeChecks.RunAsync(factory, Path.Combine(scratch, "office"), Check, Refuses); Console.WriteLine($"All {passed} additional Office checks passed."); return; }
     if (args is ["--pdf-ocr-only"]) { await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses); Console.WriteLine($"All {passed} PDF OCR checks passed."); return; }
     if (args is ["--images-only"]) { await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses); Console.WriteLine($"All {passed} image checks passed."); return; }
@@ -145,6 +146,7 @@ try
     await FieldGuideChecks.RunAsync(factory, Path.Combine(scratch, "guides"), Check, Refuses);
     await DuplicateChecks.RunAsync(factory, Path.Combine(scratch, "duplicates"), Check, Refuses);
     await FormatChecks.RunAsync(factory, Path.Combine(scratch, "formats"), Check, Refuses);
+    await NamingModeChecks.RunAsync(factory, Path.Combine(scratch, "naming"), Check, Refuses);
     await AdditionalOfficeChecks.RunAsync(factory, Path.Combine(scratch, "office"), Check, Refuses);
     await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses);
     await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses);

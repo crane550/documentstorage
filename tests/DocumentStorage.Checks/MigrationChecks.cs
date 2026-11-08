@@ -41,7 +41,17 @@ internal static class MigrationChecks
             INSERT INTO "IdentificationJobs" ("Id","EntryId","ContentHash","SourcePath","ReviewRevision","SettingsRevision","ContextHash","ContextJson","Endpoint","Model","InputTruncated","State","Attempts","CreatedAt","CreatedBy","NotBefore","DocumentType","FactsJson","EvidenceJson","Summary","NeedsReview")
             VALUES ({legacyJob},{legacyDocument.Id},{legacyDocument.ContentHash},{legacyDocument.RelativePath},{0},{1},{"context"},{"{}"},{"http://127.0.0.1:11434/"},{"synthetic:latest"},{false},{"Succeeded"},{1},{DateTimeOffset.UtcNow},{"owner"},{DateTimeOffset.UtcNow},{"training_guide"},{"{}"},{"{}"},{"Synthetic saved guide summary."},{false})
             """);
+        await migrator.MigrateAsync("20261107233007_AddFormatExtractionQueue");
+        var oldKindId=Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Kinds" ("Id","Name","Description","FolderPattern","NamePattern","FieldsJson","FieldGuideJson","IsCatchAll","AutoFile","Approved","Corrected","Streak","Revision","CreatedAt")
+            VALUES ({oldKindId},{"Synthetic existing naming kind"},{""},{"Existing/{from}"},{"{date} report"},{"[]"},{"{}"},{false},{false},{4},{1},{2},{3},{DateTimeOffset.UtcNow})
+            """);
         await migrator.MigrateAsync();
+        var migratedKind=await db.Kinds.SingleAsync(x=>x.Id==oldKindId);
+        check(migratedKind.KeepOriginalName==null&&migratedKind.NamePattern=="{date} report"&&migratedKind.Approved==4&&migratedKind.Revision==3,
+            "naming preference migration preserves existing patterns and records and leaves unchosen defaults automatic");
+        db.Kinds.Remove(migratedKind);
         var extractionBaseline = await db.Entries.AsNoTracking().SingleAsync(x => x.Id == legacyDocument.Id);
         check(extractionBaseline.ExtractionVersion == "" && extractionBaseline.ExtractionArtifactJson == "" && extractionBaseline.ExtractedText.Contains("café") && !await db.ExtractionJobs.AnyAsync(),
             "format migration preserves existing text and leaves module backfill to the background scanner");

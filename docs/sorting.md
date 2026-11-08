@@ -151,6 +151,8 @@ override, and Approve & file. **Enter** files it and opens the next; **J/K** mov
 (`wwwroot/sort-keys.js` only clicks buttons Blazor rendered). Tick several, or **Approve N sure**,
 to file as suggested.
 
+The **Name → Built / Original** selection is remembered per kind when the person explicitly chooses one and approves the filing. Later documents of that kind use it, including saved reader replies and recurring-document memory, across navigation and restarts. Until a choice is learned, descriptive filenames keep their original names as before. **Type it** is a one-document name and does not change this default. Merely previewing or skipping a choice does not teach it, and changing the default does not rename earlier files or request another AI reading. The preference commits with the filing, including recovery. The slip says when approval will keep the selected default.
+
 Under the folder, **Earlier ones went to** offers up to three folders from history
 (`FolderSuggestionsAsync`): where earlier documents of the same kind and sender are now (so a hand
 move counts), then the same kind, then the same sender, busiest first. Inbox folders and the root

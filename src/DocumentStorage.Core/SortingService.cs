@@ -12,7 +12,9 @@ public sealed record SortChoice(string Kind, string From, DateOnly? Date, string
     bool KeepName = false, string NameOverride = "", string FolderOverride = "", bool Remember = true,
     // This document's own arrangement of folders and name (from the arranger); null means the kind's.
     // KeepPatterns saves it to the kind when the document is approved.
-    string? FolderPattern = null, string? NamePattern = null, bool KeepPatterns = false);
+    string? FolderPattern = null, string? NamePattern = null, bool KeepPatterns = false,
+    // Only an explicit Built/Original choice on a human-approved filing teaches the kind's default.
+    bool RememberNameMode = false);
 // TakenBy: the document already holding the name this one would have had (so it gets " (2)").
 public sealed record SortPlan(string FolderPath, string[] NewFolders, string FileName, bool NewKind, bool NewSender, string[] NewTags, string? Problem, Guid? TakenBy = null)
 {
@@ -370,7 +372,7 @@ public sealed partial class LibraryService
             var merged = tags.Concat(more).Distinct().Take(6).ToArray();
             if (merged.Length > tags.Length) { tags = merged; sources["tags"] = "reader"; }
         }
-        return (new(kind?.Name ?? "", from, date?.Date, title.Length > 80 ? title[..80] : title, tags, new(), KeepName: hints.DescriptiveName), sources);
+        return (new(kind?.Name ?? "", from, date?.Date, title.Length > 80 ? title[..80] : title, tags, new(), KeepName: kind?.KeepOriginalName ?? hints.DescriptiveName), sources);
     }
 
     // The reader's answer, checked: kind, sender and tags mapped to what Stash knows, quotes
@@ -420,7 +422,7 @@ public sealed partial class LibraryService
             && (!tokens.Any(t => t == "date") || sources.GetValueOrDefault("date") == "reader")
             && (kind == null || KindFields(kind).Where(tokens.Contains).All(fields.ContainsKey));
         if (reply.Confidence != "high") notes.Add("The reader wasn't sure (" + reply.Confidence + ")");
-        return (new(kindName, fromName, date, title, tags.ToArray(), fields, KeepName: hints.DescriptiveName), sources, quotes, notes, sure);
+        return (new(kindName, fromName, date, title, tags.ToArray(), fields, KeepName: kind?.KeepOriginalName ?? hints.DescriptiveName), sources, quotes, notes, sure);
     }
 
     private static string? TryTag(string text) { try { return TagName(text); } catch (StorageException) { return null; } }
@@ -455,7 +457,7 @@ public sealed partial class LibraryService
         {
             // Details a person already gave (an undone filing, or set in the Library) win.
             var view = await DetailViewAsync(db, saved);
-            choice = new(view.Kind, view.From, view.Date, view.Title, view.Tags, view.Fields, KeepName: hints.DescriptiveName);
+            choice = new(view.Kind, view.From, view.Date, view.Title, view.Tags, view.Fields, KeepName: vocab.KindNamed(view.Kind)?.KeepOriginalName ?? hints.DescriptiveName);
             sources = new() { ["kind"] = "person", ["from"] = "person", ["date"] = "person", ["title"] = "person", ["tags"] = "person" };
         }
         // A regular's memory, when it's sure, beats a reading: it is what the person chose last time.
@@ -757,6 +759,11 @@ public sealed partial class LibraryService
             if (choice.FolderPattern != null && choice.FolderPattern != kind.FolderPattern) { kind.FolderPattern = SortPatterns.ValidatePattern(choice.FolderPattern, folder: true); changed = true; }
             if (choice.NamePattern != null && choice.NamePattern != kind.NamePattern) { kind.NamePattern = SortPatterns.ValidatePattern(choice.NamePattern, folder: false); changed = true; }
             if (changed && !isNewKind) kind.Revision++;
+        }
+        if (!plan.Automatic && choice.RememberNameMode && choice.NameOverride.Trim().Length == 0 && kind.KeepOriginalName != choice.KeepName)
+        {
+            kind.KeepOriginalName = choice.KeepName;
+            if (!isNewKind) kind.Revision++;
         }
         if (stored.HadSuggestion && !plan.Automatic)
         {

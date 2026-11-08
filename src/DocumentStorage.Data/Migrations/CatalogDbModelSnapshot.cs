@@ -619,6 +619,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<bool>("IsCatchAll")
                         .HasColumnType("boolean");
 
+                    b.Property<bool?>("KeepOriginalName")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
