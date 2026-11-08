@@ -477,24 +477,26 @@ public sealed partial class LibraryService
         }
         var plan = await PlanAsync(db, root, entry, choice, vocab, folders);
         if (plan.Problem != null) sure = false;
-        if (ImageExtractionConcern(entry) is { } concern) { sure = false; notes.Add(concern); }
+        if (ExtractionConcern(entry) is { } concern) { sure = false; notes.Add(concern); }
         // A copy of something already in Stash is never sure: it waits for a person, and never files itself.
         var duplicates = entry.Readiness == "Ready" ? await DuplicatesAsync(db, entry, choice, vocab, plan) : [];
         if (duplicates.Any(x => x.Certain)) sure = false;
         return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName, duplicates);
     }
 
-    private string? ImageExtractionConcern(CatalogEntry entry)
+    private string? ExtractionConcern(CatalogEntry entry)
     {
         if (entry.ExtractionTruncated) return "Only part of this document was extracted. Check the original before filing.";
-        if (textReader.Formats.Find(entry.Name)?.Module is not Formats.ImageModule) return null;
-        if (entry.TextStatus != "Indexed") return "Image OCR has no ready text. Check extraction status or fill in the details by hand.";
+        var module = textReader.Formats.Find(entry.Name)?.Module;
+        if (module is not (Formats.ImageModule or Formats.PdfModule)) return null;
+        if (module is Formats.PdfModule && entry.ExtractionArtifactJson.Length == 0) return null; // Older embedded-text cache has no OCR provenance.
+        if (entry.TextStatus != "Indexed") return "OCR has no ready text. Check extraction status or fill in the details by hand.";
         if (entry.ExtractionArtifactJson.Length == 0) return "OCR quality details are unavailable. Check the original before filing.";
         try
         {
             var ocr = JsonSerializer.Deserialize<Imaging.ImageOcrArtifact>(entry.ExtractionArtifactJson);
-            if (ocr?.Pages.Any(x => x.Characters > 0 && x.MeanConfidence is null or < 65) != false)
-                return "Image OCR contains uncertain text. Check the original and correct the reading before filing.";
+            if (ocr?.Pages.Any(x => x.Source == "ocr" && x.Characters > 0 && x.MeanConfidence is null or < 65) != false)
+                return "OCR contains uncertain text. Check the original and correct the reading before filing.";
         }
         catch (JsonException) { return "OCR quality details are unavailable. Check the original before filing."; }
         return null;
@@ -698,7 +700,7 @@ public sealed partial class LibraryService
             await EnsureKindsAsync(db);
             var (entry, root) = await WritableEntryAsync(db, entryId);
             await RequireIntakeAsync(db, entry); RequireStable(entry);
-            if (automatic && ImageExtractionConcern(entry) is { } concern) throw new StorageException(concern);
+            if (automatic && ExtractionConcern(entry) is { } concern) throw new StorageException(concern);
             if (entry.ContentHash != expectedContentHash || await FingerprintAsync(root, entry) != expectedContentHash)
                 throw new StorageException("The document changed since you looked at it. Check it again before filing.");
             var vocab = await VocabAsync(db);

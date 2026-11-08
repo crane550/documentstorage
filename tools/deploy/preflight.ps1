@@ -22,6 +22,7 @@ Write-Host '--- PDF tool ---'
 $pdf = Get-Command pdftotext.exe -ErrorAction SilentlyContinue
 if ($pdf) { Write-Host $pdf.Source }
 else { Write-Host ('Default Poppler location exists: ' + (Test-Path 'C:\Tools\poppler\Library\bin\pdftotext.exe')) }
+foreach ($name in @('pdfinfo.exe', 'pdftoppm.exe')) { $tool = Get-Command $name -ErrorAction SilentlyContinue; Write-Host ($name + ': ' + [bool]$tool) }
 Write-Host '--- Image OCR ---'
 $ocr = Join-Path $env:ProgramFiles 'Tesseract-OCR\tesseract.exe'
 if (Test-Path -LiteralPath $ocr) { & $ocr --version; & $ocr --list-langs } else { Write-Host 'Tesseract not installed in its default machine location.' }

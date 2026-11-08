@@ -2,17 +2,25 @@
 @inject LibraryService Library
 @inject WorkspaceState Workspace
 @inject DocumentStorage.Core.Imaging.TesseractOcr Ocr
+@inject DocumentStorage.Core.Pdf.PopplerPdfTools PdfTools
 @implements IDisposable
 
 <section class="sheet settings-card">
-    <h2>Image OCR</h2>
-    <p class="hint">Local text recognition runs before the AI reader, one file at a time. Clear printed text works best; handwriting and poor photos may need correction. Images remain unchanged.</p>
+    <h2>Image and PDF OCR</h2>
+    <p class="hint">Local text recognition runs before the AI reader, one file at a time. PDFs keep usable embedded text and use OCR for scanned or text-poor pages. Clear printed text works best; original files remain unchanged.</p>
     <button type="button" class="text-button" disabled="@checking" @onclick="CheckOcr">Check OCR engine</button>
     @if (ocrStatus != null)
     {
         <p role="status" class="@(ocrStatus.Available ? "hint" : "form-error")">@ocrStatus.Message</p>
         <p class="hint">@ocrStatus.Version · Language: @ocrStatus.Language · @(ocrStatus.OrientationAvailable ? "Scan orientation detection available" : "EXIF rotation available; install osd language data for rotated scan detection")</p>
         @if (!ocrStatus.Available) { <p class="hint">On the Windows server, install Tesseract OCR and restart DocumentStorage. The default install folder is detected automatically; a custom path uses Documents:TesseractCommand in the instance configuration. Waiting jobs retry automatically.</p> }
+    }
+    <button type="button" class="text-button" disabled="@checkingPdf" @onclick="CheckPdf">Check PDF tools</button>
+    @if (pdfStatus != null)
+    {
+        <p role="status" class="@(pdfStatus.Available ? "hint" : "form-error")">@pdfStatus.Message</p>
+        <p class="hint">Text reader: @(pdfStatus.TextAvailable ? "Ready" : "Unavailable") · Page information: @(pdfStatus.InfoAvailable ? "Ready" : "Unavailable") · Page renderer: @(pdfStatus.RasterAvailable ? "Ready" : "Unavailable")</p>
+        @if (!pdfStatus.Available) { <p class="hint">PDF OCR needs Poppler's pdftotext, pdfinfo and pdftoppm tools. The app looks beside the configured PDF text tool. Run the OCR setup helper on the Windows server to check tools and service permissions.</p> }
     }
 </section>
 <section class="sheet settings-card">
@@ -46,8 +54,9 @@
 </section>
 @code {
     private List<ExtractionJob> jobs = [];
-    private bool busy, disposed, checking;
+    private bool busy, disposed, checking, checkingPdf;
     private DocumentStorage.Core.Imaging.OcrRuntimeStatus? ocrStatus;
+    private DocumentStorage.Core.Pdf.PdfToolStatus? pdfStatus;
     private string? error;
     protected override async Task OnInitializedAsync() { Workspace.Changed += Refresh; await Load(); }
     private void Refresh() => _ = InvokeAsync(async () => { if (!busy && !disposed) { await Load(); StateHasChanged(); } });
@@ -65,6 +74,13 @@
         try { await Library.ReextractDocumentAsync(id, await Workspace.ActorAsync()); await Load(); Workspace.Notify("Text extraction queued. Existing AI readings will need an explicit reread."); }
         catch (Exception ex) { error = ex is StorageException ? ex.Message : "Text extraction could not be queued. Refresh and try again."; }
         finally { busy = false; }
+    }
+    private async Task CheckPdf()
+    {
+        checkingPdf = true;
+        try { pdfStatus = await PdfTools.CheckAsync(); }
+        catch (Exception) { error = "The PDF tools could not be checked. Check their installation and permissions."; }
+        finally { checkingPdf = false; }
     }
     private static string PreviewLabel(string kind) => kind switch { "pdf" => "PDF viewer", "image" or "raster" => "Image viewer", "text" => "Source text", "document" => "Document text", "spreadsheet" => "Worksheets and cells", _ => "Download original" };
     private static string StateLabel(string state) => state switch { "Queued" => "Waiting", "Running" => "Extracting", "Retry" => "Waiting to retry", "Succeeded" => "Complete", "Superseded" => "Older attempt", _ => state };

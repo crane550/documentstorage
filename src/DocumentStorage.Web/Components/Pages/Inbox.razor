@@ -347,8 +347,8 @@ else
                 {
                     if (busy || view != "waiting") return;
                     // The selected card often; the whole list every so often, so readings finished in the background show up.
-                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || x.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable")) await RefreshAsync();
-                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || selected?.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable") await ReloadSelected();
+                    if (++tick % 4 == 0 && queue.Cards.Any(x => x.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || x.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable" or "PDF OCR tools unavailable")) await RefreshAsync();
+                    else if (selected?.ReaderState is "Waiting to be read" or "Reading" or "Will try again" || selected?.Document.TextStatus is "Text queued" or "Extracting" or "OCR tool unavailable" or "PDF text tool unavailable" or "PDF OCR tools unavailable") await ReloadSelected();
                     else return;
                     StateHasChanged();
                 });
@@ -425,7 +425,7 @@ else
             ? $"Text rescanned: {result.Characters:N0} characters. Read it again with AI for a fresh suggestion."
             : result.TextStatus is "Text queued" or "Extracting" ? "Text extraction queued. The document will update when it finishes; Read again with AI requests a fresh interpretation."
             : result.Readiness != "Ready" ? "The file is still arriving. Wait a few seconds, then rescan text again."
-            : result.TextStatus == "Needs OCR" ? "No text layer was found. Rescan text reads existing OCR; it does not create OCR."
+            : result.TextStatus == "No text found" ? "Text extraction finished, but no readable words were found. Check the original scan."
             : "Rescan finished: " + result.TextStatus + ".", result.TextStatus is not ("Indexed" or "Text queued" or "Extracting"));
     });
     private async Task Decided(string message) { reviewing = null; await RefreshAsync(); Workspace.Notify(message); }

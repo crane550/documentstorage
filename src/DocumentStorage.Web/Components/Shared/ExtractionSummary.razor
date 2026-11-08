@@ -1,0 +1,33 @@
+@inject DocumentStorage.Core.Formats.DocumentFormatRegistry Formats
+
+@if (artifact != null)
+{
+    <details class="extraction-summary">
+        <summary>How text was read</summary>
+        <p class="hint">@artifact.Pages.Count @(artifact.Pages.Count == 1 ? "page" : "pages") included@(artifact.TotalPages is { } total && total > artifact.Pages.Count ? $" of {total}" : "") · @artifact.Pages.Count(x => x.Source == "ocr") with local OCR · @artifact.Pages.Count(x => x.Source == "embedded" && x.Characters > 0) with existing text</p>
+        @if (artifact.Note.Length > 0) { <p class="hint">@artifact.Note</p> }
+        <ul class="extraction-pages">
+            @foreach (var item in artifact.Pages)
+            {
+                <li><strong>Page @item.Page</strong> · @(item.Status != "complete" && item.Characters == 0 ? "OCR not completed" : item.Source == "embedded" ? "Existing text" : "Local OCR") · @item.Characters.ToString("N0") characters
+                    @if (item.Source == "ocr" && item.MeanConfidence is { } score) { <span> · word score @score.ToString("0") / 100</span> }
+                    @if (item.Rotation != 0) { <span> · scan corrected @item.Rotation°</span> }
+                    @if (item.Status != "complete") { <span> · @Status(item.Status)</span> }
+                </li>
+            }
+        </ul>
+        @if (artifact.Pages.Any(x => x.Source == "ocr")) { <p class="hint">OCR word scores help spot uncertain text; they are not a guarantee that names, dates or numbers are correct.</p> }
+    </details>
+}
+@code {
+    [Parameter, EditorRequired] public CatalogEntry Entry { get; set; } = default!;
+    private DocumentStorage.Core.Imaging.ImageOcrArtifact? artifact;
+    protected override void OnParametersSet()
+    {
+        artifact = null;
+        if (Formats.Find(Entry.Name)?.Module is not (DocumentStorage.Core.Formats.ImageModule or DocumentStorage.Core.Formats.PdfModule) || Entry.ExtractionArtifactJson.Length == 0) return;
+        try { var value = System.Text.Json.JsonSerializer.Deserialize<DocumentStorage.Core.Imaging.ImageOcrArtifact>(Entry.ExtractionArtifactJson); if (value?.Pages != null) artifact = value; }
+        catch (System.Text.Json.JsonException) { }
+    }
+    private static string Status(string status) => status switch { "ocr_page_limit" => "OCR page limit reached", "time_budget" => "OCR time budget reached", "ocr_timed_out" => "OCR timed out", "ocr_failed" => "OCR incomplete", _ => "Check extraction status" };
+}

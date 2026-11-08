@@ -30,6 +30,7 @@ async Task Refuses(Func<Task> action, string description)
 try
 {
     await MigrationChecks.RunAsync(factory, Check);
+    if (args is ["--pdf-ocr-only"]) { await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses); Console.WriteLine($"All {passed} PDF OCR checks passed."); return; }
     if (args is ["--images-only"]) { await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses); Console.WriteLine($"All {passed} image checks passed."); return; }
     Check(StoragePaths.ValidateName("Bank statements") == "Bank statements", "portable names accepted");
     foreach (var name in new[] { "../outside", "a/b", "a\\b", "CON.pdf", ".documentstorage-root", "trailing.", "" })
@@ -142,6 +143,7 @@ try
     await DuplicateChecks.RunAsync(factory, Path.Combine(scratch, "duplicates"), Check, Refuses);
     await FormatChecks.RunAsync(factory, Path.Combine(scratch, "formats"), Check, Refuses);
     await ImageChecks.RunAsync(factory, Path.Combine(scratch, "images"), Check, Refuses);
+    await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses);
     Console.WriteLine($"\nAll {passed} checks passed against PostgreSQL and real temporary files.");
 }
 finally

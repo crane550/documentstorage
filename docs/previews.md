@@ -4,7 +4,7 @@ Select a document in the **Library** to open its preview beside the file list. S
 
 ## Controls and formats
 
-- **PDF:** scroll through pages, use previous/next or enter a page number, zoom in/out, fit width, rotate, find text across pages (Enter searches; arrows move between matches), and select/copy its text layer. Image-only scans render normally but require existing OCR for text selection/search. Password-protected PDFs prompt inside the viewer; the password is passed only to the local browser worker and is not sent to the server or saved. Static form/annotation appearances render; editing, scripting, active annotation controls and XFA are disabled.
+- **PDF:** scroll through pages, use previous/next or enter a page number, zoom in/out, fit width, rotate, find text across pages (Enter searches; arrows move between matches), and select/copy its text layer. Image-only scans render normally. Server OCR makes them searchable in Stash; text selection and Find in PDF still depend on the original PDF's text layer. Password-protected PDFs prompt inside the viewer; the password is passed only to the local browser worker and is not sent to the server or saved. Static form/annotation appearances render; editing, scripting, active annotation controls and XFA are disabled.
 - **Images:** PNG, JPEG, GIF, WebP, BMP and AVIF use the browser's image decoder, with zoom, fit width and rotation. Decoder support depends on the browser. TIFF, HEIC/HEIF, DIB, ICO and PBM/PGM/PPM use server-decoded PNG previews. TIFF has page navigation; other converted images show the first/primary frame. Camera raw conversion is not implemented. See [Image OCR](image-ocr.md).
 - **Text/source:** TXT, Markdown, CSV/TSV, JSON, XML, YAML, logs, INI, HTML and SVG show escaped source with a wrap-lines control. HTML/SVG are not active pages/images, and Markdown is not rendered as HTML. UTF-8 and BOM-marked Unicode text are supported. Other encodings use the original-download fallback.
 - **Word (.docx):** saved text from the body, headers and footers, with a wrap-lines control. Original page layout and embedded pictures are omitted.
@@ -46,3 +46,5 @@ node tests/browser/preview.mjs
 ```
 
 Browser tests verify actual canvas ink and filled-form appearances, navigation/zoom/rotation/search, encrypted PDFs, all advertised image formats, escaped text, bad-file fallbacks, fast switching, expanded/mobile viewing, Intake facts alongside the PDF, retained cardboard styling and same-origin assets. Fixtures live only under ignored `.local/`. Existing document, folder and Intake browser workflows also remain part of verification. Actual server/browser deployment still needs the usual Windows update and user validation.
+
+Scanned PDF search uses saved server OCR; the preview still displays original bytes. See [Scanned PDF OCR](pdf-ocr.md).

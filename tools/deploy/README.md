@@ -149,3 +149,5 @@ Updates build a staging release, make/check a custom-format PostgreSQL backup, s
 ## Image OCR
 
 After updating, follow [Image OCR setup](../../docs/image-ocr.md). Install `UB-Mannheim.TesseractOCR` machine-wide, then run `tools\deploy\setup-ocr.ps1` in elevated PowerShell. It checks language data, grants the existing LocalService identity read/execute access to the dedicated tool folder, preserves instance settings and restarts only DocumentStorage. In Settings → File formats, **Check OCR engine** confirms what the service can actually run. Missing OCR does not stop the app or previewing; queued images wait to retry. Magick.NET image decoding is bundled with normal .NET publish.
+
+Scanned PDF OCR also needs `pdfinfo.exe` and `pdftoppm.exe` beside the configured Poppler text tool. The updated setup helper validates all three and grants read/execute access to the dedicated Poppler bin directory. Use **Check PDF tools** in File formats to verify access from the service account. See [Scanned PDF OCR](../../docs/pdf-ocr.md).

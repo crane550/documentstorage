@@ -6,8 +6,9 @@ using System.Text.RegularExpressions;
 namespace DocumentStorage.Core.Imaging;
 
 public sealed record OcrRuntimeStatus(bool Available, string Version, string Language, string[] Languages, bool OrientationAvailable, string Message);
-public sealed record OcrPage(int Page, int Rotation, int Characters, double? MeanConfidence);
-public sealed record ImageOcrArtifact(string Engine, string Language, List<OcrPage> Pages, bool Truncated, string Note);
+public sealed record OcrPage(int Page, int Rotation, int Characters, double? MeanConfidence, string Source = "ocr", string Status = "complete");
+// Shared image/PDF OCR provenance; optional fields keep older saved image artifacts readable.
+public sealed record ImageOcrArtifact(string Engine, string Language, List<OcrPage> Pages, bool Truncated, string Note, int? TotalPages = null);
 public sealed record OcrOutput(string Text, double? Confidence, bool Truncated);
 
 public sealed partial class TesseractOcr(string? command = null, string language = "eng")

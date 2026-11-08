@@ -148,7 +148,7 @@ public sealed partial class LibraryService
         {
             Organizing = context.Organizing, Sorting = context.Sorting, Backfill = context.Backfill, EntryId = entry.Id, ContentHash = entry.ContentHash, SourcePath = entry.RelativePath, ReviewRevision = reviewRevision,
             SettingsRevision = settings.Revision, ContextHash = context.Hash, ContextJson = context.Json,
-            Endpoint = settings.Endpoint, Model = settings.Model, InputTruncated = context.Truncated || (!context.Sorting && entry.ExtractedText.Length > settings.MaxInputCharacters),
+            Endpoint = settings.Endpoint, Model = settings.Model, InputTruncated = entry.ExtractionTruncated || context.Truncated || (!context.Sorting && entry.ExtractedText.Length > settings.MaxInputCharacters),
             CreatedAt = time.GetUtcNow(), NotBefore = time.GetUtcNow(), CreatedBy = actor
         };
         db.IdentificationJobs.Add(job); await db.SaveChangesAsync(); return job.Id;
@@ -284,7 +284,7 @@ public sealed partial class LibraryService
                 text = text[..head] + marker + text[^(budget - head)..];
             }
             input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, sourceText, text,
-                context.Truncated || excerptTruncated, context.Types, context.Facts, claimed.Organizing);
+                entry.ExtractionTruncated || context.Truncated || excerptTruncated, context.Types, context.Facts, claimed.Organizing);
             if (claimed.Sorting) sortInput = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, context.Json);
             claimed.ContextJson = context.Json;
             claimed.InputText = text;
@@ -371,7 +371,7 @@ public sealed partial class LibraryService
                         job.OrganizationJson = JsonSerializer.Serialize(sortReply); job.DocumentType = sortReply.Kind; job.Summary = sortReply.Title;
                         job.FactsJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Value));
                         job.EvidenceJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Quote));
-                        job.NeedsReview = sortReply.Confidence != "high"; job.State = "Succeeded"; job.CompletedAt = time.GetUtcNow(); sorted = true;
+                        job.NeedsReview = sortReply.Confidence != "high" || ExtractionConcern(entry) != null; job.State = "Succeeded"; job.CompletedAt = time.GetUtcNow(); sorted = true;
                     }
                     await db.SaveChangesAsync(); return true;
                 }

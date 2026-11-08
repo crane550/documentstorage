@@ -30,7 +30,7 @@ Working now:
 - Recoverable trash and restore, preserving document/folder IDs and folder guidance for app-managed moves.
 - In-app PDF viewer with page navigation, zoom, rotation, search, selectable text and password support; image and safe source-text previews in the Library and beside each Inbox filing slip.
 - Search filenames, relative paths, extracted Office/text/PDF content, and saved local image OCR.
-- Tesseract OCR for common raster images, TIFF page navigation, and converted HEIC/HEIF previews; original images remain unchanged.
+- Tesseract OCR for raster images and scanned/text-poor PDF pages, mixed-PDF extraction, TIFF page navigation, and converted HEIC/HEIF previews; originals remain unchanged.
 - Save independent document titles, summaries, reusable tags, organizations and discovered facts; search saved metadata and request folder suggestions without resending original OCR.
 - Save plain-English folder instructions and inspect inherited instructions.
 - Journal moves with content fingerprints before touching disk; verify moved files and complete folder trees, and recover verified interrupted moves on rescan.
@@ -54,6 +54,7 @@ See [Browser updates and release numbers](docs/updating.md) for one-time updater
 See [The interface](docs/interface.md) for how the screens fit together, the filing loop and the design language.
 
 See [Document previews](docs/previews.md) for formats, controls and preview verification.
+See [Scanned PDF OCR](docs/pdf-ocr.md) for page-aware PDF extraction, tool checks and limits.
 See [Image OCR](docs/image-ocr.md) for the one-time engine installation, image formats and limits.
 See [File format modules](docs/file-formats.md) for extraction capabilities, limits, retries and adding formats.
 
@@ -71,7 +72,7 @@ The app uses its own ASP.NET Identity username/password login, matching the acco
 
 ## Run
 
-Prerequisites: .NET SDK 10.0.401 (later .NET 10 feature bands allowed), PostgreSQL 18, and Poppler's `pdftotext` on PATH. On Windows, set `Documents:PdfTextCommand` to the full executable path. Missing PDF tooling is shown as `PDF text tool unavailable`; filenames and other text still index. This build reads the first 100 PDF pages and retains up to 500,000 characters per file. Image-only PDFs are labeled `Needs OCR`; PDF pixel OCR is not implemented here. Image files use a separately installed local Tesseract engine; see the image setup guide.
+Prerequisites: .NET SDK 10.0.401 (later .NET 10 feature bands allowed), PostgreSQL 18, and Poppler's `pdftotext` on PATH. On Windows, set `Documents:PdfTextCommand` to the full executable path. Missing PDF tooling is shown as `PDF text tool unavailable`; filenames and other text still index. This build reads the first 100 PDF pages and retains up to 500,000 characters per file. Scanned/text-poor PDF pages and image files use a separately installed local Tesseract engine. PDF rendering also needs Poppler's `pdfinfo` and `pdftoppm`, found beside the configured text tool. See the OCR setup guides.
 
 Create an empty PostgreSQL database named `documentstorage_dev` using a role that owns it, then set the connection string through your shell/environment settings. Use a password appropriate for your server; never commit credentials.
 

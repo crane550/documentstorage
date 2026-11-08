@@ -27,7 +27,7 @@ Set-Location C:\Apps\DocumentStorage\repo
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\setup-ocr.ps1
 ```
 
-The setup script checks the installed tool/language data, grants LocalService read/execute access to the dedicated Tesseract installation, preserves existing private instance settings, records the executable/language, and restarts only DocumentStorage. It does not display configuration or passwords. Its real Windows service/ACL behavior needs server validation; automated checks parse it on Linux.
+The setup script checks the installed tool/language data and Poppler PDF tools, grants LocalService read/execute access to the dedicated Tesseract and Poppler bin directories, preserves existing private instance settings, records the executable/language, and restarts only DocumentStorage. It does not display configuration or passwords. Its real Windows service/ACL behavior needs server validation; automated checks parse it on Linux.
 
 In **Settings → File formats**, select **Check OCR engine**. It reports service-visible availability, version, configured language and orientation support. Existing waiting image jobs retry automatically. Already saved images gain OCR after the normal storage scan notices their new extraction module version; no re-upload is needed.
 
@@ -49,4 +49,4 @@ Input is limited to 100 MiB, 40 megapixels per processed frame, 16,000 pixels pe
 
 The real PostgreSQL/filesystem suite runs actual Tesseract on generated PNG/JPEG/BMP/GIF/WebP/AVIF/DIB/PNM pages, a synthetic HEVC HEIC fixture, multipage TIFF, EXIF and sideways scans. It checks original-byte preservation, persistence, caching, no-text results, missing-language/tool handling and filing-quality notices. `--images-only` runs that subset against a disposable `*_checks` database. Authentication checks cover converted PNG data, page bounds and anonymous/stale denial. `node tests/browser/images.mjs` verifies actual rendered pixels, TIFF navigation, HEIC, saved OCR search/details, engine checks and phone layout. Model classification quality still depends on the chosen Ollama model and real source quality.
 
-Image-only PDFs still require an existing PDF OCR layer in this release; adding the raster OCR engine does not change PDF extraction yet.
+Scanned and mixed PDFs now reuse this OCR engine page by page. See [Scanned PDF OCR](pdf-ocr.md) for the PDF-specific workflow, Poppler tool checks and limits.

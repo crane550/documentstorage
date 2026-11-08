@@ -1397,3 +1397,7 @@ a.tag-chip:hover { background: var(--green-bg); text-decoration: underline; }
 .assistant-change { border-top: 1px solid var(--line); padding: 12px 0; min-width: 0; }
 .assistant-change header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .assistant-change pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+
+.extraction-pages { padding-left: 20px; margin: 8px 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.extraction-summary { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-2); font-size: 12px; }
+.extraction-summary > summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }

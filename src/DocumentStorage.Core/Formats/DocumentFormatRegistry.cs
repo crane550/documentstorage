@@ -20,8 +20,8 @@ public sealed class DocumentFormatRegistry
     private readonly Dictionary<string, RegisteredFormat> extensions = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IDocumentFormatModule> modules;
     public static DocumentFormatRegistry Default { get; } = CreateDefault();
-    public static DocumentFormatRegistry CreateDefault(string pdfCommand = "pdftotext", Imaging.TesseractOcr? ocr = null) => new([
-        new PlainTextModule(), new PdfModule(pdfCommand), new WordModule(), new SpreadsheetModule(), new ImageModule(ocr), new SourceModule()
+    public static DocumentFormatRegistry CreateDefault(string pdfCommand = "pdftotext", Imaging.TesseractOcr? ocr = null, Pdf.PopplerPdfTools? pdfTools = null) => new([
+        new PlainTextModule(), new PdfModule(pdfCommand, ocr, pdfTools), new WordModule(), new SpreadsheetModule(), new ImageModule(ocr), new SourceModule()
     ]);
 
     public DocumentFormatRegistry(IEnumerable<IDocumentFormatModule> modules)
