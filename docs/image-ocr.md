@@ -22,10 +22,12 @@ Image decoding uses pinned Magick.NET 15.1.0 and its bundled native libraries. T
 Update Stash, then run once in elevated PowerShell on the server:
 
 ```powershell
-winget install --id UB-Mannheim.TesseractOCR --exact --scope machine --accept-source-agreements --accept-package-agreements
+winget install --id UB-Mannheim.TesseractOCR --exact --interactive --accept-source-agreements --accept-package-agreements
 Set-Location C:\Apps\DocumentStorage\repo
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\deploy\setup-ocr.ps1
 ```
+
+In the Tesseract installer, choose installation for all users if offered and keep the destination `C:\Program Files\Tesseract-OCR`. WinGet's Tesseract manifest does not declare a machine scope; forcing `--scope machine` can return **No applicable installer found**. Use the interactive command above instead.
 
 The setup script checks the installed tool/language data and Poppler PDF tools, grants LocalService read/execute access to the dedicated Tesseract and Poppler bin directories, preserves existing private instance settings, records the executable/language, and restarts only DocumentStorage. It does not display configuration or passwords. Its real Windows service/ACL behavior needs server validation; automated checks parse it on Linux.
 

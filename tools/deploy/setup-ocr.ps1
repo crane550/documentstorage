@@ -4,7 +4,7 @@ param([string]$InstallRoot = 'C:\Apps\DocumentStorage', [string]$TesseractComman
 . (Join-Path $PSScriptRoot 'common.ps1')
 Assert-Administrator
 if ($Language -notmatch '^[a-zA-Z0-9_]+(\+[a-zA-Z0-9_]+)*$') { throw 'Use installed language codes, for example eng or eng+spa.' }
-if (-not (Test-Path -LiteralPath $TesseractCommand -PathType Leaf)) { throw 'Install Tesseract first: winget install --id UB-Mannheim.TesseractOCR --exact --scope machine' }
+if (-not (Test-Path -LiteralPath $TesseractCommand -PathType Leaf)) { throw 'Install Tesseract first: winget install --id UB-Mannheim.TesseractOCR --exact --interactive (choose all users if offered and C:\Program Files\Tesseract-OCR)' }
 $TesseractCommand = (Resolve-Path -LiteralPath $TesseractCommand).Path
 Invoke-Native $TesseractCommand @('--version')
 $languages = & $TesseractCommand --list-langs
