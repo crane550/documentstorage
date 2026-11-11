@@ -61,15 +61,11 @@ internal static class FieldGuideChecks
 
         // The reading: guides go into the prompt; a value written differently still counts; one that isn't there is left empty and said so.
         await library.QueueSortingAsync(entry.Id, actor);
-        SortRequest? sent = null;
-        await library.ProcessNextIdentificationAsync(new Model(sort: input => { sent = input; return new("Checking statement", "", "Synthetic Cedar Bank", "2025-05-31", "Checking statement", [],
+        AskRequest? sent = null;
+        await library.ProcessNextIdentificationAsync(new Model(sort: input => { if (input.Step == "details") sent = input; return new("Checking statement", "", "Synthetic Cedar Bank", "2025-05-31", "Checking statement", [],
             [new("ending_balance", "$980.10", "Ending balance 980.10"), new("account_type", "Gold savings", "Gold savings")], "high"); }));
-        using (var prompt = JsonDocument.Parse(sent!.PromptJson))
-        {
-            var notes = prompt.RootElement.GetProperty("known_kinds").EnumerateArray().Single(x => x.GetProperty("name").GetString() == "Checking statement").GetProperty("field_notes");
-            check(notes.GetProperty("beginning_balance").GetString()!.Contains("start of the statement period") && notes.GetProperty("beginning_balance").GetString()!.Contains("Opening balance"),
-                "the reader is told what each field is and the words printed beside it");
-        }
+        var asks = sent!.Question.Split('\n').Single(x => x.StartsWith("  - beginning_balance", StringComparison.Ordinal));
+        check(asks.Contains("start of the statement period") && asks.Contains("Opening balance"), "the reader is told what each field is and the words printed beside it");
         var card = (await library.SortCardAsync(entry.Id))!;
         check(card.Choice.Fields.GetValueOrDefault("ending_balance") == "980.10" && card.Sources.GetValueOrDefault("field:ending_balance") == "reader",
             "a reader's value written differently from the text still counts, kept in money form");
@@ -129,11 +125,11 @@ internal static class FieldGuideChecks
     }
 
     private sealed class Clock : TimeProvider { private DateTimeOffset now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => now; public void Advance(int seconds) => now = now.AddSeconds(seconds); }
-    private sealed class Model(Func<SortRequest, SortReply>? sort = null, Func<FieldFindRequest, FieldReply>? find = null, Func<KindDraftRequest, KindDraftReply>? draft = null) : IOllamaClient
+    private sealed class Model(Func<AskRequest, SortReply>? sort = null, Func<FieldFindRequest, FieldReply>? find = null, Func<KindDraftRequest, KindDraftReply>? draft = null) : IOllamaClient
     {
         public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
         public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Sorting never asks the old question.");
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default) => Task.FromResult(sort!(request));
+        public Task<string> AskAsync(AskRequest request, CancellationToken cancellationToken = default) => Task.FromResult(ScriptedReader.Answer(request, sort!(request)));
         public Task<FieldReply> FindFieldsAsync(FieldFindRequest request, CancellationToken cancellationToken = default) =>
             find != null ? Task.FromResult(find(request)) : throw new InvalidOperationException("The reader wasn't expected to be asked.");
         public Task<KindDraftReply> DraftKindAsync(KindDraftRequest request, CancellationToken cancellationToken = default) => Task.FromResult(draft!(request));

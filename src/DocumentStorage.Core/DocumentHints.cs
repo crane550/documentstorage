@@ -4,13 +4,13 @@ using System.Text.RegularExpressions;
 namespace DocumentStorage.Core;
 
 public sealed record NamedTerm(Guid Id, string Name, string[] Aliases);
-public sealed record KindTerm(Guid Id, string Name, string Description, string[] Fields, bool IsCatchAll);
 public sealed record FoundDate(DateOnly Date, string Text, string Where);
 public sealed record DocumentHintSet(
-    bool DescriptiveName, string[] NameWords, List<FoundDate> Dates, List<Guid> Senders, List<Guid> Tags, List<(Guid Id, int Score)> Kinds);
+    bool DescriptiveName, string[] NameWords, List<FoundDate> Dates, List<Guid> Senders, List<Guid> Tags, List<Guid> Kinds);
 
 // Everything Stash can tell about a document without the model: the filename's words and
-// dates, and known senders, tags and kinds named in the filename or the first page.
+// dates, known senders and tags named in the filename or the first page, and a kind the
+// filename itself names. What kind a document is otherwise is never guessed from stray words.
 public static partial class DocumentHints
 {
     public const int TextWindow = 4000;
@@ -31,7 +31,7 @@ public static partial class DocumentHints
 
     public static string[] Words(string text) => WordPattern().Matches(text.Replace('_', ' ')).Select(x => x.Value).ToArray();
 
-    public static DocumentHintSet Read(string fileName, string text, IReadOnlyList<KindTerm> kinds, IReadOnlyList<NamedTerm> senders, IReadOnlyList<NamedTerm> tags)
+    public static DocumentHintSet Read(string fileName, string text, IReadOnlyList<NamedTerm> kinds, IReadOnlyList<NamedTerm> senders, IReadOnlyList<NamedTerm> tags)
     {
         var stem = Path.GetFileNameWithoutExtension(fileName);
         var head = text.Length > TextWindow ? text[..TextWindow] : text;
@@ -48,17 +48,12 @@ public static partial class DocumentHints
         List<Guid> Matching(IReadOnlyList<NamedTerm> terms) => terms
             .Select(term => (term.Id, Position: new[] { term.Name }.Concat(term.Aliases).Select(x => Position(Normalize(x))).Min()))
             .Where(x => x.Position < int.MaxValue).OrderBy(x => x.Position).Select(x => x.Id).ToList();
-        var words = Words(stem + " " + head).Select(x => x.ToLowerInvariant()).Where(x => x.Length >= 3).ToHashSet();
+        // A kind counts only when the file's own name says it ("Acme_Invoice_INV-20391.pdf").
         var nameWords = Words(stem).Select(x => x.ToLowerInvariant()).ToHashSet();
-        var scored = kinds.Where(x => !x.IsCatchAll).Select(kind =>
-        {
-            var kindWords = Words(kind.Name).Select(x => x.ToLowerInvariant()).Where(x => x.Length >= 3).ToArray();
-            var named = kindWords.Length > 0 && kindWords.All(x => nameWords.Contains(x) || nameWords.Contains(x + "s") || (x.EndsWith('s') && nameWords.Contains(x[..^1])));
-            var phrase = textSpace.Contains(" " + Normalize(kind.Name) + " ", StringComparison.Ordinal);
-            var described = Words(kind.Description + " " + string.Join(' ', kind.Fields).Replace('_', ' ')).Select(x => x.ToLowerInvariant()).Where(x => x.Length >= 4).Distinct().Count(words.Contains);
-            return (kind.Id, Score: (named ? 10 : 0) + (phrase ? 5 : 0) + described);
-        }).Where(x => x.Score > 0).OrderByDescending(x => x.Score).ToList();
-        return new(IsDescriptive(fileName), Words(stem).Where(x => !Generic.Contains(x)).ToArray(), dates, Matching(senders), Matching(tags), scored);
+        bool InName(string term) => Words(term).Select(x => x.ToLowerInvariant()).Where(x => x.Length >= 3).ToArray() is { Length: > 0 } wanted
+            && wanted.All(x => nameWords.Contains(x) || nameWords.Contains(x + "s") || (x.EndsWith('s') && nameWords.Contains(x[..^1])));
+        var named = kinds.Where(kind => new[] { kind.Name }.Concat(kind.Aliases).Any(InName)).Select(kind => kind.Id).ToList();
+        return new(IsDescriptive(fileName), Words(stem).Where(x => !Generic.Contains(x)).ToArray(), dates, Matching(senders), Matching(tags), named);
     }
 
     public static string Normalize(string text) => string.Join(' ', Words(text.ToLowerInvariant().Replace("&", " and ")));

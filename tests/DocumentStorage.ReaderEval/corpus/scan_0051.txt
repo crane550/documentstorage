@@ -1,0 +1,14 @@
+ACME FASTENERS SUPPLY
+PACKING SLIP
+
+Ship date: 02/18/2026           Packing slip no. PS-66120
+Ship to: Twin Forks Machine Works, 21 Mill Street
+Customer PO: 4471               Carrier: Ground   Cartons: 1
+
+Ordered   Shipped   Backordered   Description
+500       500       0             Socket cap screw 1/4-20
+500       500       0             Flat washer 1/4
+
+No prices are shown on this document.
+Please check contents on receipt and report shortages within 5 days.
+Packed by: 14

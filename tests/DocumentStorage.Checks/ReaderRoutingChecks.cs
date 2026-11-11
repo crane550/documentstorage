@@ -103,7 +103,7 @@ internal static class ReaderRoutingChecks
         var client = new OllamaClient(http);
         await client.ProbeAsync("http://desktop.test:11434/", "synthetic:8b");
         check(paths.SequenceEqual(new[] { "/api/show" }), "availability probes request model metadata only, never chat or document text");
-        await client.SortAsync(new("http://desktop.test:11434/", "synthetic:8b", 30, "{}", 0));
+        await client.AskAsync(new("http://desktop.test:11434/", "synthetic:8b", 30, "describe", "DOCUMENT", "QUESTION", new { type = "object" }, 100, 0));
         using var cloudHttp = new HttpClient(new Handler((_, _) => Task.FromResult(Json("""{"remote_host":"https://cloud.example"}"""))));
         var refused = false;
         try { await new OllamaClient(cloudHttp).ProbeAsync("http://desktop.test:11434/", "synthetic:8b"); } catch (OllamaException) { refused = true; }
@@ -121,7 +121,8 @@ internal static class ReaderRoutingChecks
     {
         public HashSet<string> Offline { get; } = [];
         public List<string> Probes { get; } = [];
-        public List<SortRequest> Reads { get; } = [];
+        // One entry per reading a reader was asked to start: its first question.
+        public List<AskRequest> Reads { get; } = [];
         public bool FailDesktopDuringRead { get; set; }
         public bool InvalidReply { get; set; }
         public Func<CancellationToken, Task>? BeforeProbe { get; set; }
@@ -131,12 +132,12 @@ internal static class ReaderRoutingChecks
             if (BeforeProbe != null) await BeforeProbe(cancellationToken);
             if (Offline.Contains(host)) throw new OllamaException("Synthetic sleeping computer.", true);
         }
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default)
+        public Task<string> AskAsync(AskRequest request, CancellationToken cancellationToken = default)
         {
-            Reads.Add(request);
+            if (request.Step == "describe") Reads.Add(request);
             if (FailDesktopDuringRead && new Uri(request.Endpoint).Host == "desktop.test") throw new OllamaException("Synthetic interrupted connection.", true);
             if (InvalidReply) throw new OllamaException("Synthetic invalid response.");
-            return Task.FromResult(new SortReply("Bank statement", "", "Cedar Bank", "2026-10-31", "Checking statement", [], [], "medium"));
+            return Task.FromResult(ScriptedReader.Answer(request, new SortReply("Bank statement", "", "Cedar Bank", "2026-10-31", "Checking statement", [], [], "medium")));
         }
         public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
         public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

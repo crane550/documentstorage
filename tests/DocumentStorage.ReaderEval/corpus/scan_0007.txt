@@ -1,0 +1,17 @@
+Northwind Outfitters - online store
+ORDER RECEIPT
+
+Order # NW-558201           Date: 06/02/2026
+Billed to card ending 9020
+
+Qty  Description                    Price
+1    Trail socks, 3 pair            18.00
+1    Insulated bottle 32 oz         24.00
+
+Merchandise                         42.00
+Shipping & handling                  5.95
+Sales tax                            2.52
+Total charged                       50.47
+
+Your card has been charged. This is your receipt.
+Questions about your order? help@northwind.example

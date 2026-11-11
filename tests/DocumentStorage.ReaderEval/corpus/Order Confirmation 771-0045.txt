@@ -1,0 +1,20 @@
+BRIGHTCART.EXAMPLE
+Thanks for your order!
+
+Order number: 771-0045-88213
+Order placed: April 18, 2026
+Paid with: Visa ending 4417
+
+Items ordered
+  1 x USB-C charging cable 6 ft           9.99
+  1 x Laptop stand, aluminum             27.50
+
+Item subtotal                            37.49
+Shipping                                  0.00
+Tax                                       2.25
+Order total                              39.74
+Payment received                         39.74
+
+Shipping to: J. Synthetic, 12 Birch Lane
+Estimated delivery April 22 - April 24
+Keep this confirmation for your records.

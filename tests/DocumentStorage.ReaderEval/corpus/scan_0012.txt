@@ -1,0 +1,19 @@
+ACME FASTENERS SUPPLY
+900 Industrial Pkwy
+
+INVOICE
+
+Invoice No: INV-20391          Invoice date: 02/19/2026
+Bill to: Twin Forks Machine Works   Customer PO: 4471
+Terms: Net 30                   Due date: 03/21/2026
+
+Qty   Item                         Unit     Amount
+500   Socket cap screw 1/4-20      0.12      60.00
+500   Flat washer 1/4              0.03      15.00
+
+Subtotal                                     75.00
+Freight                                       9.40
+Invoice total                                84.40
+Amount due                                   84.40
+
+Please remit payment to the address above. Thank you for your business.

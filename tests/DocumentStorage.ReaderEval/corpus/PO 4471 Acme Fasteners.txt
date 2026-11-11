@@ -1,0 +1,19 @@
+TWIN FORKS MACHINE WORKS
+PURCHASE ORDER
+
+PO Number: 4471                      Date: 02/11/2026
+Vendor: Acme Fasteners Supply        Ship to: Twin Forks Machine Works
+        900 Industrial Pkwy                   21 Mill Street
+
+Buyer: R. Synthetic     Terms: Net 30     Ship via: Ground
+Required by: 02/25/2026
+
+Line  Part no.    Description              Qty   Unit    Extended
+1     SHCS-1420   Socket cap screw 1/4-20  500   0.12     60.00
+2     FW-025      Flat washer 1/4          500   0.03     15.00
+
+                                        PO TOTAL          75.00
+
+Please confirm receipt of this order and expected ship date.
+Reference our PO number on all invoices and packing lists.
+Authorized by: ____________________

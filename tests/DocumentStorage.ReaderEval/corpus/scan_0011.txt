@@ -1,0 +1,17 @@
+PURCHASE ORDER                                No. 4502
+Twin Forks Machine Works, 21 Mill Street
+
+To (vendor): Ridgeline Tool Steel Inc.
+Order date: March 3, 2026      Deliver by: March 17, 2026
+Payment terms: Net 30          FOB: Destination
+
+Item   Description                         Quantity   Unit price   Amount
+1      O1 tool steel flat 1/2 x 2 x 36     4          38.50        154.00
+2      4140 round bar 1 in x 72            2          41.00         82.00
+
+Subtotal                                                            236.00
+Total this order                                                    236.00
+
+This purchase order authorizes shipment of the goods listed above.
+Send invoice in duplicate quoting PO 4502.
+Requested by: shop floor      Approved: R. Synthetic

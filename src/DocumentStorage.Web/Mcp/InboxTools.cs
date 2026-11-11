@@ -21,6 +21,7 @@ public sealed partial class DocumentTools
         document_id=x.Document.Id,storage_id=x.Document.RootId,x.Document.Name,path=x.Document.RelativePath,x.Document.ContentHash,x.Document.TextStatus,x.Document.Readiness,x.Document.Online,
         suggested_details=new {kind=x.Choice.Kind,from=x.Choice.From,date=x.Choice.Date?.ToString("yyyy-MM-dd"),x.Choice.Title,x.Choice.Tags,x.Choice.Fields},
         x.Sources,x.Quotes,x.Confidence,x.Sure,x.Notes,reader_state=x.ReaderState,reader_attempt_id=x.JobId,
+        reader_called_it=x.ReaderWords,other_kinds=x.OtherKinds,
         filing_preview=new {folder=x.Plan.FolderPath,filename=x.Plan.FileName,x.Plan.NewFolders,x.Plan.Problem},
         duplicates=x.Copies.Select(d=>new {d.EntryId,d.Path,d.Certain})
     };
@@ -54,7 +55,7 @@ public sealed partial class DocumentTools
             current_source=x.ContentHash==entry.ContentHash&&x.SourcePath==entry.RelativePath,input_characters=x.InputText.Length,context_characters=x.ContextJson.Length}),total,next_offset=offset+jobs.Count<total?(int?)(offset+jobs.Count):null};
     },cancellationToken);
 
-    [McpServerTool(Name="read_reader_attempt",ReadOnly=true,OpenWorld=false),Authorize(Policy="documents.read"),Description("Read a bounded slice of a saved reader attempt. section=input is the exact submitted excerpt, context is the actual shortlists/guidance sent to Ollama, result is its saved interpretation. Marked untrusted; historical attempts can be stale. No model call or automatic retry.")]
+    [McpServerTool(Name="read_reader_attempt",ReadOnly=true,OpenWorld=false),Authorize(Policy="documents.read"),Description("Read a bounded slice of a saved reader attempt. section=input is the exact document excerpt every question started with, context is each question asked of the local reader with its answer (describe, match, details), result is its saved interpretation. Marked untrusted; historical attempts can be stale. No model call or automatic retry.")]
     public Task<CallToolResult> ReaderAttempt(Guid attempt_id,string section="result",int offset=0,int length=6000,CancellationToken cancellationToken=default)=>Run("reader.attempt.read",async _=>{
         if(offset<0||offset>500000||length is <1 or >8000)throw new StorageException("invalid_range: Use offsets 0–500000 and lengths 1–8000.");
         await using var db=await factory.CreateDbContextAsync(cancellationToken);

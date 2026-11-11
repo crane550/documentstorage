@@ -32,6 +32,7 @@ async Task Refuses(Func<Task> action, string description)
 try
 {
     await MigrationChecks.RunAsync(factory, Check);
+    if (args is ["--reading-only"]) { await ReadingChecks.RunAsync(factory, Path.Combine(scratch, "reading"), Check, Refuses); Console.WriteLine($"All {passed} reading checks passed."); return; }
     if (args is ["--naming-only"]) { await NamingModeChecks.RunAsync(factory, Path.Combine(scratch, "naming"), Check, Refuses); Console.WriteLine($"All {passed} naming checks passed."); return; }
     if (args is ["--office-only"]) { await AdditionalOfficeChecks.RunAsync(factory, Path.Combine(scratch, "office"), Check, Refuses); Console.WriteLine($"All {passed} additional Office checks passed."); return; }
     if (args is ["--pdf-ocr-only"]) { await PdfOcrChecks.RunAsync(factory, Path.Combine(scratch, "pdf-ocr"), Check, Refuses); Console.WriteLine($"All {passed} PDF OCR checks passed."); return; }
@@ -141,6 +142,7 @@ try
     await OrganizingChecks.RunAsync(factory, Path.Combine(scratch, "organizing"), Check, Refuses);
     await DeskChecks.RunAsync(factory, Path.Combine(scratch, "conversations"), Check, Refuses);
     await SortingChecks.RunAsync(factory, Path.Combine(scratch, "sorting"), Check, Refuses);
+    await ReadingChecks.RunAsync(factory, Path.Combine(scratch, "reading"), Check, Refuses);
     await RegularsChecks.RunAsync(factory, Path.Combine(scratch, "regulars"), Check, Refuses);
     await KindFieldChecks.RunAsync(factory, Path.Combine(scratch, "fields"), Check, Refuses);
     await FieldGuideChecks.RunAsync(factory, Path.Combine(scratch, "guides"), Check, Refuses);

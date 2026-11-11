@@ -120,7 +120,7 @@ public sealed partial class LibraryService
             var reply = StoredReply(job);
             var suggested = reply == null ? null : FromReply(entry, vocab, Hints(entry, vocab), reply).Choice;
             var (kind, sender) = await SaveDetailsCoreAsync(db, entry.Id, choice, actor, reply?.KindDescription ?? "",
-                followsFolder: move, followsName: move && !choice.KeepName && choice.NameOverride.Trim().Length == 0);
+                followsFolder: move, followsName: move && !choice.KeepName && choice.NameOverride.Trim().Length == 0, confirmed: true, readerWords: reply?.What ?? "");
             if (suggested != null)
             {
                 var corrected = Key(suggested.Kind) != Key(kind.Name) || Key(suggested.From) != Key(sender?.Name ?? "") || suggested.Date != choice.Date;

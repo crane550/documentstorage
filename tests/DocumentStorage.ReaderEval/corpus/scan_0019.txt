@@ -1,0 +1,18 @@
+Willow Savings Bank
+Savings statement
+
+Account number XXXXXX5678
+Statement date: May 31, 2026     Period: 05/01/2026 to 05/31/2026
+
+Previous balance          8,410.07
+Deposits                    250.00
+Interest paid                 6.32
+Withdrawals                   0.00
+New balance               8,666.39
+
+Annual percentage yield earned 0.90%
+Interest paid year to date 31.48
+
+05/15  Transfer from checking     250.00
+05/31  Interest                     6.32
+Member FDIC. Keep this statement for your records.

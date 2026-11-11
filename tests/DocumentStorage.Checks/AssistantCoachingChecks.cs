@@ -44,7 +44,7 @@ internal static class AssistantCoachingChecks
         var diagnostic=await Edit("reread",new AssistantDiagnosticRead(next.Id,next.ContentHash),"coaching-diagnostic-01");
         await refuses(()=>Edit("reread",new AssistantDiagnosticRead(next.Id,next.ContentHash),"coaching-diagnostic-busy"),"diagnostic requests do not start a second active reading");
         var sawLesson=false;
-        await library.ProcessNextIdentificationAsync(new Model(input=>{using var sent=JsonDocument.Parse(input.PromptJson);sawLesson=sent.RootElement.GetProperty("teaching_examples").EnumerateArray().Any(x=>x.GetProperty("lesson").GetString()!.Contains("printed policy reference")&&x.GetProperty("fields").GetProperty("policy_number").GetString()=="P-27");return new(kind.Name,"","Cedar Church","2026-11-30","Volunteer policy",["policy"],[new("policy_number","P-28","Policy reference P-28")],"high");}));
+        await library.ProcessNextIdentificationAsync(new ScriptedModel(input=>{sawLesson|=input.Step=="details"&&input.Question.Contains("printed policy reference")&&input.Question.Contains("policy_number = P-27");return new(kind.Name,"","Cedar Church","2026-11-30","Volunteer policy",["policy"],[new("policy_number","P-28","Policy reference P-28")],"high");}));
         check(sawLesson,"future narrow local-reader requests include the corrected teaching example and field guide");
         var diagnosticCard=(await library.SortCardAsync(next.Id))!;
         check(diagnosticCard.Sure&&!diagnosticCard.Duplicate,"the diagnostic fixture is otherwise eligible for trusted automatic filing");
@@ -65,6 +65,4 @@ internal static class AssistantCoachingChecks
         settings=(await library.IdentificationOverviewAsync()).Settings;settings.Enabled=false;await library.SaveOllamaSettingsAsync(settings,settings.Revision,actor);await library.SetIntakeAsync(inbox,false);
     }
     private sealed class Clock:TimeProvider {private DateTimeOffset now=DateTimeOffset.UtcNow;public override DateTimeOffset GetUtcNow()=>now;public void Advance()=>now=now.AddSeconds(6);}
-    private sealed class Model(Func<SortRequest,SortReply> read):IOllamaClient
-    {public Task<List<LocalModel>> ModelsAsync(string endpoint,CancellationToken token=default)=>Task.FromResult(new List<LocalModel>());public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request,CancellationToken token=default)=>throw new NotSupportedException();public Task<SortReply> SortAsync(SortRequest input,CancellationToken token=default)=>Task.FromResult(read(input));}
 }

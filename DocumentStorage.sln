@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.McpChecks",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.RecoveryFixture", "tests\DocumentStorage.RecoveryFixture\DocumentStorage.RecoveryFixture.csproj", "{548C5350-3F71-4C62-92D0-1D6582E00061}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocumentStorage.ReaderEval", "tests\DocumentStorage.ReaderEval\DocumentStorage.ReaderEval.csproj", "{30DF849F-9FC1-4631-944F-3C22F1330F4D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -115,6 +117,18 @@ Global
 		{548C5350-3F71-4C62-92D0-1D6582E00061}.Release|x64.Build.0 = Release|Any CPU
 		{548C5350-3F71-4C62-92D0-1D6582E00061}.Release|x86.ActiveCfg = Release|Any CPU
 		{548C5350-3F71-4C62-92D0-1D6582E00061}.Release|x86.Build.0 = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|x64.Build.0 = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Debug|x86.Build.0 = Debug|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|x64.ActiveCfg = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|x64.Build.0 = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|x86.ActiveCfg = Release|Any CPU
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -127,5 +141,6 @@ Global
 		{D71277FB-5589-475F-9CCB-1D349DE5B107} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{985365A6-7740-439F-B444-5A5CB734733B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{548C5350-3F71-4C62-92D0-1D6582E00061} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{30DF849F-9FC1-4631-944F-3C22F1330F4D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

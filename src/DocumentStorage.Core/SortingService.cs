@@ -24,8 +24,11 @@ public sealed record SortDocument(Guid Id, Guid RootId, string RootName, string 
     string ContentHash, DateTimeOffset ObservedAt, bool Online, DateTimeOffset ModifiedAt);
 // Sources say where each detail came from: "filename", "text", "reader", "person", "guess" or "".
 public sealed record SortCard(SortDocument Document, SortChoice Choice, Dictionary<string, string> Sources, SortPlan Plan, bool Sure, string[] Notes,
-    string ReaderState, Guid? JobId, string Confidence, string KindDescription, Dictionary<string, string> Quotes, bool DescriptiveName, DuplicateMatch[]? Duplicates = null)
+    string ReaderState, Guid? JobId, string Confidence, string KindDescription, Dictionary<string, string> Quotes, bool DescriptiveName, DuplicateMatch[]? Duplicates = null,
+    // The reader's own name for the type of document, and the other kinds worth one click on the slip.
+    string ReaderWords = "", string[]? KindOptions = null)
 {
+    public string[] OtherKinds => KindOptions ?? [];
     public DuplicateMatch[] Copies => Duplicates ?? [];
     public bool Duplicate => Copies.Any(x => x.Certain);
 }
@@ -40,13 +43,18 @@ public sealed record DocumentDetailView(Guid EntryId, string Kind, string From, 
 public sealed partial class LibraryService
 {
     public const string SortSchema = "sort-v1";
-    public const int SortTextBudget = 6000;
+    public const int SortTextBudget = DocumentReading.TextBudget;
+    // How many of each kind's latest confirmed documents a reading learns from.
+    public const int ExamplesPerKind = 12;
     public const int TrustStreak = 10;
     public const string DefaultKindFolder = "{kind}/{from}";
     public const string DefaultKindName = "{date} {from} {title}";
-    private sealed record StoredSort(SortChoice Choice, string SuggestedKind, string SuggestedFrom, DateOnly? SuggestedDate, string RawFrom, string KindDescription, bool HadSuggestion);
+    private sealed record StoredSort(SortChoice Choice, string SuggestedKind, string SuggestedFrom, DateOnly? SuggestedDate, string RawFrom, string KindDescription, bool HadSuggestion,
+        // The reader's own name for the type of document, kept on the document beside the kind the person approved.
+        string What = "");
 
-    private static DocumentKind[] StarterKinds() =>
+    // Where a new catalog starts. From then on kinds are the person's own: renamed, described, added and deleted by use.
+    public static DocumentKind[] StarterKinds() =>
     [
         Kind("Bank statement", "A periodic statement for a bank, credit card, loan or investment account.", "Banking/{from}/{date:yyyy}", "{date:yyyy-MM} {from} statement {account_ending}", "account_ending"),
         Kind("Invoice", "A request for payment for goods or services, usually with an invoice number.", "Invoices/{from}/{date:yyyy}", "{date} {from} invoice {invoice_number}", "invoice_number", "total", "due_date"),
@@ -302,13 +310,7 @@ public sealed partial class LibraryService
 
     // ---------- Matching what the reader or a person typed to what Stash knows ----------
 
-    public static DocumentKind? MatchKind(string text, IEnumerable<DocumentKind> kinds)
-    {
-        var wanted = DocumentHints.Normalize(text);
-        if (wanted.Length == 0) return null;
-        string Single(string x) => x.EndsWith("s", StringComparison.Ordinal) && !x.EndsWith("ss", StringComparison.Ordinal) ? x[..^1] : x;
-        return kinds.FirstOrDefault(x => DocumentHints.Normalize(x.Name) == wanted) ?? kinds.FirstOrDefault(x => Single(DocumentHints.Normalize(x.Name)) == Single(wanted));
-    }
+    public static DocumentKind? MatchKind(string text, IEnumerable<DocumentKind> kinds) => DocumentReading.Named(text, kinds, x => x.Name);
 
     // Exact name or spelling first; then one name starting the other on a word boundary
     // ("Cedar Bank" for "Cedar Bank, N.A."), when the shorter is long enough to mean something.
@@ -343,7 +345,7 @@ public sealed partial class LibraryService
         await db.Kinds.AsNoTracking().OrderBy(x => x.Name).ToListAsync(), await db.Correspondents.AsNoTracking().OrderBy(x => x.Name).ToListAsync(), await db.Tags.AsNoTracking().OrderBy(x => x.Name).ToListAsync());
 
     private static DocumentHintSet Hints(CatalogEntry entry, Vocab vocab) => DocumentHints.Read(entry.Name, entry.ExtractedText,
-        vocab.Kinds.Select(x => new KindTerm(x.Id, x.Name, x.Description, KindFields(x), x.IsCatchAll)).ToList(),
+        vocab.Kinds.Where(x => !x.IsCatchAll).Select(x => new NamedTerm(x.Id, x.Name, [])).ToList(),
         vocab.Senders.Select(x => new NamedTerm(x.Id, x.Name, Aliases(x.AliasesJson))).ToList(),
         vocab.Tags.Select(x => new NamedTerm(x.Id, x.Name, Aliases(x.AliasesJson))).ToList());
 
@@ -351,7 +353,7 @@ public sealed partial class LibraryService
     private static (SortChoice Choice, Dictionary<string, string> Sources) FromHints(CatalogEntry entry, Vocab vocab, DocumentHintSet hints, DocumentDescription? description = null)
     {
         var sources = new Dictionary<string, string>();
-        var kind = hints.Kinds.FirstOrDefault(x => x.Score >= 10) is var top && top.Id != Guid.Empty ? vocab.Kinds.First(x => x.Id == top.Id) : null;
+        var kind = hints.Kinds.Count > 0 ? vocab.Kinds.First(x => x.Id == hints.Kinds[0]) : null;
         if (kind != null) sources["kind"] = "filename";
         var sender = hints.Senders.Count > 0 ? vocab.Senders.First(x => x.Id == hints.Senders[0]) : null;
         if (sender != null) sources["from"] = "text";
@@ -383,8 +385,11 @@ public sealed partial class LibraryService
         var sources = new Dictionary<string, string>(); var notes = new List<string>(); var quotes = new Dictionary<string, string>();
         var kind = vocab.KindNamed(reply.Kind);
         var kindName = kind?.Name ?? SafeKindName(reply.Kind);
-        sources["kind"] = "reader";
+        // Settled: the reader's name for it is this kind's own, or one that has only ever led here.
+        var settled = kind != null && KindBasis.Settled(reply.KindBasis);
+        sources["kind"] = settled ? "reader" : "guess";
         if (kind == null) notes.Add("New kind: " + kindName);
+        else if (!settled) notes.Add($"The reader calls this “{Short(reply.What)}” and chose {kindName} for it; check the kind");
         var sender = vocab.Sender(reply.From);
         var fromName = sender?.Name ?? (reply.From.Length > 0 ? SafeSender(reply.From) : "");
         if (fromName.Length > 0) sources["from"] = sender != null ? "reader" : "guess";
@@ -417,7 +422,7 @@ public sealed partial class LibraryService
         }
         var patterns = (kind?.FolderPattern ?? DefaultKindFolder) + "/" + (kind?.NamePattern ?? DefaultKindName);
         var tokens = SortPatterns.TokensIn(patterns);
-        var sure = kind != null && reply.Confidence == "high" && newTags == 0
+        var sure = settled && reply.Confidence == "high" && newTags == 0
             && (!tokens.Contains("from") || sender != null)
             && (!tokens.Any(t => t == "date") || sources.GetValueOrDefault("date") == "reader")
             && (kind == null || KindFields(kind).Where(tokens.Contains).All(fields.ContainsKey));
@@ -483,7 +488,9 @@ public sealed partial class LibraryService
         // A copy of something already in Stash is never sure: it waits for a person, and never files itself.
         var duplicates = entry.Readiness == "Ready" ? await DuplicatesAsync(db, entry, choice, vocab, plan) : [];
         if (duplicates.Any(x => x.Certain)) sure = false;
-        return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName, duplicates);
+        var others = (reply?.KindOptions ?? []).Select(x => vocab.KindNamed(x)?.Name ?? "").Where(x => x.Length > 0 && !DocumentReading.SameName(x, choice.Kind)).Distinct().ToArray();
+        return new(doc, choice, sources, plan, sure, notes.ToArray(), ReaderState(job, settings, entry), job?.Id, reply?.Confidence ?? "", reply?.KindDescription ?? "", quotes, hints.DescriptiveName, duplicates,
+            reply?.What ?? "", others);
     }
 
     private string? ExtractionConcern(CatalogEntry entry)
@@ -640,47 +647,63 @@ public sealed partial class LibraryService
 
     private static readonly string SortContextHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SortSchema)));
 
-    // The prompt: the filename, short lists of likely kinds, senders and tags, a few approved
-    // examples, and the first page or so. Folder changes don't touch it, so they never throw
-    // away a slow reading. Approval works out the path fresh anyway.
-    private async Task<IdentificationContext> SortingContextAsync(CatalogDb db, CatalogEntry entry, OllamaSettings settings)
+    // A reading binds only to the document's bytes: what the reader is told is gathered when the
+    // reading runs, so folder, kind and vocabulary changes never throw away a slow reading, and a
+    // reading always sees what the person has taught since it was queued.
+    private Task<IdentificationContext> SortingContextAsync(CatalogDb db, CatalogEntry entry, OllamaSettings settings) =>
+        Task.FromResult(new IdentificationContext("", SortContextHash, [], [], entry.ExtractedText.Length > Math.Min(SortTextBudget, settings.MaxInputCharacters), Sorting: true));
+
+    // The document as the reader sees it, and what it may be told: the person's kinds with their
+    // other names and fields, short lists of senders and tags, and documents a person confirmed.
+    private async Task<(ReadingDocument Document, ReadingKnowledge Knowledge)> ReadingInputAsync(CatalogDb db, CatalogEntry entry, OllamaSettings settings)
     {
         await EnsureKindsAsync(db);
         var vocab = await VocabAsync(db);
         var hints = Hints(entry, vocab);
-        var kindRank = hints.Kinds.Select((x, i) => (x.Id, i)).ToDictionary(x => x.Id, x => x.i);
         var kindUse = await db.Details.Where(x => x.KindId != null).GroupBy(x => x.KindId!.Value).ToDictionaryAsync(x => x.Key, x => x.Count());
-        var kinds = vocab.Kinds.OrderBy(x => kindRank.GetValueOrDefault(x.Id, int.MaxValue)).ThenByDescending(x => kindUse.GetValueOrDefault(x.Id)).ThenBy(x => x.Name).ToList();
-        if (kinds.Count > 20) kinds = kinds.Where(x => !x.IsCatchAll).Take(19).Concat(kinds.Where(x => x.IsCatchAll)).ToList();
+        var kinds = vocab.Kinds.OrderByDescending(x => kindUse.GetValueOrDefault(x.Id)).ThenBy(x => x.Name)
+            .Select(x => new ReadingKind(x.Name, x.Description, KindFields(x), FieldGuides(x).ToDictionary(g => g.Key, g => FieldNote(g.Key, g.Value)), x.IsCatchAll)).ToList();
         var senderUse = await db.Details.Where(x => x.CorrespondentId != null).GroupBy(x => x.CorrespondentId!.Value).ToDictionaryAsync(x => x.Key, x => x.Count());
         var senders = hints.Senders.Select(id => vocab.Senders.First(x => x.Id == id))
             .Concat(vocab.Senders.OrderByDescending(x => senderUse.GetValueOrDefault(x.Id)).ThenBy(x => x.Name)).DistinctBy(x => x.Id).Take(25).Select(x => x.Name).ToArray();
         var tagUse = await db.EntryTags.GroupBy(x => x.TagId).ToDictionaryAsync(x => x.Key, x => x.Count());
         var tags = hints.Tags.Select(id => vocab.Tags.First(x => x.Id == id))
             .Concat(vocab.Tags.OrderByDescending(x => tagUse.GetValueOrDefault(x.Id)).ThenBy(x => x.Name)).DistinctBy(x => x.Id).Take(30).Select(x => x.Name).ToArray();
-        var words = DocumentHints.Words(entry.Name + " " + (entry.ExtractedText.Length > 3000 ? entry.ExtractedText[..3000] : entry.ExtractedText)).Select(x => x.ToLowerInvariant()).Where(x => x.Length >= 4).ToHashSet();
-        var examples = (await db.FilingExamples.AsNoTracking().Where(x => x.RemovedAt == null).OrderByDescending(x => x.CreatedAt).Take(150).ToListAsync())
-            .OrderByDescending(x => DocumentHints.Words(x.OriginalName + " " + x.DocumentType + " " + x.Summary).Select(w => w.ToLowerInvariant()).Count(words.Contains)).ThenByDescending(x => x.CreatedAt)
-            .Take(3).Select(x => new { file_name = x.OriginalName, kind = x.DocumentType, title = x.Summary.Length > 80 ? x.Summary[..80] : x.Summary, filed_as = x.Filename }).ToArray();
-        var lessons=await db.ReaderTeachingExamples.AsNoTracking().Where(x=>x.RootId==entry.RootId&&x.RemovedAt==null&&
-            db.Entries.Any(e=>e.Id==x.EntryId&&!e.IsMissing&&e.TrashBatchId==null&&e.ContentHash==x.ContentHash)&&
-            db.Details.Any(d=>d.EntryId==x.EntryId&&d.Revision==x.DetailsRevision)).OrderByDescending(x=>x.CreatedAt).Take(100).ToListAsync();
-        var teaching=lessons.Where(x=>vocab.Kinds.Any(k=>k.Id==x.KindId))
-            .OrderByDescending(x=>DocumentHints.Words(x.TextExcerpt+" "+x.Lesson).Select(w=>w.ToLowerInvariant()).Count(words.Contains)).ThenByDescending(x=>x.CreatedAt).Take(2)
-            .Select(x=>TeachingPromptExample(x,vocab.Kinds.First(k=>k.Id==x.KindId).Name)).ToArray();
-        var budget = Math.Min(SortTextBudget, settings.MaxInputCharacters);
-        var text = entry.ExtractedText.Length > budget ? entry.ExtractedText[..budget] + "\n[the rest of the document is not shown]" : entry.ExtractedText;
-        var json = JsonSerializer.Serialize(new
+        var folder = entry.RelativePath.Contains('/') ? entry.RelativePath[..entry.RelativePath.LastIndexOf('/')] : "";
+        var document = new ReadingDocument(entry.Name, folder, entry.ExtractedText, Math.Min(SortTextBudget, settings.MaxInputCharacters));
+        return (document, new(kinds, senders, tags, await ReadingExamplesAsync(db, entry, vocab), settings.Instructions));
+    }
+
+    // Documents a person stands behind, the latest of each kind, and ones an assistant was allowed
+    // to teach from: what the reader called each and what it was filed as, and the details that
+    // were approved. A document that filed itself is not among them until someone says it looks right.
+    private static async Task<List<ReadingExample>> ReadingExamplesAsync(CatalogDb db, CatalogEntry entry, Vocab vocab)
+    {
+        var lessons = await db.ReaderTeachingExamples.AsNoTracking().Where(x => x.RootId == entry.RootId && x.RemovedAt == null && x.EntryId != entry.Id &&
+            db.Entries.Any(e => e.Id == x.EntryId && !e.IsMissing && e.TrashBatchId == null && e.ContentHash == x.ContentHash) &&
+            db.Details.Any(d => d.EntryId == x.EntryId && d.Revision == x.DetailsRevision)).OrderByDescending(x => x.CreatedAt).Take(100).Select(x => new { x.EntryId, x.Lesson }).ToListAsync();
+        var taught = lessons.GroupBy(x => x.EntryId).ToDictionary(x => x.Key, x => x.First().Lesson);
+        var taughtIds = taught.Keys.ToList();
+        var rows = await (from detail in db.Details.AsNoTracking()
+                          join document in db.Entries.AsNoTracking() on detail.EntryId equals document.Id
+                          where detail.KindId != null && (detail.Confirmed || taughtIds.Contains(detail.EntryId)) && detail.EntryId != entry.Id
+                              && !document.IsFolder && !document.IsMissing && document.TrashBatchId == null && document.ExtractedText != ""
+                          orderby detail.UpdatedAt descending
+                          select new { detail.EntryId, KindId = detail.KindId!.Value, detail.CorrespondentId, detail.DocumentDate, detail.Title, detail.FieldsJson, detail.ReaderWords,
+                              Text = document.ExtractedText.Substring(0, 400) }).Take(2000).ToListAsync();
+        var kept = rows.GroupBy(x => x.KindId).SelectMany(x => x.Take(ExamplesPerKind)).ToList();
+        var ids = kept.Select(x => x.EntryId).ToList();
+        var tagged = (await db.EntryTags.AsNoTracking().Where(x => ids.Contains(x.EntryId)).Join(db.Tags, x => x.TagId, x => x.Id, (x, tag) => new { x.EntryId, tag.Name }).ToListAsync()).ToLookup(x => x.EntryId, x => x.Name);
+        var examples = new List<ReadingExample>();
+        foreach (var row in kept)
         {
-            file_name = entry.Name,
-            // The likeliest kinds say what each field is; the rest list field names only, to keep the prompt short.
-            known_kinds = kinds.Select((x, i) => new { name = x.Name, description = x.Description.Length > 160 ? x.Description[..160] : x.Description, fields = KindFields(x),
-                field_notes = i < 5 ? FieldGuides(x).Where(g => Described(g.Value) || g.Value.Type != "text").ToDictionary(g => g.Key, g => FieldNote(g.Key, g.Value)) : null }),
-            known_senders = senders, known_tags = tags, approved_examples = examples, teaching_examples=teaching,
-            general_guidance = settings.Instructions.Length > 800 ? settings.Instructions[..800] : settings.Instructions,
-            text
-        });
-        return new(json, SortContextHash, [], [], entry.ExtractedText.Length > budget, Sorting: true, InputText: text);
+            if (vocab.Kinds.FirstOrDefault(x => x.Id == row.KindId) is not { } kind) continue;
+            Dictionary<string, string> fields;
+            try { fields = JsonSerializer.Deserialize<Dictionary<string, string>>(row.FieldsJson) ?? new(); } catch (JsonException) { fields = new(); }
+            examples.Add(new(kind.Name, row.ReaderWords, row.Text, vocab.Senders.FirstOrDefault(x => x.Id == row.CorrespondentId)?.Name ?? "", row.DocumentDate?.ToString("yyyy-MM-dd") ?? "",
+                row.Title, tagged[row.EntryId].ToArray(), fields, taught.GetValueOrDefault(row.EntryId, "")));
+        }
+        return examples;
     }
 
     // ---------- Filing ----------
@@ -717,7 +740,7 @@ public sealed partial class LibraryService
             var memory = FromMemory(entry, vocab, hints, await RoutesForAsync(db, hints.Senders.Take(1)));
             var fromMemory = memory != null && (memory.Sure || reply == null);
             var suggested = fromMemory ? memory!.Choice : reply == null ? null : FromReply(entry, vocab, hints, reply).Choice;
-            var stored = new StoredSort(choice, suggested?.Kind ?? "", suggested?.From ?? "", suggested?.Date, fromMemory ? "" : reply?.From ?? "", reply?.KindDescription ?? "", suggested != null);
+            var stored = new StoredSort(choice, suggested?.Kind ?? "", suggested?.From ?? "", suggested?.Date, fromMemory ? "" : reply?.From ?? "", reply?.KindDescription ?? "", suggested != null, reply?.What ?? "");
             var parentPath = plan.NewFolders.Length == 0 ? plan.FolderPath : string.Join('/', plan.FolderPath.Split('/')[..^plan.NewFolders.Length]);
             var parent = folders.Single(x => x.RelativePath == parentPath);
             var filing = new OrganizationFiling
@@ -750,9 +773,12 @@ public sealed partial class LibraryService
         // An arrangement kept for the kind (or the arrangement a brand-new kind is made with) becomes the kind's patterns;
         // the document then follows them. One used for this document only leaves it where it was put.
         var keepArrangement = choice.KeepPatterns || isNewKind;
+        // A person's approval is evidence for later readings (unless they said not to remember it); a document
+        // that filed itself is not, until someone says it looks right.
         var (kind, sender) = await SaveDetailsCoreAsync(db, op.EntryId, choice, plan.Actor, stored.KindDescription,
             followsFolder: choice.FolderOverride.Trim().Length == 0 && (choice.FolderPattern == null || keepArrangement),
-            followsName: !choice.KeepName && choice.NameOverride.Trim().Length == 0 && (choice.NamePattern == null || keepArrangement));
+            followsName: !choice.KeepName && choice.NameOverride.Trim().Length == 0 && (choice.NamePattern == null || keepArrangement),
+            confirmed: !plan.Automatic && choice.Remember, readerWords: stored.What);
         if (keepArrangement && (choice.FolderPattern != null || choice.NamePattern != null))
         {
             var changed = false;
@@ -790,8 +816,10 @@ public sealed partial class LibraryService
                 Filename = plan.Filename, DocumentType = kind.Name, Summary = choice.Title, Note = sender?.Name ?? "", Actor = plan.Actor, CreatedAt = time.GetUtcNow() });
     }
 
+    // confirmed: whether a person stands behind these details (null: yes, unless the actor is the app itself or an assistant).
+    // readerWords: what the reader called this type of document (null keeps what is already saved).
     private async Task<(DocumentKind Kind, Correspondent? Sender)> SaveDetailsCoreAsync(CatalogDb db, Guid entryId, SortChoice choice, string actor, string kindDescription,
-        bool? followsFolder = null, bool? followsName = null)
+        bool? followsFolder = null, bool? followsName = null, bool? confirmed = null, string? readerWords = null)
     {
         var kinds = await db.Kinds.ToListAsync();
         var kind = MatchKind(choice.Kind, kinds);
@@ -817,6 +845,8 @@ public sealed partial class LibraryService
         }
         var detail = await db.Details.SingleOrDefaultAsync(x => x.EntryId == entryId);
         if (detail == null) { detail = new() { EntryId = entryId, Revision = 0 }; db.Details.Add(detail); }
+        if (readerWords != null) detail.ReaderWords = readerWords.Length > 60 ? readerWords[..60] : readerWords;
+        detail.Confirmed = confirmed ?? !(actor == "automatic" || actor.StartsWith("assistant:", StringComparison.Ordinal));
         detail.KindId = kind.Id; detail.CorrespondentId = sender?.Id; detail.DocumentDate = choice.Date; detail.Title = SortPatterns.Clean(choice.Title);
         detail.FieldsJson = JsonSerializer.Serialize(choice.Fields.Where(x => x.Value.Trim().Length > 0).ToDictionary(x => FactKey(x.Key), x => NormalizeFieldValue(FactKey(x.Key), x.Value)));
         if (followsFolder is bool folder) detail.FollowsFolder = folder;
@@ -917,6 +947,8 @@ public sealed partial class LibraryService
             }
             if (plan.JobId is Guid jobId) { var job = await db.IdentificationJobs.SingleAsync(x => x.Id == jobId); job.State = "Succeeded"; }
             await db.FilingExamples.Where(x => x.Id == plan.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.RemovedAt, time.GetUtcNow()).SetProperty(x => x.RemovedBy, actor));
+            // An undone filing is no longer something later readings learn from.
+            await db.Details.Where(x => x.EntryId == plan.EntryId).ExecuteUpdateAsync(set => set.SetProperty(x => x.Confirmed, false));
             await db.SaveChangesAsync();
         }
         finally { writer.Release(); }

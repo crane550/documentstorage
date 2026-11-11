@@ -70,6 +70,6 @@ internal static class NamingModeChecks
     {
         public Task<List<LocalModel>> ModelsAsync(string endpoint,CancellationToken cancellationToken=default)=>Task.FromResult(new List<LocalModel>());
         public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request,CancellationToken cancellationToken=default)=>throw new InvalidOperationException();
-        public Task<SortReply> SortAsync(SortRequest request,CancellationToken cancellationToken=default)=>Task.FromResult(new SortReply("Monthly account report","","Naming Test Bank","2026-03-28","Monthly report",[],[],"high"));
+        public Task<string> AskAsync(AskRequest request,CancellationToken cancellationToken=default)=>Task.FromResult(ScriptedReader.Answer(request,new SortReply("Monthly account report","","Naming Test Bank","2026-03-28","Monthly report",[],[],"high")));
     }
 }

@@ -38,7 +38,7 @@ internal static class RegularsChecks
         async Task<SortCard> Read(SortCard card, int m)
         {
             await library.QueueSortingAsync(card.Document.Id, actor);
-            await library.ProcessNextIdentificationAsync(new Model(_ => new("Bank statement", "", "Willow Savings", $"2026-{m:00}-{Days(m)}", "Savings statement", ["banking"], [new("account_ending", "1234", "ending 1234")], "high")));
+            await library.ProcessNextIdentificationAsync(new ScriptedModel(_ => new("Bank statement", "", "Willow Savings", $"2026-{m:00}-{Days(m)}", "Savings statement", ["banking"], [new("account_ending", "1234", "ending 1234")], "high")));
             return (await library.SortCardAsync(card.Document.Id))!;
         }
         await library.SaveTagAsync(Guid.Empty, "banking", [], actor);
@@ -119,10 +119,4 @@ internal static class RegularsChecks
     }
 
     private sealed class Clock : TimeProvider { private DateTimeOffset now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => now; public void Advance(int seconds) => now = now.AddSeconds(seconds); }
-    private sealed class Model(Func<SortRequest, SortReply> answer) : IOllamaClient
-    {
-        public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
-        public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Sorting never asks the old question.");
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default) => Task.FromResult(answer(request));
-    }
 }

@@ -533,6 +533,9 @@ namespace DocumentStorage.Data.Migrations
                     b.Property<Guid>("EntryId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("Confirmed")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid?>("CorrespondentId")
                         .HasColumnType("uuid");
 
@@ -551,6 +554,10 @@ namespace DocumentStorage.Data.Migrations
 
                     b.Property<Guid?>("KindId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ReaderWords")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("Revision")
                         .IsConcurrencyToken()

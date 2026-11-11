@@ -50,10 +50,10 @@ internal static class DuplicateChecks
         var settings = (await library.IdentificationOverviewAsync()).Settings; settings.Enabled = true; settings.Model = "synthetic-sorter";
         settings = await library.SaveOllamaSettingsAsync(settings, settings.Revision, actor);
         var sure = new SortReply("Synthetic utility bill", "", "Synthetic Power", "2026-04-02", "Power bill", [], [], "high");
-        await library.QueueSortingAsync(same.Document.Id, actor); await library.ProcessNextIdentificationAsync(new Model(_ => sure));
+        await library.QueueSortingAsync(same.Document.Id, actor); await library.ProcessNextIdentificationAsync(new ScriptedModel(_ => sure));
         check((await library.SortCardAsync(same.Document.Id)) is { Sure: false, Duplicate: true }, "a copy read with full confidence is still not sure");
         var fresh = await Arrive("scan-3.txt", Encoding.UTF8.GetBytes(body.Replace("April 2", "May 2").Replace("61.20", "58.00")));
-        await library.QueueSortingAsync(fresh.Document.Id, actor); await library.ProcessNextIdentificationAsync(new Model(_ => sure with { Date = "2026-05-02" }));
+        await library.QueueSortingAsync(fresh.Document.Id, actor); await library.ProcessNextIdentificationAsync(new ScriptedModel(_ => sure with { Date = "2026-05-02" }));
         var freshCard = (await library.SortCardAsync(fresh.Document.Id))!;
         check(!freshCard.Duplicate && freshCard.Copies.Any(x => x.How == "name" && x.Path == "Utilities/Synthetic Power/2026-05-02 Synthetic Power bill.txt"),
             "a name already taken where it would go is a likely copy, not a certain one");
@@ -80,10 +80,4 @@ internal static class DuplicateChecks
     }
 
     private sealed class Clock : TimeProvider { private DateTimeOffset now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => now; public void Advance(int seconds) => now = now.AddSeconds(seconds); }
-    private sealed class Model(Func<SortRequest, SortReply> answer) : IOllamaClient
-    {
-        public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
-        public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Sorting never asks the old question.");
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default) => Task.FromResult(answer(request));
-    }
 }

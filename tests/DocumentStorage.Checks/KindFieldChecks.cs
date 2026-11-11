@@ -57,12 +57,10 @@ internal static class KindFieldChecks
         await library.UploadAsync(inbox, "scan-a.txt", new MemoryStream(Encoding.UTF8.GetBytes(text))); clock.Advance(6); await library.ScanAsync(); clock.Advance(6); await library.ScanAsync();
         var entry = (await library.BrowseAsync(inbox)).Items.Single(x => x.Name == "scan-a.txt");
         await library.QueueSortingAsync(entry.Id, actor);
-        SortRequest? sent = null;
-        await library.ProcessNextIdentificationAsync(new Model(input => { sent = input; return new("Brokerage statement", "", "Oak Brokerage", "2026-10-31", "Brokerage statement", [],
+        AskRequest? sent = null;
+        await library.ProcessNextIdentificationAsync(new ScriptedModel(input => { if (input.Step == "details") sent = input; return new("Brokerage statement", "", "Oak Brokerage", "2026-10-31", "Brokerage statement", [],
             [new("statement_end_date", "October 31, 2026", "ending October 31, 2026"), new("account_number", "77-1200", "Account number 77-1200")], "high"); }));
-        using (var prompt = JsonDocument.Parse(sent!.PromptJson))
-            check(prompt.RootElement.GetProperty("known_kinds").EnumerateArray().Single(x => x.GetProperty("name").GetString() == "Brokerage statement").GetProperty("fields").EnumerateArray().Select(x => x.GetString()).Contains("statement_end_date"),
-                "a kept field is asked of the reader from then on");
+        check(sent!.Question.Contains("filed as \"Brokerage statement\"") && sent.Question.Contains("- statement_end_date"), "a kept field is asked of the reader from then on");
         var card = (await library.SortCardAsync(entry.Id))!;
         check(card.Choice.Fields["statement_end_date"] == "2026-10-31" && card.Plan.FolderPath == "Investments/Oak Brokerage/77-1200" && card.Plan.FileName == "2026-10-31 Oak Brokerage statement 2026-10-31.txt",
             "a written-out date from the reader is stored as yyyy-MM-dd, and kept fields fill in the folder and name");
@@ -105,10 +103,4 @@ internal static class KindFieldChecks
     }
 
     private sealed class Clock : TimeProvider { private DateTimeOffset now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => now; public void Advance(int seconds) => now = now.AddSeconds(seconds); }
-    private sealed class Model(Func<SortRequest, SortReply> answer) : IOllamaClient
-    {
-        public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
-        public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Sorting never asks the old question.");
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default) => Task.FromResult(answer(request));
-    }
 }

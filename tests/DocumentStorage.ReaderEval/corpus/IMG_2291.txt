@@ -1,0 +1,18 @@
+The Copper Kettle Diner
+88 Orchard Road
+
+Table 12   Server: Miguel   Guests 2
+05/09/2026  7:18 PM   Check 40117
+
+1 Meatloaf plate            14.50
+1 Garden burger             12.00
+2 Iced tea                   5.00
+
+Subtotal                    31.50
+Tax                          2.21
+Total                       33.71
+Tip                          6.00
+Amount paid                 39.71
+MASTERCARD xxxx 9020
+
+Thank you for dining with us!

@@ -1,0 +1,12 @@
+Form 1099-INT      Interest Income      Tax year 2025
+(synthetic sample - not a real form)
+
+PAYER: Willow Savings Bank
+RECIPIENT: J. Synthetic     Account number XXXXXX5678
+
+1  Interest income                         84.12
+2  Early withdrawal penalty                 0.00
+4  Federal income tax withheld              0.00
+
+This is important tax information and is being furnished to the IRS.
+Keep for your records.

@@ -32,11 +32,12 @@ internal static class SortingChecks
         check(dates.Contains(new(2026, 10, 31)) && dates.Contains(new(2026, 11, 2)) && dates.Contains(new(2026, 10, 15)), "dates are found in written, US and ISO forms");
         check(DocumentHints.FindDates("Acme_Invoice_20261014", "filename").Single().Date == new DateOnly(2026, 10, 14), "a compact date in a filename is read");
         var acme = new NamedTerm(Guid.NewGuid(), "Acme Supply", ["ACME Supply Co"]);
-        var hints = DocumentHints.Read("Invoice 4471.pdf", "ACME SUPPLY CO\nInvoice 4471", [new(Guid.NewGuid(), "Invoice", "A request for payment", ["invoice_number"], false)], [acme], []);
-        check(hints.Senders.SequenceEqual([acme.Id]) && hints.Kinds.Count == 1 && hints.Kinds[0].Score >= 10, "known senders (by any spelling) and a kind named in the filename are found without the model");
-        var reply = OllamaClient.ParseSort("""{"kind":"Invoice","kind_description":"","from":"Acme","date":"2026-10-14","title":"Shop supplies","tags":["shop","shop"],"fields":[{"name":"invoice_number","value":"INV-1","quote":"INV-1"}],"confidence":"certain","extra":"ignored"}""");
+        var hints = DocumentHints.Read("Invoice 4471.pdf", "ACME SUPPLY CO\nInvoice 4471", [new(Guid.NewGuid(), "Invoice", [])], [acme], []);
+        check(hints.Senders.SequenceEqual([acme.Id]) && hints.Kinds.Count == 1, "known senders (by any spelling) and a kind named in the filename are found without the model");
+        var reply = DocumentReading.ParseDetails("""{"from":"Acme","date":"2026-10-14","title":"Shop supplies","tags":["shop","shop"],"fields":[{"name":"invoice_number","value":"INV-1","quote":"INV-1"}],"confidence":"certain","extra":"ignored"}""");
         check(reply.Confidence == "low" && reply.Tags.Length == 1 && reply.Fields.Length == 1, "a reading is bounded and an unknown confidence counts as low");
-        await refuses(() => Task.Run(() => { try { OllamaClient.ParseSort("""{"kind":""}"""); } catch (OllamaException ex) { throw new StorageException(ex.Message); } }), "a reading without a kind is refused");
+        check(DocumentHints.Read("Scan 4.pdf", "PURCHASE ORDER number 12\nOrder total 9.00", [new(Guid.NewGuid(), "Purchase order", [])], [], []).Kinds.Count == 0,
+            "a kind is never guessed from words that happen to be in the text");
 
         // A Word document's text, without any outside tool.
         Directory.CreateDirectory(scratch);
@@ -69,11 +70,12 @@ internal static class SortingChecks
             var entry = (await library.BrowseAsync(inbox)).Items.Single(x => x.Name == name); count++;
             return (await library.SortCardAsync(entry.Id))!;
         }
-        SortRequest? sent = null;
+        List<AskRequest> sent = [];
         async Task<SortCard> Read(SortCard card, SortReply answer)
         {
             await library.QueueSortingAsync(card.Document.Id, actor);
-            await library.ProcessNextIdentificationAsync(new Model(input => { sent = input; return answer; }));
+            var model = new ScriptedModel(_ => answer);
+            await library.ProcessNextIdentificationAsync(model); sent = model.Asked;
             return (await library.SortCardAsync(card.Document.Id))!;
         }
         const string statement = "CEDAR BANK N.A.\nChecking account ending 1234\nStatement period October 1, 2026 to October 31, 2026\nSynthetic balance 42.50";
@@ -81,13 +83,14 @@ internal static class SortingChecks
         check(!scan.DescriptiveName && scan.Choice.From == "Cedar Bank" && scan.Choice.Kind == "" && scan.Plan.Problem != null, "without the reader, a scan's card starts with what plain matching finds and asks for a kind");
         scan = await Read(scan, new("Bank statement", "", "CEDAR BANK N.A.", "2026-10-31", "Checking statement", ["house", "banking-2026", "another-new"],
             [new("account_ending", "1234", "ending 1234"), new("account_ending_bad", "9", "not in text")], "high"));
-        using (var prompt = JsonDocument.Parse(sent!.PromptJson))
-        {
-            var p = prompt.RootElement;
-            check(p.GetProperty("known_kinds").GetArrayLength() >= 10 && p.GetProperty("known_senders").EnumerateArray().Any(x => x.GetString() == "Cedar Bank") && !sent.PromptJson.Contains(scratch)
-                && !p.TryGetProperty("folders", out _) && p.GetProperty("text").GetString()!.Length <= LibraryService.SortTextBudget + 60,
-                "the reader is asked a narrow question: kinds, senders, tags and the first page, with no folders or server paths");
-        }
+        var describe = sent.Single(x => x.Step == "describe"); var asked = sent.Single(x => x.Step == "details");
+        check(sent.Count == 2 && !describe.Question.Contains("Purchase order") && !describe.Question.Contains("Bank statement") && !describe.Question.Contains("Everything else"),
+            "the reader is first asked what the document is with none of the person's kinds on show, and a name it already knows needs no second question");
+        check(asked.Question.Contains("filed as \"Bank statement\"") && asked.Question.Contains("Cedar Bank") && asked.Question.Contains("account_ending") && !asked.Question.Contains("invoice_number"),
+            "the details are asked about that one kind: its fields, and short lists of senders and tags");
+        check(sent.All(x => x.Document == describe.Document && !x.Document.Contains(scratch) && !x.Question.Contains(scratch)) && describe.Document.Contains("File name: 20261105_143022.txt")
+            && describe.Document.Contains("Arrived in folder: Inbox") && describe.Document.Length <= LibraryService.SortTextBudget + 400,
+            "every question starts with the same bounded document, with no folders to choose from and no server paths");
         check(scan.Choice.Kind == "Bank statement" && scan.Choice.From == "Cedar Bank" && scan.Choice.Date == new DateOnly(2026, 10, 31) && scan.Sources["date"] == "reader",
             "the reader's sender spelling is mapped to the known sender and its date is checked against the text");
         check(scan.Choice.Tags.SequenceEqual(["house", "banking-2026"]) && scan.Choice.Fields.Keys.SequenceEqual(["account_ending"]), "at most one new tag is taken, and only fields of the kind with evidence in the text");
@@ -231,7 +234,7 @@ internal static class SortingChecks
             ["20250105_0900.txt"] = new("Permit", "", "City of Synthetic Falls", "2025-01-05", "Dog licence", ["pets"], [], "high"),
             ["Scan 99.txt"] = new("Everything else", "", "", "", "Pizza flyer", [], [], "low")
         };
-        for (var i = 0; i < 3; i++) await library.ProcessNextIdentificationAsync(new Model(input => answersFor[JsonDocument.Parse(input.PromptJson).RootElement.GetProperty("file_name").GetString()!]));
+        for (var i = 0; i < 3; i++) await library.ProcessNextIdentificationAsync(new ScriptedModel(input => answersFor[ScriptedReader.FileName(input)]));
         check(File.Exists(Path.Combine(scratch, "Archive/old invoice.txt")), "a back-fill reading never files anything by itself, even for a kind that files itself");
         var ours = new[] { oldInvoice.Id, oldPermit.Id, flyer.Id };
         var suggestions = (await library.BackfillSuggestionsAsync()).Where(x => ours.Contains(x.Document.Id)).ToList();
@@ -289,10 +292,4 @@ internal static class SortingChecks
     }
 
     private sealed class Clock : TimeProvider { private DateTimeOffset now = DateTimeOffset.UtcNow; public override DateTimeOffset GetUtcNow() => now; public void Advance(int seconds) => now = now.AddSeconds(seconds); }
-    private sealed class Model(Func<SortRequest, SortReply> answer) : IOllamaClient
-    {
-        public Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default) => Task.FromResult(new List<LocalModel>());
-        public Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("Sorting never asks the old question.");
-        public Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default) => Task.FromResult(answer(request));
-    }
 }

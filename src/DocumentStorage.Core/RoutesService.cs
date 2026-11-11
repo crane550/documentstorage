@@ -214,7 +214,9 @@ public sealed partial class LibraryService
             if (!plan.Automatic || plan.State != "Filed" || plan.UndoneAt != null) throw new StorageException("Only something that filed itself can be confirmed.");
             if (plan.ConfirmedAt != null) return;
             plan.ConfirmedAt = time.GetUtcNow();
-            var detail = await db.Details.AsNoTracking().SingleOrDefaultAsync(x => x.EntryId == plan.EntryId);
+            // Now a person stands behind it, so later readings may learn from it.
+            var detail = await db.Details.SingleOrDefaultAsync(x => x.EntryId == plan.EntryId);
+            if (detail != null) detail.Confirmed = true;
             var kind = detail?.KindId == null ? null : await db.Kinds.SingleOrDefaultAsync(x => x.Id == detail.KindId);
             if (kind != null) { kind.Approved++; kind.Streak++; }
             if (detail?.CorrespondentId is Guid senderId && kind != null)

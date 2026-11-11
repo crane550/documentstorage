@@ -1,0 +1,19 @@
+CEDAR BANK N.A.
+Member FDIC
+
+CHECKING ACCOUNT STATEMENT
+Account ending 1234
+Statement period April 1, 2026 through April 30, 2026
+
+Beginning balance                1,204.33
+Deposits and credits   3         2,150.00
+Withdrawals and debits 14        1,987.12
+Ending balance                   1,367.21
+
+Date    Description                      Amount     Balance
+04/02   Direct deposit payroll         1,000.00    2,204.33
+04/05   Card purchase Greenleaf Mkt      -54.12    2,150.21
+04/11   Check 1042                      -300.00    1,850.21
+
+Please examine this statement promptly and report any discrepancy.
+Page 1 of 3

@@ -13,13 +13,6 @@ public sealed record AssistantEditResult(Guid ReceiptId,string Action,Guid Targe
 
 public sealed partial class LibraryService
 {
-    private static object TeachingPromptExample(ReaderTeachingExample example,string kind)
-    {
-        using var value=JsonDocument.Parse(example.ChoiceJson);var root=value.RootElement;
-        var fields=root.GetProperty("fields").EnumerateObject().Take(4).ToDictionary(x=>x.Name,x=>(x.Value.GetString()??"")[..Math.Min(100,(x.Value.GetString()??"").Length)]);
-        return new {kind,from=root.GetProperty("from").GetString(),date=root.GetProperty("date").GetString(),title=root.GetProperty("title").GetString(),
-            tags=root.GetProperty("tags").EnumerateArray().Take(4).Select(x=>x.GetString()).ToArray(),fields,text=example.TextExcerpt[..Math.Min(500,example.TextExcerpt.Length)],lesson=example.Lesson[..Math.Min(240,example.Lesson.Length)]};
-    }
     // One writer/transaction binds authorization, optimistic revisions, the change, receipt and audit.
     // These operations never approve a proposal, move a file, or change unattended-filing switches.
     public async Task<AssistantEditResult> EditAssistantAsync(string action,string payload,string contextHash,string idempotencyKey,string sourceRequest,AssistantCaller caller,bool applyNow=false)
@@ -124,7 +117,7 @@ public sealed partial class LibraryService
                     if((current?.Revision??0)!=input.ExpectedRevision||entry.ContentHash!=input.ContentHash||await FingerprintAsync(root,entry)!=input.ContentHash)throw new StorageException("stale_document: Reread the current document fingerprint and details revision.");
                     if(current!=null)before=JsonSerializer.Serialize(new {kind=current.KindId==null?"":(await db.Kinds.SingleAsync(x=>x.Id==current.KindId)).Name,from=current.CorrespondentId==null?"":(await db.Correspondents.SingleAsync(x=>x.Id==current.CorrespondentId)).Name,date=current.DocumentDate,title=current.Title,fields=JsonSerializer.Deserialize<JsonElement>(current.FieldsJson),tags=await db.EntryTags.Where(x=>x.EntryId==entry.Id).Join(db.Tags,x=>x.TagId,x=>x.Id,(x,t)=>t.Name).ToArrayAsync()});
                     var value=input.Details;
-                    await SaveDetailsCoreAsync(db,entry.Id,new(value.Kind,value.From,ProposalDate(value.Date),value.Title,value.Tags,value.Fields),caller.Actor,"");
+                    await SaveDetailsCoreAsync(db,entry.Id,new(value.Kind,value.From,ProposalDate(value.Date),value.Title,value.Tags,value.Fields),caller.Actor,"",confirmed:false); // An assistant's edit is not a person's confirmation.
                     current=await db.Details.FindAsync(entry.Id);
                     current!.SourcesJson=JsonSerializer.Serialize(new[]{"kind","from","date","title","tags"}.Concat(value.Fields.Keys).Distinct().ToDictionary(x=>x,_=>"assistant"));
                     current.UpdatedBy="assistant:"+caller.ConnectionId;target=entry.Id;revision=current.Revision;break;

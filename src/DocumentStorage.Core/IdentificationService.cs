@@ -236,8 +236,8 @@ public sealed partial class LibraryService
         IdentificationRequest? input = null;
         IdentificationJob? claimed = null;
         LiveIdentification? live = null;
-        SortRequest? sortInput = null;
-        SortReply? sortReply = null;
+        (ReadingDocument Document, ReadingKnowledge Knowledge)? reading = null;
+        ReadingResult? read = null;
         OllamaSettings? readerSettings = null;
         var sorted = false;
         await writer.WaitAsync(stoppingToken);
@@ -273,8 +273,9 @@ public sealed partial class LibraryService
             { await SupersedeAsync(db, claimed, "OCR text is no longer available. Rescan the document."); return true; }
             if(!await DescriptionMatchesAsync(db,claimed)) { await SupersedeAsync(db,claimed,"The saved description changed. Suggest a folder again.");return true; }
             var sourceText = claimed.FromSavedDescription ? PlacementText(await db.DocumentDescriptions.SingleAsync(x=>x.EntryId==entry.Id)) : entry.ExtractedText;
-            // A sorting reading sends its own bounded first page (context.InputText); the others shorten here.
-            var text = claimed.Sorting ? context.InputText : sourceText;
+            // A sorting reading shows its own bounded excerpt, the same to every question; the others shorten here.
+            if (claimed.Sorting) reading = await ReadingInputAsync(db, entry, settings);
+            var text = reading is { } shown ? DocumentReading.DocumentBlock(shown.Document) : sourceText;
             var excerptTruncated = !claimed.Sorting && text.Length > settings.MaxInputCharacters;
             if (excerptTruncated)
             {
@@ -285,7 +286,6 @@ public sealed partial class LibraryService
             }
             input = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, entry.Name, context.Json, sourceText, text,
                 entry.ExtractionTruncated || context.Truncated || excerptTruncated, context.Types, context.Facts, claimed.Organizing);
-            if (claimed.Sorting) sortInput = new(settings.Endpoint, settings.Model, settings.TimeoutSeconds, context.Json);
             claimed.ContextJson = context.Json;
             claimed.InputText = text;
             claimed.InputTruncated = input.Truncated;
@@ -326,8 +326,13 @@ public sealed partial class LibraryService
         {
             try
             {
-                if (sortInput != null) sortReply = await WithReaderAsync(readerSettings!, client,
-                    (reader, seconds, token) => client.SortAsync(sortInput with { Endpoint = reader.Endpoint, Model = reader.Model, TimeoutSeconds = seconds, KeepAliveSeconds = readerSettings!.KeepAliveSeconds }, token), live.Cancellation.Token, Selected);
+                // One reader answers every question of a reading, within the one time limit.
+                if (reading is { } material) read = await WithReaderAsync(readerSettings!, client, (reader, seconds, token) =>
+                {
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    return DocumentReading.RunAsync(material.Document, material.Knowledge, (step, document, question, schema, maxTokens) => client.AskAsync(
+                        new(reader.Endpoint, reader.Model, Math.Max(1, seconds - (int)clock.Elapsed.TotalSeconds), step, document, question, schema, maxTokens, readerSettings!.KeepAliveSeconds), token));
+                }, live.Cancellation.Token, Selected);
                 else result = await WithReaderAsync(readerSettings!, client,
                     (reader, seconds, token) => client.IdentifyAsync(input with { Endpoint = reader.Endpoint, Model = reader.Model, TimeoutSeconds = seconds, KeepAliveSeconds = readerSettings!.KeepAliveSeconds }, token), live.Cancellation.Token, Selected);
             }
@@ -363,11 +368,14 @@ public sealed partial class LibraryService
                 }
                 catch (Exception ex) when (ex is StorageException or IOException or UnauthorizedAccessException)
                 { await SupersedeAsync(db, job, "The source is unavailable or changed. Rescan before identifying again."); return true; }
-                if (sortInput != null)
+                if (reading != null)
                 {
-                    if (sortReply == null) { job.State = "Failed"; job.LastError = "The local model returned no reading."; job.CompletedAt = time.GetUtcNow(); }
+                    if (read == null) { job.State = "Failed"; job.LastError = "The local model returned no reading."; job.CompletedAt = time.GetUtcNow(); }
                     else
                     {
+                        var sortReply = read.Reply;
+                        // The questions asked and each answer, for Reading details and assistants looking into a reading.
+                        job.ContextJson = JsonSerializer.Serialize(read.Steps.Select(x => new { step = x.Name, question = x.Question, answer = x.Answer }));
                         job.OrganizationJson = JsonSerializer.Serialize(sortReply); job.DocumentType = sortReply.Kind; job.Summary = sortReply.Title;
                         job.FactsJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Value));
                         job.EvidenceJson = JsonSerializer.Serialize(sortReply.Fields.ToDictionary(x => x.Name, x => x.Quote));

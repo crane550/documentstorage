@@ -57,6 +57,12 @@ public sealed class DocumentDetail
     public string FieldsJson { get; set; } = "{}";
     // Where each detail came from: filename, text, reader, person.
     public string SourcesJson { get; set; } = "{}";
+    // A person stands behind these details (approved, corrected or said "looks right"). Only
+    // confirmed documents teach later readings; one that filed itself is not evidence yet.
+    public bool Confirmed { get; set; }
+    // What the reader called this type of document in its own words ("Store receipt"), before it
+    // was shown any kinds. Beside the kind a person filed it as, this is what readings learn from.
+    public string ReaderWords { get; set; } = "";
     // Whether the folder and the name follow the kind's patterns. Only those parts move when a
     // pattern changes or senders merge; a kept or hand-picked folder or name stays put.
     public bool FollowsFolder { get; set; }

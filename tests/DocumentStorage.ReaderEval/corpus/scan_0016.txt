@@ -1,0 +1,16 @@
+Pinecrest Electric Cooperative
+Your monthly electric bill
+
+Account 77120045         Statement date June 3, 2026
+Service at 12 Birch Lane   Billing period May 2 - June 1, 2026
+
+Energy charge 612 kWh @ 0.118        72.22
+Basic service charge                 14.00
+Taxes and fees                        4.31
+Total current charges                90.53
+Balance forward                       0.00
+
+Amount due by June 24, 2026          90.53
+
+Usage this month 612 kWh. Same month last year 588 kWh.
+Pay online, by phone or by mail. Late payments are subject to a fee.

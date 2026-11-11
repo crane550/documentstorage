@@ -24,8 +24,9 @@ public interface IOllamaClient
         => Task.FromException<DeskResult>(new OllamaException("This adapter does not support document conversations."));
     Task<List<LocalModel>> ModelsAsync(string endpoint, CancellationToken cancellationToken = default);
     Task<IdentificationResult> IdentifyAsync(IdentificationRequest request, CancellationToken cancellationToken = default);
-    Task<SortReply> SortAsync(SortRequest request, CancellationToken cancellationToken = default)
-        => Task.FromException<SortReply>(new OllamaException("This adapter does not support sorting."));
+    // One narrow question about one document, answered as a JSON object. A reading is a few of these.
+    Task<string> AskAsync(AskRequest request, CancellationToken cancellationToken = default)
+        => Task.FromException<string>(new OllamaException("This adapter does not support reading."));
     Task<FieldReply> FindFieldsAsync(FieldFindRequest request, CancellationToken cancellationToken = default)
         => Task.FromException<FieldReply>(new OllamaException("This adapter does not support finding fields."));
     Task<KindDraftReply> DraftKindAsync(KindDraftRequest request, CancellationToken cancellationToken = default)

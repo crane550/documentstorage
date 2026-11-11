@@ -1,0 +1,172 @@
+[
+ {
+  "file": "scan_0001.txt",
+  "group": "store-receipt",
+  "kind": "Receipt"
+ },
+ {
+  "file": "scan_0002.txt",
+  "group": "store-receipt",
+  "kind": "Receipt"
+ },
+ {
+  "file": "IMG_2291.txt",
+  "group": "store-receipt",
+  "kind": "Receipt"
+ },
+ {
+  "file": "Order Confirmation 771-0045.txt",
+  "group": "order-confirmation",
+  "kind": "Receipt"
+ },
+ {
+  "file": "scan_0007.txt",
+  "group": "order-confirmation",
+  "kind": "Receipt"
+ },
+ {
+  "file": "PO 4471 Acme Fasteners.txt",
+  "group": "purchase-order",
+  "kind": "Purchase order"
+ },
+ {
+  "file": "scan_0011.txt",
+  "group": "purchase-order",
+  "kind": "Purchase order"
+ },
+ {
+  "file": "scan_0012.txt",
+  "group": "invoice",
+  "kind": "Invoice"
+ },
+ {
+  "file": "Ridgeline_Invoice_88104.txt",
+  "group": "invoice",
+  "kind": "Invoice"
+ },
+ {
+  "file": "scan_0015.txt",
+  "group": "utility-bill",
+  "kind": "Bill"
+ },
+ {
+  "file": "scan_0016.txt",
+  "group": "utility-bill",
+  "kind": "Bill"
+ },
+ {
+  "file": "scan_0018.txt",
+  "group": "bank-statement",
+  "kind": "Bank statement"
+ },
+ {
+  "file": "scan_0019.txt",
+  "group": "bank-statement",
+  "kind": "Bank statement"
+ },
+ {
+  "file": "scan_0021.txt",
+  "group": "insurance-change",
+  "kind": "Insurance"
+ },
+ {
+  "file": "scan_0022.txt",
+  "group": "insurance-declarations",
+  "kind": "Insurance"
+ },
+ {
+  "file": "scan_0024.txt",
+  "group": "subscription-renewal",
+  "kind": ""
+ },
+ {
+  "file": "Your membership renews soon.txt",
+  "group": "subscription-renewal",
+  "kind": ""
+ },
+ {
+  "file": "scan_0027.txt",
+  "group": "sheet-music",
+  "kind": ""
+ },
+ {
+  "file": "scan_0028.txt",
+  "group": "sheet-music",
+  "kind": ""
+ },
+ {
+  "file": "scan_0030.txt",
+  "group": "personal-letter",
+  "kind": "Letter"
+ },
+ {
+  "file": "scan_0031.txt",
+  "group": "personal-letter",
+  "kind": "Letter"
+ },
+ {
+  "file": "scan_0033.txt",
+  "group": "user-manual",
+  "kind": ""
+ },
+ {
+  "file": "OM_DW220.txt",
+  "group": "user-manual",
+  "kind": ""
+ },
+ {
+  "file": "scan_0036.txt",
+  "group": "training-handout",
+  "kind": ""
+ },
+ {
+  "file": "scan_0038.txt",
+  "group": "line-card",
+  "kind": ""
+ },
+ {
+  "file": "Hollowell Line Card 2026.txt",
+  "group": "line-card",
+  "kind": ""
+ },
+ {
+  "file": "scan_0041.txt",
+  "group": "lab-result",
+  "kind": "Medical"
+ },
+ {
+  "file": "scan_0043.txt",
+  "group": "vehicle-registration",
+  "kind": "Vehicle"
+ },
+ {
+  "file": "scan_0045.txt",
+  "group": "lease",
+  "kind": "Legal"
+ },
+ {
+  "file": "scan_0047.txt",
+  "group": "recipe",
+  "kind": ""
+ },
+ {
+  "file": "scan_0049.txt",
+  "group": "quote",
+  "kind": ""
+ },
+ {
+  "file": "scan_0051.txt",
+  "group": "packing-slip",
+  "kind": ""
+ },
+ {
+  "file": "scan_0053.txt",
+  "group": "report-card",
+  "kind": "School"
+ },
+ {
+  "file": "scan_0055.txt",
+  "group": "tax-form",
+  "kind": "Tax document"
+ }
+]

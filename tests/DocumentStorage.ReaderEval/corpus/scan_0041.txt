@@ -1,0 +1,15 @@
+MAPLE FALLS FAMILY CLINIC - LABORATORY REPORT
+
+Patient: Synthetic, J.        DOB: 01/01/1980
+Collected: 05/20/2026 08:15   Reported: 05/21/2026
+Ordering provider: Dr. A. Example
+
+Test                     Result    Flag   Reference range
+Glucose, fasting         92               70 - 99 mg/dL
+Total cholesterol        188              < 200 mg/dL
+HDL cholesterol          54               > 40 mg/dL
+LDL cholesterol (calc)   112       H      < 100 mg/dL
+Triglycerides            110              < 150 mg/dL
+
+Comment: results reviewed. Follow up at next visit.
+This report contains confidential health information.
