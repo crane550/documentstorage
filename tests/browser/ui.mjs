@@ -96,3 +96,20 @@ export async function openInboxItem(page, name) {
     await page.locator('.intake-item').filter({ hasText: name }).click();
     await page.locator('.slip-head h2').filter({ hasText: name }).waitFor();
 }
+
+// A reading is several narrow questions about one document (describe, match, details). A stand-in
+// for Ollama scripts what the whole reading should come to and answers each question from it:
+// { kind, kind_description, from, date, title, tags, fields, confidence, what? }.
+export const readingStep = payload => { const asks = payload.format?.properties ?? {}; return 'signs' in asks ? 'describe' : 'nearest' in asks ? 'match' : 'details'; };
+export const isReadingQuestion = payload => payload.messages[0].content.startsWith('You help a person file their paperwork');
+export const readingFileName = payload => payload.messages[1].content.split('\n').find(x => x.startsWith('File name: ')).slice('File name: '.length);
+export function answerReading(payload, reading) {
+    const step = readingStep(payload);
+    if (step === 'describe') return { signs: [], type: reading.what ?? reading.kind, about: reading.kind_description ?? '' };
+    if (step === 'match') {
+        const offered = payload.format.properties.nearest.enum;
+        const same = offered.find(x => x.toLowerCase() === reading.kind.toLowerCase());
+        return { nearest: same ?? offered[0], reason: 'Synthetic comparison.', same: same !== undefined };
+    }
+    return { from: reading.from, date: reading.date, title: reading.title, tags: reading.tags, fields: reading.fields, confidence: reading.confidence };
+}

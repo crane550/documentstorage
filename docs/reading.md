@@ -82,8 +82,9 @@ Under Kind: "The reader calls it “Store receipt”", and the other kinds worth
 kind when a new one is proposed; the other kind when a name has led to two). Correcting the kind
 is the teaching; there is nothing else to tick.
 
-**Reading details** and assistants (`read_reader_attempt`, section `context`) show each question
-asked and its answer. `input` is the document block.
+Each question asked and its answer is kept with the reading; assistants can see them
+(`read_reader_attempt`, section `context`; `input` is the document block), along with
+`reader_called_it` and `other_kinds` on each Inbox card.
 
 ## What the reader is given
 

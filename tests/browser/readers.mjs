@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, chromiumPath, signIn, ready, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, noOverflow } from './ui.mjs';
+import { credentials, chromiumPath, signIn, ready, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, noOverflow, answerReading, readingStep } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5252';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname), 'Disposable local app only');
@@ -22,8 +22,8 @@ async function fixture(desktop) {
             if (req.url === '/api/show') return res.end('{"capabilities":["completion"]}');
             if (req.url === '/api/chat') {
                 assert.equal(input.keep_alive, 45); assert.equal(input.think, false);
-                if (desktop) desktopReads++; else fallbackReads++;
-                return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answer) } }));
+                if (readingStep(input) === 'details') { if (desktop) desktopReads++; else fallbackReads++; } // a reading's last question
+                return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answerReading(input, answer)) } }));
             }
             res.statusCode = 404; res.end('{}');
         } catch (error) { wireError = error; res.statusCode = 500; res.end('{}'); }

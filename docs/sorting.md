@@ -117,30 +117,35 @@ the same formats). `SortPatterns` (Core, pure) renders them:
 
 ## Reading (the model)
 
-`SortingContextAsync` builds one narrow request for a small local model (qwen3:4b-instruct on a
-CPU is the target): the filename, the likely kinds with descriptions and fields (all of them up to
-20, ranked by plain matching), up to 25 senders and 30 tags (matched ones first, then most used),
-three approved examples, general guidance and the first 4,000 characters. `OllamaClient.SortAsync`
-sends it with `think: false`, `num_ctx` 8192 and a small output budget, and asks for kind, sender,
-date, title, tags, fields with quotes and a confidence. No folder ids, no filenames.
+Rebuilt on 10 Nov 2026: see **[Reading](reading.md)** for how the kind is worked out, what is
+learned and how to measure it. In short, a reading is a few narrow questions that code steers
+(`DocumentReading`): *describe* the document with none of your kinds on show; settle the kind in
+code from where that name has led before; ask the reader to *match* only when that can't say,
+proposing a new kind when nothing fits; then read the *details* for that one kind. Every question
+goes out with `think: false`, `num_ctx` 8192 and the same document block. No folder ids, no
+filenames.
 
 `DocumentHints` (Core, pure) reads the filename and first page without the model: whether the name
 is descriptive (an emailed `Acme_Invoice_INV-20391.pdf`) or a scanner's (`20261105_143022.pdf`,
-`Scan 12.pdf`), dates in ISO, compact, US and written forms, and known senders, tags and kinds named
-in the filename or text. With the reader off, the card starts from these.
+`Scan 12.pdf`), dates in ISO, compact, US and written forms, known senders and tags named in the
+filename or text, and a kind only when the file's own name says it. With the reader off, the card
+starts from these.
 
-A reading binds only to the document's bytes (`SortContextHash` is constant), so renaming folders,
-adding kinds or approving other documents never throws away a slow reading; approval works the
-path out fresh anyway. Automatic reading queues these sorting jobs.
+A reading binds only to the document's bytes (`SortContextHash` is constant), and what the reader
+is told is gathered when the reading runs, not when it is queued. Renaming folders, adding kinds or
+approving other documents never throws away a slow reading, and a reading always sees what you have
+taught since. Automatic reading queues these sorting jobs.
 
 ## Checks on the answer
 
 `FromReply` maps the reply to what Stash knows and marks each detail's source (reader, filename,
-text, person, guess): kind and sender by name or spelling (plural and longer-name forms included),
-tags likewise with at most one new tag, fields only the kind's and only with a quote found in the
-text, and the date only trusted when it is written in the document; otherwise it's a guess.
-A card is **sure** when the kind and sender are known, the date is written, the reader said high,
-no new tag is needed, the kind's pattern fields are all present and the plan has no problem.
+text, person, guess): the kind is *reader* when it was settled by its name and *guess* when the
+reader had to choose or proposed a new one; the sender by name or spelling (longer-name forms
+included), tags likewise with at most one new tag, fields only the kind's and only with a quote
+found in the text, and the date only trusted when it is written in the document.
+A card is **sure** when the kind is settled, the sender is known, the date is written, the reader
+said high for the details, no new tag is needed, the kind's pattern fields are all present and the
+plan has no problem.
 
 ## Approving
 
@@ -164,7 +169,9 @@ records an `OrganizationFiling` carrying the details (`DetailsJson`) and moves t
 existing journal (`Kind = "Organize"`). Missing folders along the path are created in the same
 operation (`EnsureOrganizationFolderAsync` creates nested segments). A taken name gets " (2)".
 On completion, in the same transaction (also when Recovery completes it): the details, new kind,
-sender and tags, the kind's record, a learned spelling and the remembered example.
+sender and tags, the kind's record, a learned spelling, the remembered example, and what the reader
+called the document beside the kind you filed it as (what later readings learn from; see
+[Reading](reading.md)). Unticking **Remember as an example** keeps that filing out of it.
 
 ## Copies already in Stash
 
@@ -270,12 +277,12 @@ rebuild them once from approved filings at startup (`RebuildRegularsAsync`).
 
 ## Not yet
 
-Other file formats beyond PDF, Word and plain text; one set of tags (older descriptions only
-pre-fill cards); measuring the real model on the server.
+One set of tags (older descriptions only pre-fill cards); measuring the real model on the server
+(the tool is ready: [Reading](reading.md)); the rest of the plan there.
 
 ## Checks
 
-`tests/DocumentStorage.Checks/SortingChecks.cs` (patterns, hints, Word text, the narrow prompt,
+`tests/DocumentStorage.Checks/ReadingChecks.cs` (how the kind is worked out and what is learned), `SortingChecks.cs` (patterns, hints, Word text, the reading's questions,
 mapping, plans, filing, corrections, new kinds, undo, automatic filing and its switches, Library
 details, merge, re-filing, back-fill, assistant proposals), `KindFieldChecks.cs` (field keys, dates, keeping fields, chips round-tripping, one-off and kept arrangements, new kinds) and `RegularsChecks.cs` (date rules, memory, trust, nudges, confirm, undo, rebuild, merge). `node tests/browser/sorting.mjs` drives the whole loop against a loopback Ollama
 stand-in on a disposable catalog, including Enter to file, tags, Filed/Undo, Kinds, Tidy up (a pattern change and its moves),

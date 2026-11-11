@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, fileRow } from './ui.mjs';
+import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, fileRow, answerReading, readingFileName, readingStep } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5250';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
@@ -25,10 +25,10 @@ const fixture = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         if (req.url === '/api/show') return res.end('{"capabilities":["completion"]}');
         if (req.url === '/api/chat') {
-            const input = JSON.parse(JSON.parse(raw).messages[1].content); reads++;
-            const m = Number(input.file_name.slice(9, 11));
+            const payload = JSON.parse(raw); if (readingStep(payload) === 'details') reads++;
+            const m = Number(readingFileName(payload).slice(9, 11));
             const answer = { kind: 'Bank statement', kind_description: '', from: 'Willow Savings', date: `2026-${String(m).padStart(2, '0')}-${days(m)}`, title: 'Savings statement', tags: [], fields: [{ name: 'account_ending', value: '1234', quote: 'ending 1234' }], confidence: 'high' };
-            return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answer) } }));
+            return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answerReading(payload, answer)) } }));
         }
         res.statusCode = 404; res.end('{}');
     } catch (e) { wireError = e; res.statusCode = 500; res.end('{}'); }

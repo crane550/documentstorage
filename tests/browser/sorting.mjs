@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, folderPicker, chooseFolder } from './ui.mjs';
+import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, folderPicker, chooseFolder, answerReading, readingFileName, readingStep } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5250';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
@@ -36,12 +36,12 @@ const fixture = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         if (req.url === '/api/show') return res.end('{"capabilities":["completion"]}');
         if (req.url === '/api/chat') {
-            const payload = JSON.parse(raw); const input = JSON.parse(payload.messages[1].content);
+            const payload = JSON.parse(raw); const file = readingFileName(payload);
             assert(payload.think === false && payload.options.num_ctx <= 8192, 'a small, quick request');
-            sawFolders ||= raw.includes(directory) || 'folders' in input;
-            reads++;
-            const answer = answers[input.file_name]; assert(answer, 'a known synthetic file: ' + input.file_name);
-            return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answer) } }));
+            sawFolders ||= raw.includes(directory);
+            if (readingStep(payload) === 'details') reads++; // one reading is a few questions; the last is its details
+            const answer = answers[file]; assert(answer, 'a known synthetic file: ' + file);
+            return res.end(JSON.stringify({ done: true, message: { content: JSON.stringify(answerReading(payload, answer)) } }));
         }
         res.statusCode = 404; res.end('{}');
     } catch (e) { wireError = e; res.statusCode = 500; res.end('{}'); }
@@ -76,7 +76,7 @@ try {
     for (let i = 0; i < 120 && reads < 3; i++) await new Promise(r => setTimeout(r, 500));
     await page.goto(base + '/'); await ready(page);
     await page.waitForFunction(() => document.querySelectorAll('.sort-row .stamp').length === 3 && [...document.querySelectorAll('.sort-row .stamp')].every(x => !/Queued|Reading|Arriving/.test(x.textContent)), null, { timeout: 60000 });
-    await check(reads === 3 && !sawFolders, 'automatic reading asks the narrow question once per document, with no folders or server paths');
+    await check(reads === 3 && !sawFolders, 'automatic reading reads each document once, with no folders or server paths');
     await check(row('20261105_143022.txt').locator('.stamp').textContent().then(t => t.includes('Check')), 'a sender Stash has never seen keeps even a confident reading waiting for a look');
     await check(row('20261105_143022.txt').locator('.sort-goes').getAttribute('title').then(t => t.includes('Banking/CEDAR BANK N.A./2026/2026-10 CEDAR BANK N.A. statement 1234.txt') || t.includes('Banking/')), 'each row shows where it will go');
 
@@ -143,6 +143,7 @@ try {
     // Something new: the reader proposes a new kind; approving makes it.
     await open('Scan 7.txt');
     await check(page.locator('.new-mark').first().isVisible(), 'a kind the reader made up is marked new');
+    await check(page.locator('[data-kind-hint] [data-kind-option]').first().isVisible(), 'a new kind comes with the nearest of your own kinds one click away');
     // Arrange the name with chips: add words, drag Title to the front.
     await page.getByRole('button', { name: 'Arrange folders & name' }).click();
     const nameRow = page.locator('[data-name-row]');

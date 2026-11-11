@@ -11,7 +11,9 @@ Replaced on 5 Nov 2026 by [the direction](direction.md): the inbox-to-folder loo
 - [x] **MCP:** tools for kinds, senders, tags, details and refiling, landing in the approval list.
 - [x] **Regulars:** recurring documents fill in from memory without the model, and a kind from one sender can be trusted to file itself.
 - [ ] Fold older saved descriptions fully into details (one set of tags); today they only pre-fill cards.
-- [ ] Measure the real model on the server (kind and field accuracy, seconds per document) and tune the prompt.
+- [x] **Reading rebuilt around the kind** (10 Nov 2026): asked openly, matched by what its name led to before, new kinds proposed, corrections learned. See [Reading](reading.md).
+- [ ] Measure the real model on the server with `tests/DocumentStorage.ReaderEval` (kinds right, new kinds found, seconds per document) and tune the questions.
+- [ ] The rest of the plan in [Reading](reading.md): details by narrow questions, corrections of details, more for the reader to see, taking out the older pipeline.
 
 Parked (left working, no new work): document conversations, folder planning, instruction conversations, PDF tools.
 See [Sorting](sorting.md).

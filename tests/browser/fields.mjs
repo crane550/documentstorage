@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
-import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, noOverflow } from './ui.mjs';
+import { credentials, signIn, connectStorage, openFolder, useAsInbox, settleAndRescan, toast, ready, chromiumPath, noOverflow, answerReading, isReadingQuestion, readingFileName, readingStep } from './ui.mjs';
 
 const base = process.env.DOCUMENTSTORAGE_TEST_URL || 'http://127.0.0.1:5250';
 assert(['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname));
@@ -25,12 +25,12 @@ const fixture = http.createServer(async (req, res) => {
         let raw = ''; for await (const chunk of req) raw += chunk;
         if (req.url === '/api/show') return res.end('{"capabilities":["completion"]}');
         if (req.url === '/api/chat') {
-            const body = JSON.parse(raw), system = body.messages[0].content, input = JSON.parse(body.messages[1].content);
+            const body = JSON.parse(raw), system = body.messages[0].content, reading = isReadingQuestion(body), input = reading ? null : JSON.parse(body.messages[1].content);
             let answer;
-            if (system.startsWith('You sort')) {
-                asked.sort++;
-                const m = Number(input.file_name.slice(6, 7));
-                answer = { kind: 'Bank statement', kind_description: '', from: 'Synthetic Cedar Bank', date: `2026-0${m}-28`, title: 'Checking statement', tags: [], fields: [], confidence: 'medium' };
+            if (reading) {
+                if (readingStep(body) === 'details') asked.sort++;
+                const m = Number(readingFileName(body).slice(6, 7));
+                answer = answerReading(body, { kind: 'Bank statement', kind_description: '', from: 'Synthetic Cedar Bank', date: `2026-0${m}-28`, title: 'Checking statement', tags: [], fields: [], confidence: 'medium' });
             } else if (system.startsWith('You find values')) {
                 asked.find.push(input.fields.map(x => x.name));
                 answer = { fields: [{ name: 'account_ending', value: '5678', quote: 'Account Number: ****5678' }] };

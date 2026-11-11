@@ -80,13 +80,13 @@
                 <datalist id="sort-senders">@foreach (var s in Vocabulary.Senders) { <option value="@s.Name" /> }</datalist>
             </div>
             @* What the reader called it in its own words, and the other kinds worth one click. Filing it under a kind is what teaches. *@
-            @if (Card.ReaderWords.Length > 0 || KindOptions.Length > 0)
+            @if (ReaderWords.Length > 0 || KindOptions.Length > 0)
             {
                 <div class="slip-cell full kind-hint" data-kind-hint title="Stash remembers what the reader called a document beside the kind you file it as, so the same words lead to your kind next time">
-                    @if (Card.ReaderWords.Length > 0) { <span class="kind-words">The reader calls it “@Card.ReaderWords”.</span> }
+                    @if (ReaderWords.Length > 0) { <span class="kind-words">The reader calls it “@ReaderWords”.</span> }
                     @if (KindOptions.Length > 0)
                     {
-                        <span class="kind-or">@(Card.ReaderWords.Length > 0 ? "Or file it as" : "File it as")</span>
+                        <span class="kind-or">@(ReaderWords.Length > 0 ? "Or file it as" : kind.Trim().Length > 0 ? "Or file it as" : "File it as")</span>
                         @foreach (var option in KindOptions) { <button type="button" class="token" data-kind-option @key="option" disabled="@busy" @onclick="() => PickKind(option)">@option</button> }
                     }
                 </div>
@@ -426,6 +426,8 @@
         await LoadSuggestions();
     }
     private Task PickKind(string name) { kind = name; return Changed(); }
+    // Worth saying only when it differs from what is in the Kind box.
+    private string ReaderWords => DocumentReading.SameName(Card.ReaderWords, kind.Trim()) ? "" : Card.ReaderWords;
     // The other kinds the reading weighed, and the one it suggested once the person has moved off it.
     private string[] KindOptions => Card.OtherKinds.Append(Card.Plan.NewKind ? "" : Card.Choice.Kind)
         .Where(x => x.Length > 0 && !string.Equals(x, kind.Trim(), StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

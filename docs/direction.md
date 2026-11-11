@@ -213,3 +213,7 @@ Alex clarified that stronger assistants should be able to make corrections and t
 ## Prioritized local readers (7 Nov 2026)
 
 Keep the Dell available as a fallback while a LAN desktop or future dedicated AI computer handles preferred readings. Each priority entry has its own model. Sleeping computers are skipped; unavailable readers never cause completed documents to be reread. All readers share the existing inference slot. See [local-ai.md](local-ai.md) and [Windows setup](ollama-windows.md).
+
+## The reading rebuilt around the kind (10 Nov 2026)
+
+Alex: the reader must find out what a document is, not squeeze it into a narrow list, and must know when to make a new kind; what tells kinds apart belongs in learned data, not code. The single prompt in "The pipeline for one document" above (step 3) is replaced by a few narrow questions steered by code, and what is learned is what the reader called a document beside the kind it was filed as. See [reading.md](reading.md), which also carries the plan from here.

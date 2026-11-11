@@ -6,7 +6,7 @@ Built with .NET 10, Blazor Server, EF Core and PostgreSQL. The interface uses kr
 
 ## Working features
 
-The main loop is described in [Sorting](docs/sorting.md): the reader says what a document is, who it's from, its date and tags; Stash builds the folder and name from the kind's patterns; you approve with Enter, correct with a click, and let trusted kinds file themselves. See [the direction](docs/direction.md).
+The main loop is described in [Sorting](docs/sorting.md), and how the reader works out what a document is in [Reading](docs/reading.md): the reader says what a document is, who it's from, its date and tags; Stash builds the folder and name from the kind's patterns; you approve with Enter, correct with a click, and let trusted kinds file themselves. See [the direction](docs/direction.md).
 
 Working now:
 
@@ -101,6 +101,9 @@ dotnet run --project tests/DocumentStorage.AuthenticationChecks -c Release
 
 # Real OAuth consent/PKCE/rotation/revocation and official MCP client over HTTP:
 dotnet run --project tests/DocumentStorage.McpChecks -c Release
+
+# How well a real local model works out what documents are, on synthetic documents (no catalog; see docs/reading.md):
+dotnet run --project tests/DocumentStorage.ReaderEval -c Release -- --endpoint http://127.0.0.1:11434 --model qwen3:4b-instruct
 
 # With the app running against a disposable catalog, system Chromium available:
 npm --prefix tests/browser ci --ignore-scripts
